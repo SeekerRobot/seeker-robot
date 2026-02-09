@@ -6,11 +6,9 @@
 
 #include <Arduino.h>
 #include <micro_ros_platformio.h>
-
 #include <rcl/rcl.h>
-#include <rclc/rclc.h>
 #include <rclc/executor.h>
-
+#include <rclc/rclc.h>
 #include <std_msgs/msg/bool.h>
 
 #if !defined(MICRO_ROS_TRANSPORT_ARDUINO_SERIAL)
@@ -28,8 +26,19 @@ rcl_timer_t timer;
 
 #define LED_PIN 2
 
-#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
-#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+#define RCCHECK(fn)                \
+  {                                \
+    rcl_ret_t temp_rc = fn;        \
+    if ((temp_rc != RCL_RET_OK)) { \
+      error_loop();                \
+    }                              \
+  }
+#define RCSOFTCHECK(fn)            \
+  {                                \
+    rcl_ret_t temp_rc = fn;        \
+    if ((temp_rc != RCL_RET_OK)) { \
+    }                              \
+  }
 
 void error_loop() {
   while (1) {
@@ -60,17 +69,12 @@ void setup() {
   RCCHECK(rclc_node_init_default(&node, "heartbeat_node", "", &support));
 
   RCCHECK(rclc_publisher_init_default(
-    &publisher,
-    &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-    "heartbeat"));
+      &publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+      "heartbeat"));
 
   const unsigned int timer_timeout = 1000;
-  RCCHECK(rclc_timer_init_default(
-    &timer,
-    &support,
-    RCL_MS_TO_NS(timer_timeout),
-    timer_callback));
+  RCCHECK(rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(timer_timeout),
+                                  timer_callback));
 
   RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
   RCCHECK(rclc_executor_add_timer(&executor, &timer));
