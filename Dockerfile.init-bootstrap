@@ -1,0 +1,12 @@
+FROM debian:stable-slim
+
+COPY scripts/init_bootstrap.sh /scripts/init_bootstrap.sh
+RUN chmod +x /scripts/init_bootstrap.sh
+
+# Bake in a fallback seed directory for environments where volume mounts
+# may be empty (e.g., certain CI runners). At runtime, the init script
+# will prefer the mounted /seed if it is populated; otherwise it will
+# fall back to this baked-in copy.
+COPY mcu_ws/libs_external/ /seed_baked/
+
+ENTRYPOINT ["/bin/sh","-ec","/scripts/init_bootstrap.sh"]
