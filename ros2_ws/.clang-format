@@ -1,0 +1,7 @@
+# .clang-format
+# This file tells clang-format to use the Google C++ Style Guide.
+BasedOnStyle: Google
+
+# You can add overrides below this line if you want to customize the style.
+# For example, to change the indent width from Google's default of 2 to 4:
+# IndentWidth: 4
