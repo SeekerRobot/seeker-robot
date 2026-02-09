@@ -1,0 +1,62 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET}
+    image: seeker-robot:${BUILD_TARGET}
+    environment:
+      - DISPLAY=${DISPLAY_CONFIG}
+      - QT_X11_NO_MITSHM=1
+      - PLATFORMIO_CORE_DIR=/home/ubuntu/.platformio
+    volumes:
+      # --- Source Code (Synced with Host) ---
+      - ./ros2_ws/src:/home/ubuntu/ros2_workspaces/src/seeker_ros:delegated
+      - ./ros2_ws/.vscode:/home/ubuntu/ros2_workspaces/.vscode:delegated
+      - ./mcu_ws:/home/ubuntu/mcu_workspaces/seeker_mcu:delegated
+      - ./scripts:/home/ubuntu/scripts
+
+      # --- Build Artifacts (Persisted in Docker, kept off Host) ---
+      # Prevents root-owned files on the host and speeds up IO on Windows/Mac
+      - ros2_build:/home/ubuntu/ros2_workspaces/build
+      - ros2_install:/home/ubuntu/ros2_workspaces/install
+      - ros2_log:/home/ubuntu/ros2_workspaces/log
+      - platformio_cache:/home/ubuntu/.platformio
+      - mcu_build_artifacts:/home/ubuntu/mcu_workspaces/seeker_mcu/.pio
+      - mcu_lib_external:/home/ubuntu/mcu_workspaces/seeker_mcu/libs_external
+
+      # --- System / Hardware ---
+      - /dev:/dev
+      - /sys:/sys
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    network_mode: ${NETWORK_MODE_CONFIG}
+    privileged: true
+    command: sleep infinity
+    depends_on:
+      init-bootstrap:
+        condition: service_completed_successfully
+
+  # One-shot init to chown all volumes and seed libs_external once
+  init-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.init-bootstrap
+    user: root
+    volumes:
+      - ros2_build:/ros2_build
+      - ros2_install:/ros2_install
+      - ros2_log:/ros2_log
+      - platformio_cache:/platformio_cache
+      - mcu_build_artifacts:/mcu_build_artifacts
+      - mcu_lib_external:/mcu_lib_external
+      - ./mcu_ws/libs_external:/seed:ro
+    restart: "no"
+
+# Build artifact volumes
+volumes:
+  ros2_build:
+  ros2_install:
+  ros2_log:
+  platformio_cache:
+  mcu_build_artifacts:
+  mcu_lib_external:
