@@ -1,6 +1,6 @@
 FROM debian:stable-slim
 
-COPY scripts/init_bootstrap.sh /scripts/init_bootstrap.sh
+COPY docker/init_bootstrap.sh /scripts/init_bootstrap.sh
 RUN chmod +x /scripts/init_bootstrap.sh
 
 # Bake in a fallback seed directory for environments where volume mounts

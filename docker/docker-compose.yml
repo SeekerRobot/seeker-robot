@@ -1,8 +1,8 @@
 services:
-  devcontainer:
+  ros2:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       target: ${BUILD_TARGET}
     image: seeker-robot:${BUILD_TARGET}
     environment:
@@ -11,10 +11,11 @@ services:
       - PLATFORMIO_CORE_DIR=/home/ubuntu/.platformio
     volumes:
       # --- Source Code (Synced with Host) ---
-      - ./ros2_ws/src:/home/ubuntu/ros2_workspaces/src/seeker_ros:delegated
-      - ./ros2_ws/.vscode:/home/ubuntu/ros2_workspaces/.vscode:delegated
-      - ./mcu_ws:/home/ubuntu/mcu_workspaces/seeker_mcu:delegated
-      - ./scripts:/home/ubuntu/scripts
+      - ../ros2_ws/src:/home/ubuntu/ros2_workspaces/src/seeker_ros:delegated
+      - ../ros2_ws/.vscode:/home/ubuntu/ros2_workspaces/.vscode:delegated
+      - ../mcu_ws:/home/ubuntu/mcu_workspaces/seeker_mcu:delegated
+      - ../ros2_ws/src/mcu_msgs:/home/ubuntu/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs:delegated
+      - ../scripts:/home/ubuntu/scripts
 
       # --- Build Artifacts (Persisted in Docker, kept off Host) ---
       # Prevents root-owned files on the host and speeds up IO on Windows/Mac
@@ -39,8 +40,8 @@ services:
   # One-shot init to chown all volumes and seed libs_external once
   init-bootstrap:
     build:
-      context: .
-      dockerfile: Dockerfile.init-bootstrap
+      context: ..
+      dockerfile: docker/Dockerfile.init-bootstrap
     user: root
     volumes:
       - ros2_build:/ros2_build
@@ -49,7 +50,7 @@ services:
       - platformio_cache:/platformio_cache
       - mcu_build_artifacts:/mcu_build_artifacts
       - mcu_lib_external:/mcu_lib_external
-      - ./mcu_ws/libs_external:/seed:ro
+      - ../mcu_ws/libs_external:/seed:ro
     restart: "no"
 
 # Build artifact volumes
