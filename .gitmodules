@@ -1,0 +1,4 @@
+[submodule "mcu_ws/libs_external/esp32/micro_ros_platformio"]
+	path = mcu_ws/libs_external/esp32/micro_ros_platformio
+	url = https://github.com/IEEE-UCF/micro_ros_platformio.git
+	branch = new

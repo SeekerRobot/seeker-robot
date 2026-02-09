@@ -1,0 +1,70 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# debug information files
+*.dwo
+
+# python
+*.pyc
+
+# vscode
+# Ignore global .vscode by default, but keep ROS2 IntelliSense config
+.vscode/*
+mcu_ws/.vscode/*
+ros2_ws/.vscode/*
+!ros2_ws/.vscode/c_cpp_properties.json
+
+# colcon
+ros2_ws/log/*
+ros2_ws/build/*
+ros2_ws/install/*
+build/*
+install/*
+log/*
+ros2_ws/.vscode/*
+
+# env
+*.env
+
+# platformio
+.pio/*
+mcu_ws/.vscode/*
+
+# ai agents
+.claude/*
