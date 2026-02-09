@@ -1,3 +1,9 @@
+/**
+ * @file test_microros_heartbeat/main.cpp
+ * @author Aldem Pido, Claude Code
+ * @brief Tests microros CI, also a microros test
+ */
+
 #include <Arduino.h>
 #include <micro_ros_platformio.h>
 
