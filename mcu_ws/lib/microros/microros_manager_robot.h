@@ -19,7 +19,12 @@
 #include <mutex>
 
 #ifdef USE_FREERTOS
+#ifdef TEENSYDUINO
 #include "arduino_freertos.h"
+#else
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 #endif
 
 #include "microros_setup.h"
@@ -80,8 +85,9 @@ class MicrorosManager : public Classes::BaseSubsystem {
   // FreeRTOS task entry point — pass `this` as pvParams
   static void taskFunction(void* pvParams);
 
-  // Create and start the micro-ROS FreeRTOS task
-  void beginThreaded(uint32_t stackSize, UBaseType_t priority);
+  // Create and start the micro-ROS FreeRTOS task pinned to a core
+  void beginThreaded(uint32_t stackSize, UBaseType_t priority,
+                     BaseType_t core = 0);
 #endif
 
   // Mutex for thread-safe access to the executor (use with std::lock_guard)
