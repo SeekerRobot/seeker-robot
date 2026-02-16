@@ -1,6 +1,8 @@
 /**
  * @file test-microros-wifi-threaded/main.cpp
- * @brief ESP32 micro-ROS WiFi transport test
+ * @brief ESP32 micro-ROS WiFi transport tes
+ * 
+ * Note: generated with Claude Code
  *
  * Minimal test that connects to WiFi and a micro-ROS agent over UDP,
  * then publishes a heartbeat string message every second.

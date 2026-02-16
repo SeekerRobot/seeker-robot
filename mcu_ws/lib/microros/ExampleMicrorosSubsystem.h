@@ -26,10 +26,12 @@ class ExampleSubsystem : public IMicroRosParticipant,
   bool init() override { return true; }
   void begin() override {}
   void update() override {
-    if (!pub_.impl) return;
+    if (!pub_.impl || !manager_) return;
+    if (!manager_->isConnected()) return;
     // Publish a simple heartbeat once per second so topic has activity
     uint64_t now = uxr_millis();
     if (last_pub_ms_ == 0 || (now - last_pub_ms_) >= 1000) {
+      std::lock_guard<std::mutex> guard(manager_->getMutex());
       publishStatus("READY");
       last_pub_ms_ = now;
     }
@@ -40,6 +42,24 @@ class ExampleSubsystem : public IMicroRosParticipant,
     static const char info[] = "ExampleSubsystem";
     return info;
   }
+
+  void setManager(MicrorosManager* manager) { manager_ = manager; }
+
+#ifdef USE_FREERTOS
+  static void taskFunction(void* pvParams) {
+    auto* self = static_cast<ExampleSubsystem*>(pvParams);
+    while (true) {
+      self->update();
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+  }
+
+  void beginThreaded(uint32_t stackSize, UBaseType_t priority,
+                     BaseType_t core = 1) {
+    xTaskCreatePinnedToCore(taskFunction, getInfo(), stackSize, this, priority,
+                            nullptr, core);
+  }
+#endif
 
   bool onCreate(rcl_node_t* node, rclc_executor_t* executor) override {
     (void)executor;  // not used in this simple example
@@ -71,6 +91,7 @@ class ExampleSubsystem : public IMicroRosParticipant,
 
  private:
   const ExampleSubsystemSetup setup_;
+  MicrorosManager* manager_ = nullptr;
   rcl_publisher_t pub_{};
   std_msgs__msg__String msg_{};
   rcl_node_t* node_ = nullptr;
