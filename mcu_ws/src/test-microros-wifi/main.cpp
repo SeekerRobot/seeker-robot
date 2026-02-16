@@ -1,7 +1,7 @@
 /**
  * @file test-microros-wifi-threaded/main.cpp
  * @brief ESP32 micro-ROS WiFi transport tes
- * 
+ *
  * Note: generated with Claude Code
  *
  * Minimal test that connects to WiFi and a micro-ROS agent over UDP,
@@ -35,9 +35,8 @@ void setup() {
   Serial.println("=== ESP32 micro-ROS WiFi Transport Test ===");
   {
     uint8_t agent_ip[] = AGENT_IP;
-    Serial.printf("Agent: %d.%d.%d.%d:%d\n",
-                  agent_ip[0], agent_ip[1], agent_ip[2], agent_ip[3],
-                  AGENT_PORT);
+    Serial.printf("Agent: %d.%d.%d.%d:%d\n", agent_ip[0], agent_ip[1],
+                  agent_ip[2], agent_ip[3], AGENT_PORT);
   }
   Serial.printf("SSID:  %s\n", WIFI_SSID);
 

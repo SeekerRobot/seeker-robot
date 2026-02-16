@@ -119,7 +119,7 @@ void MicrorosManager::taskFunction(void* pvParams) {
 }
 
 void MicrorosManager::beginThreaded(uint32_t stackSize, UBaseType_t priority,
-                                     BaseType_t core) {
+                                    BaseType_t core) {
   xTaskCreatePinnedToCore(taskFunction, getInfo(), stackSize, this, priority,
                           nullptr, core);
 }
