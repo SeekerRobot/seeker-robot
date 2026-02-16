@@ -31,9 +31,8 @@ void setup() {
   Serial.println("=== ESP32 micro-ROS WiFi FreeRTOS Test ===");
   {
     uint8_t agent_ip[] = AGENT_IP;
-    Serial.printf("Agent: %d.%d.%d.%d:%d\n",
-                  agent_ip[0], agent_ip[1], agent_ip[2], agent_ip[3],
-                  AGENT_PORT);
+    Serial.printf("Agent: %d.%d.%d.%d:%d\n", agent_ip[0], agent_ip[1],
+                  agent_ip[2], agent_ip[3], AGENT_PORT);
   }
   Serial.printf("SSID:  %s\n", WIFI_SSID);
 
@@ -50,6 +49,4 @@ void setup() {
   Serial.println("micro-ROS task on core 0, example subsystem on core 1.");
 }
 
-void loop() {
-  vTaskDelay(pdMS_TO_TICKS(1000));
-}
+void loop() { vTaskDelay(pdMS_TO_TICKS(1000)); }
