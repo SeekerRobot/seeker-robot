@@ -38,12 +38,12 @@ seeker-robot/
 
 Install the following on your host machine:
 
-| Tool | Link | Notes |
-|------|------|-------|
-| **Git** | [git-scm.com](https://git-scm.com/) | Required for cloning the repo |
-| **Docker Desktop** | [docker.com](https://www.docker.com/products/docker-desktop/) | Runs the development container |
-| **VSCode** | [code.visualstudio.com](https://code.visualstudio.com/) | Recommended editor |
-| **X Server** (for GUI apps) | See [X11 Setup](#x11-server-setup) below | Required for Gazebo, RViz, rqt |
+| Tool                        | Link                                                          | Notes                          |
+| --------------------------- | ------------------------------------------------------------- | ------------------------------ |
+| **Git**                     | [git-scm.com](https://git-scm.com/)                           | Required for cloning the repo  |
+| **Docker Desktop**          | [docker.com](https://www.docker.com/products/docker-desktop/) | Runs the development container |
+| **VSCode**                  | [code.visualstudio.com](https://code.visualstudio.com/)       | Recommended editor             |
+| **X Server** (for GUI apps) | See [X11 Setup](#x11-server-setup) below                      | Required for Gazebo, RViz, rqt |
 
 ### VSCode Extensions (Recommended)
 
@@ -230,15 +230,159 @@ A `ros2_ws/.vscode/c_cpp_properties.json` is included in the repository and is b
 
 ## Volume Layout (Inside Container)
 
-| Host Path | Container Path | Type |
-|-----------|---------------|------|
-| `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | Bind mount |
-| `ros2_ws/.vscode/` | `~/ros2_workspaces/.vscode/` | Bind mount |
-| `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | Bind mount |
-| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount |
-| Named volumes | `~/ros2_workspaces/{build,install,log}` | Docker volume |
-| Named volume | `~/.platformio` | Docker volume |
-| Named volume | `~/mcu_workspaces/seeker_mcu/.pio` | Docker volume |
-| Named volume | `~/mcu_workspaces/seeker_mcu/libs_external` | Docker volume |
+| Host Path               | Container Path                                         | Type          |
+| ----------------------- | ------------------------------------------------------ | ------------- |
+| `ros2_ws/src/`          | `~/ros2_workspaces/src/seeker_ros/`                    | Bind mount    |
+| `ros2_ws/.vscode/`      | `~/ros2_workspaces/.vscode/`                           | Bind mount    |
+| `mcu_ws/`               | `~/mcu_workspaces/seeker_mcu/`                         | Bind mount    |
+| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount    |
+| Named volumes           | `~/ros2_workspaces/{build,install,log}`                | Docker volume |
+| Named volume            | `~/.platformio`                                        | Docker volume |
+| Named volume            | `~/mcu_workspaces/seeker_mcu/.pio`                     | Docker volume |
+| Named volume            | `~/mcu_workspaces/seeker_mcu/libs_external`            | Docker volume |
 
 Build artifacts are stored in named Docker volumes to avoid polluting the host filesystem and to improve I/O performance on Windows/macOS.
+
+## SLAM Subsystem
+
+The SLAM input subsystem provides LiDAR and camera data to SLAM algorithms. It has two sides: **MCU firmware** running on an ESP32 that reads physical sensors, and a **Gazebo simulation** for testing without hardware.
+
+### What Was Implemented
+
+#### MCU Firmware (`mcu_ws/`, build target `slam-sensors`)
+
+| File                             | Purpose                                                                                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/lidar/ld14p_protocol.h`     | LD14P LiDAR protocol — 47-byte packet structs, CRC8 validation, constants                                                                 |
+| `lib/lidar/LidarSubsystem.h/cpp` | LiDAR subsystem — UART parsing at 230400 baud, 360-degree scan assembly, publishes `sensor_msgs/LaserScan` on `/lidar/scan` via micro-ROS |
+| `lib/camera/CameraSubscriber.h`  | Camera subscriber (header-only) — lightweight ROS subscriber for `/camera/image/compressed`, tracks frame count and reception timeout     |
+| `src/slam-sensors/main.cpp`      | Entry point — wires MicrorosManager (core 0), LidarSubsystem (core 1), CameraSubscriber (core 1) using FreeRTOS tasks                     |
+
+The firmware follows the existing BaseSubsystem + IMicroRosParticipant pattern. The LiDAR subsystem parses LD14P packets byte-by-byte (WAIT_HEADER -> WAIT_VER_LEN -> COLLECT_DATA), assembles a full 360-degree scan from multiple 12-point packets, and publishes when an angle wrap is detected.
+
+#### Gazebo Simulation (`ros2_ws/src/`)
+
+| Package              | Purpose                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `seeker_description` | URDF/Xacro model of the hexapod with simulated LiDAR (gpu_lidar, 720 samples, 0.1-8.0m range, 10Hz) and camera (640x480, 15Hz) |
+| `seeker_gazebo`      | Gazebo Harmonic launch files, world file (5m x 5m walled room with obstacles), ros_gz_bridge config, slam_toolbox params       |
+
+#### micro-ROS Manager Changes
+
+- `MicrorosManagerSetup` now accepts a configurable `executor_handles` count (default 1, backwards compatible)
+- `destroy_entities()` was fixed to call participant `onDestroy()` **before** `rcl_node_fini()`, preventing use-after-finalize when publishers/subscribers try to clean up against a dead node
+
+### ROS 2 Topic Structure
+
+| Topic                      | Type                          | Source                                |
+| -------------------------- | ----------------------------- | ------------------------------------- |
+| `/lidar/scan`              | `sensor_msgs/LaserScan`       | LiDAR (MCU or Gazebo)                 |
+| `/camera/image`            | `sensor_msgs/Image`           | Camera (Gazebo raw)                   |
+| `/camera/image/compressed` | `sensor_msgs/CompressedImage` | image_transport republisher           |
+| `/map`                     | `nav_msgs/OccupancyGrid`      | slam_toolbox                          |
+| `/tf`                      | `tf2_msgs/TFMessage`          | robot_state_publisher, static odom TF |
+
+### Running the Gazebo SLAM Simulation
+
+All commands run inside the dev container (`docker compose exec ros2 bash`). You need 3 terminal sessions.
+
+#### Prerequisites
+
+- Docker container running with `BUILD_TARGET=dev` (includes Gazebo Harmonic and RViz)
+- X server running on host (VcXsrv on Windows, XQuartz on macOS — see [X11 Setup](#x11-server-setup))
+- slam_toolbox installed: `sudo apt-get install -y ros-jazzy-slam-toolbox`
+
+#### Terminal 1 — Gazebo + Sensor Bridges
+
+```bash
+cd ~/ros2_workspaces
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select seeker_description seeker_gazebo
+source install/setup.bash
+
+ros2 launch seeker_gazebo gazebo.launch.py
+```
+
+This launches:
+
+- Gazebo Harmonic with a 5m x 5m walled room containing boxes, cylinders, and L-shaped wall obstacles
+- The hexapod robot model with simulated LiDAR and camera
+- `robot_state_publisher` (broadcasts the URDF TF tree)
+- `ros_gz_bridge` (bridges `/lidar/scan` and `/camera/image` from Gazebo to ROS 2)
+- `static_transform_publisher` (provides `odom -> base_footprint` TF)
+- `image_transport` republisher (raw -> compressed)
+
+#### Terminal 2 — slam_toolbox
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_workspaces/install/setup.bash
+
+ros2 launch slam_toolbox online_async_launch.py \
+  slam_params_file:=/home/ubuntu/ros2_workspaces/src/seeker_ros/seeker_gazebo/config/slam_toolbox_params.yaml
+```
+
+The params file configures slam_toolbox to subscribe to `/lidar/scan`, use `base_footprint` as the base frame, and allow the first scan to be processed without movement (`minimum_travel_distance: 0.0`).
+
+#### Terminal 3 — RViz
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_workspaces/install/setup.bash
+
+rviz2
+```
+
+In RViz:
+
+1. Set **Fixed Frame** to `map`
+2. Click **Add** -> **By topic** -> `/map` -> `Map` (to see the occupancy grid)
+3. Click **Add** -> **By topic** -> `/lidar/scan` -> `LaserScan` (to see live LiDAR rays)
+
+### Moving the Robot in Gazebo
+
+Since the hexapod has fixed joints (leg articulation is not simulated), there are two ways to move it:
+
+**GUI drag (easiest):**
+
+1. Click on the robot in the Gazebo window
+2. Press **T** to activate the translate tool
+3. Drag the robot using the axis arrows
+
+**Command-line teleport:**
+
+```bash
+gz service -s /world/slam_test_world/set_pose \
+  --reqtype gz.msgs.Pose \
+  --reptype gz.msgs.Boolean \
+  --timeout 2000 \
+  --req 'name: "seeker_hexapod", position: {x: 1.0, y: 1.0, z: 0.15}'
+```
+
+Change `x` and `y` to move to different positions within the 5m x 5m room (valid range: approximately -2.3 to 2.3 for both axes).
+
+### Known Limitations (No Odometry)
+
+The simulation currently uses a **static identity transform** for `odom -> base_footprint`. This means the ROS 2 TF tree always reports the robot at the origin, even when it has been moved in Gazebo.
+
+**Practical impact:**
+
+- **slam_toolbox still works** because it uses scan matching (comparing consecutive LiDAR scans) as its primary alignment method, not odometry
+- Move the robot in **small increments** so the scan matcher can track changes between consecutive scans
+- **Large jumps** (teleporting across the room) will confuse the scan matcher and produce map artifacts (phantom walls, distorted geometry)
+- The built map may accumulate drift over large distances since there is no odometry correction
+
+**Future fix:** bridge the Gazebo model pose to ROS 2 as a dynamic `odom -> base_footprint` transform so slam_toolbox has accurate odometry. This requires the `gz-sim-pose-publisher-system` plugin and a `Pose_V -> TFMessage` bridge with frame remapping.
+
+### Running on Real Hardware (ESP32 + LD14P)
+
+```bash
+# 1. Build and flash the firmware
+cd ~/mcu_workspaces/seeker_mcu
+pio run -e slam-sensors -t upload
+
+# 2. Start the micro-ROS agent (in another terminal)
+ros2 run micro_ros_agent micro_ros_agent wifi4 -p 8888
+
+# 3. Run slam_toolbox as above (Terminal 2 instructions)
+```
+
+The ESP32 connects to the micro-ROS agent over WiFi UDP. The LD14P LiDAR should be wired to ESP32 pins D6 (TX) and D7 (RX) at 230400 baud.

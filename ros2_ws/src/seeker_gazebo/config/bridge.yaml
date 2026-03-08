@@ -1,0 +1,17 @@
+# ros_gz_bridge parameter bridge configuration.
+# Bridges Gazebo Harmonic sensor topics to ROS 2 topics for SLAM testing.
+#
+# Usage:
+#   ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=<path>
+---
+- ros_topic_name: /lidar/scan
+  gz_topic_name: /lidar/scan
+  ros_type_name: sensor_msgs/msg/LaserScan
+  gz_type_name: gz.msgs.LaserScan
+  direction: GZ_TO_ROS
+
+- ros_topic_name: /camera/image
+  gz_topic_name: /camera/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
