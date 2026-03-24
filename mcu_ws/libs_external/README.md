@@ -1,5 +1,5 @@
 # libs_external
 
-Used in the weird case that we can't include things in the lib common folder, but also probably shouldn't be including it in the src folder.
+External libraries that can't go in `lib/` (e.g., `esp32/micro_ros_platformio`). Keeping micro-ROS here ensures it is built once and shared across all ESP32 sketches.
 
-Having microros libraries for the ESP32 stored in here guarnatees that all targets involving the ESP32 will only have to build microros once.
+This directory is seeded into a Docker named volume by the `init-bootstrap` service so that build artifacts stay off the host.

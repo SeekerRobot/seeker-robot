@@ -77,10 +77,19 @@ cp docker/.env.example docker/.env
 
 Open `docker/.env` and configure:
 
+- **`COMPOSE_PROJECT_NAME`** — Unique name for this worktree's Docker containers/volumes. Set a different value per worktree to avoid collisions (e.g., `seeker-robot`, `seeker-emb-working`).
 - **`BUILD_TARGET`** — Choose which Docker stage to build:
   - `dev` — Includes Gazebo Harmonic, RViz, rqt, and GDB. Use this on your PC/laptop for simulation and visualization.
   - `prod` — Minimal runtime only. No GUI tools. Use this on the robot or for headless CI.
 - **Display / Network** — Uncomment the block matching your OS (see the comments in the file).
+
+### 2b. Configure MCU Network Settings
+
+```bash
+cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config.ini
+```
+
+Edit `network_config.ini` with your WiFi credentials, micro-ROS agent IP, and optional static IP for the ESP32. This file is gitignored.
 
 ### 3. X11 Server Setup
 
@@ -175,14 +184,20 @@ colcon test-result --verbose
 
 ### MCU Firmware (PlatformIO)
 
-```bash
-cd ~/mcu_workspaces/seeker_mcu
+Each sketch under `mcu_ws/src/` is its own PlatformIO project. Build from within the sketch directory:
 
-# Build the default environment
-pio run -e main
+```bash
+cd ~/mcu_workspaces/seeker_mcu/src/main
+
+# Build the default board environment
+pio run
+
+# Build for a specific board
+pio run -e esp32dev
+pio run -e esp32s3sense
 
 # Flash via serial (requires USB passthrough — see below)
-pio run -e main -t upload
+pio run -e esp32dev -t upload
 ```
 
 ### Rebuilding After Message Changes
@@ -196,7 +211,7 @@ colcon build --packages-select mcu_msgs
 source install/setup.bash
 
 # 2. Rebuild the MCU firmware (picks up changes via extra_packages mount)
-cd ~/mcu_workspaces/seeker_mcu
+cd ~/mcu_workspaces/seeker_mcu/src/main
 pio run
 ```
 
@@ -247,7 +262,6 @@ A `ros2_ws/.vscode/c_cpp_properties.json` is included in the repository and is b
 | `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount |
 | Named volumes | `~/ros2_workspaces/{build,install,log}` | Docker volume |
 | Named volume | `~/.platformio` | Docker volume |
-| Named volume | `~/mcu_workspaces/seeker_mcu/.pio` | Docker volume |
 | Named volume | `~/mcu_workspaces/seeker_mcu/libs_external` | Docker volume |
 
-Build artifacts are stored in named Docker volumes to avoid polluting the host filesystem and to improve I/O performance on Windows/macOS.
+Build artifacts are stored in named Docker volumes to avoid polluting the host filesystem and to improve I/O performance on Windows/macOS. Per-sketch `.pio/` build directories live within the `mcu_ws` bind mount and are gitignored.
