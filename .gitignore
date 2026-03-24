@@ -45,9 +45,7 @@
 
 # vscode
 # Ignore global .vscode by default, but keep ROS2 IntelliSense config
-.vscode/*
-mcu_ws/.vscode/*
-ros2_ws/.vscode/*
+**/.vscode/**
 !ros2_ws/.vscode/c_cpp_properties.json
 
 # colcon
@@ -63,8 +61,9 @@ ros2_ws/.vscode/*
 *.env
 
 # platformio
-.pio/*
-mcu_ws/.vscode/*
+**/.pio/**
+mcu_ws/.vscode/**
+mcu_ws/platformio/network_config.ini
 
 # ai agents
 .claude/*
