@@ -68,4 +68,7 @@ mcu_ws/.vscode/*
 
 # ai agents
 .claude/*
+
+# KiCad
 doc/pcb/sesamepcb/~sesamepcb.kicad_sch.lck
+doc/pcb/sesamepcb/sesamepcb-backups/*
