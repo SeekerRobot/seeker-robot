@@ -44,7 +44,7 @@ class Mutex {
 
 class Scope {
  public:
-  /// @brief Creates a scope 
+  /// @brief Creates a scope
   /// @param m Reference to Mutex
   explicit Scope(Mutex& m) : m_(m) { m_.lock(); }
   ~Scope() { m_.unlock(); }
