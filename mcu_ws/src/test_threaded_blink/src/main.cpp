@@ -29,8 +29,6 @@ class BlinkSubsystem : public Subsystem::ThreadedSubsystem {
 static Classes::BaseSetup blink_setup("blink");
 static BlinkSubsystem blink(blink_setup);
 
-void setup() {
-  blink.beginThreadedPinned(2048, 1, 500, 1);
-}
+void setup() { blink.beginThreadedPinned(2048, 1, 500, 1); }
 
 void loop() {}
