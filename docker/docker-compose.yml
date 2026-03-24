@@ -1,3 +1,5 @@
+name: ${COMPOSE_PROJECT_NAME:-seeker-robot}
+
 services:
   ros2:
     build:
@@ -23,7 +25,6 @@ services:
       - ros2_install:/home/ubuntu/ros2_workspaces/install
       - ros2_log:/home/ubuntu/ros2_workspaces/log
       - platformio_cache:/home/ubuntu/.platformio
-      - mcu_build_artifacts:/home/ubuntu/mcu_workspaces/seeker_mcu/.pio
       - mcu_lib_external:/home/ubuntu/mcu_workspaces/seeker_mcu/libs_external
 
       # --- System / Hardware ---
@@ -48,7 +49,6 @@ services:
       - ros2_install:/ros2_install
       - ros2_log:/ros2_log
       - platformio_cache:/platformio_cache
-      - mcu_build_artifacts:/mcu_build_artifacts
       - mcu_lib_external:/mcu_lib_external
       - ../mcu_ws/libs_external:/seed:ro
     restart: "no"
@@ -59,5 +59,4 @@ volumes:
   ros2_install:
   ros2_log:
   platformio_cache:
-  mcu_build_artifacts:
   mcu_lib_external:
