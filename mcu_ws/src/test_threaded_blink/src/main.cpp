@@ -6,9 +6,13 @@ class BlinkSubsystem : public Subsystem::ThreadedSubsystem {
   explicit BlinkSubsystem(const Classes::BaseSetup& setup)
       : ThreadedSubsystem(setup) {}
 
-  void begin() override { pinMode(LED_BUILTIN, OUTPUT); }
+  void begin() override { 
+    pinMode(LED_BUILTIN, OUTPUT); 
+    initSuccess_ = true;
+  }
 
   void update() override {
+    if(!initSuccess_) return;
     led_state_ = !led_state_;
     digitalWrite(LED_BUILTIN, led_state_ ? HIGH : LOW);
   }
