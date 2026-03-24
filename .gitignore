@@ -63,8 +63,9 @@ ros2_ws/.vscode/*
 *.env
 
 # platformio
-.pio/*
-mcu_ws/.vscode/*
+**/.pio/**
+mcu_ws/.vscode/**
+mcu_ws/platformio/network_config.ini
 
 # ai agents
 .claude/*
