@@ -56,7 +56,7 @@ Install the following on your host machine:
 ### 1. Clone the Repository
 
 ```bash
-git clone --recurse-submodules https://github.com/seeker-robot/seeker-robot.git
+git clone --recurse-submodules https://github.com/SeekerRobot/seeker-robot.git
 cd seeker-robot
 ```
 
