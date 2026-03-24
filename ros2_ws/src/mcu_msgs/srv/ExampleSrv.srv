@@ -7,17 +7,6 @@ uint8 POSITION_EXTENDED=1
 uint8 POSITION_CUSTOM=2
 uint8 target_position_state
 
-# Custom position value (used only if target_position_state == POSITION_CUSTOM)
-int16 custom_position    # in degrees or encoder ticks
-
-# Movement speed (0-255)
-uint8 speed
-
-# Intake control
-uint8 INTAKE_OFF=0
-uint8 INTAKE_ON=1
-uint8 intake_command
-
 ---
 # Response: whether the command was accepted
 
