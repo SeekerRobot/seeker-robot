@@ -16,21 +16,30 @@ The project spans two workspaces:
 
 ```bash
 seeker-robot/
-├── ros2_ws/          # ROS 2 colcon workspace (high-level autonomy)
+├── ros2_ws/              # ROS 2 colcon workspace (high-level autonomy)
 │   └── src/
-│       ├── mcu_msgs/     # Shared message/service definitions (.msg/.srv)
-│       └── ...           # Other ROS 2 packages
-├── mcu_ws/           # PlatformIO workspace (ESP32 firmware)
-│   ├── src/              # Firmware source code
-│   ├── extra_packages/   # mcu_msgs symlink (auto-mounted by Docker)
-│   ├── libs_external/    # Vendored micro-ROS PlatformIO library
-│   └── platformio.ini    # Build config (C++17, serial transport)
-└── docker/           # Containerized dev environment
-    ├── Dockerfile            # Multi-stage: base → dev/prod
+│       ├── mcu_msgs/         # Shared message/service definitions (.msg/.srv)
+│       └── ...               # Other ROS 2 packages
+├── mcu_ws/               # PlatformIO workspace (ESP32 firmware)
+│   ├── platformio/           # Shared PlatformIO config (base environments, network config)
+│   │   ├── platformio.ini        # Base config inherited by all sketches
+│   │   ├── network_config.example.ini
+│   │   └── network_config.ini    # Local network settings (gitignored)
+│   ├── src/                  # Firmware sketches (each is a standalone PlatformIO project)
+│   │   └── main/                 # Production firmware
+│   │       ├── platformio.ini        # Inherits from ../../platformio/platformio.ini
+│   │       └── src/main.cpp
+│   ├── lib/                  # Shared libraries available to all sketches
+│   ├── libs_external/        # Vendored micro-ROS PlatformIO library
+│   └── extra_packages/       # Extra ROS packages (mcu_msgs) for micro-ROS build
+└── docker/               # Containerized dev environment
+    ├── Dockerfile                # Multi-stage: base → dev/prod
     ├── Dockerfile.init-bootstrap
     ├── docker-compose.yml
     └── .env.example
 ```
+
+**Multi-project MCU layout:** Each sketch under `mcu_ws/src/` is its own PlatformIO project with a minimal `platformio.ini` that inherits shared board definitions, libraries, and build flags from `mcu_ws/platformio/platformio.ini` via `extra_configs`. Shared libraries in `mcu_ws/lib/` are available to all sketches via `lib_extra_dirs`. Network-specific settings (WiFi credentials, agent IP, static IP) live in `mcu_ws/platformio/network_config.ini` (gitignored), with a committed example template.
 
 **How micro-ROS bridges the two workspaces:** The `mcu_msgs` package in `ros2_ws/src/mcu_msgs/` defines the ROS 2 message and service types shared between the ROS 2 nodes and the ESP32 firmware. Docker Compose bind-mounts this same directory into `mcu_ws/extra_packages/mcu_msgs` so the micro-ROS build can compile the same interface definitions into the firmware. At runtime, the micro-ROS agent (pre-built in the Docker image) bridges serial communication between the ESP32 and the ROS 2 graph.
 
