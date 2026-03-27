@@ -4,6 +4,13 @@
 # Usage:
 #   ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=<path>
 ---
+# Simulation clock — required for all nodes running with use_sim_time: true
+- ros_topic_name: /clock
+  gz_topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: gz.msgs.Clock
+  direction: GZ_TO_ROS
+
 - ros_topic_name: /lidar/scan
   gz_topic_name: /lidar/scan
   ros_type_name: sensor_msgs/msg/LaserScan
@@ -15,3 +22,18 @@
   ros_type_name: sensor_msgs/msg/Image
   gz_type_name: gz.msgs.Image
   direction: GZ_TO_ROS
+
+# Ground-truth odometry from Gazebo OdometryPublisher plugin.
+# Includes proper sim-time timestamps for slam_toolbox TF lookups.
+- ros_topic_name: /odom
+  gz_topic_name: /model/seeker_hexapod/odometry
+  ros_type_name: nav_msgs/msg/Odometry
+  gz_type_name: gz.msgs.Odometry
+  direction: GZ_TO_ROS
+
+# cmd_vel from ROS 2 → Gazebo VelocityControl plugin so the robot can move
+- ros_topic_name: /cmd_vel
+  gz_topic_name: /model/seeker_hexapod/cmd_vel
+  ros_type_name: geometry_msgs/msg/Twist
+  gz_type_name: gz.msgs.Twist
+  direction: ROS_TO_GZ

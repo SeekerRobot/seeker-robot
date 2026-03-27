@@ -280,13 +280,21 @@
     </sensor>
   </gazebo>
 
-  <!-- Gazebo Harmonic: publish model pose so we can bridge it as odometry -->
+  <!-- Gazebo Harmonic: allow ROS 2 /cmd_vel to move the robot in simulation -->
   <gazebo>
-    <plugin filename="gz-sim-pose-publisher-system"
-            name="gz::sim::systems::PosePublisher">
-      <publish_link_pose>false</publish_link_pose>
-      <publish_nested_model_pose>false</publish_nested_model_pose>
-      <update_frequency>20</update_frequency>
+    <plugin filename="gz-sim-velocity-control-system"
+            name="gz::sim::systems::VelocityControl">
+      <topic>/model/seeker_hexapod/cmd_vel</topic>
+    </plugin>
+  </gazebo>
+
+  <!-- Gazebo Harmonic: publish ground-truth odometry with proper timestamps -->
+  <gazebo>
+    <plugin filename="gz-sim-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_publish_frequency>10</odom_publish_frequency>
     </plugin>
   </gazebo>
 

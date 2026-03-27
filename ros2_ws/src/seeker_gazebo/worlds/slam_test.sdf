@@ -202,5 +202,28 @@
       </link>
     </model>
 
+    <!-- ============================================================ -->
+    <!-- Target ball for ball-search task                              -->
+    <!-- Bright red sphere at (1.8, -1.8) — corner of the room.       -->
+    <!-- Detectable via camera HSV thresholding (red hue).            -->
+    <!-- ============================================================ -->
+    <model name="target_ball">
+      <static>true</static>
+      <pose>1.8 -1.8 0.1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><sphere><radius>0.1</radius></sphere></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><sphere><radius>0.1</radius></sphere></geometry>
+          <material>
+            <ambient>1.0 0.05 0.05 1</ambient>
+            <diffuse>1.0 0.05 0.05 1</diffuse>
+            <specular>0.8 0.0 0.0 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
   </world>
 </sdf>

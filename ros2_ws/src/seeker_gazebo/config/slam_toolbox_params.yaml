@@ -5,7 +5,7 @@ slam_toolbox:
     map_frame: map
     base_frame: base_footprint
     scan_topic: /lidar/scan
-    use_sim_time: false
+    use_sim_time: true
 
     # Solver
     solver_plugin: solver_plugins::CeresSolver

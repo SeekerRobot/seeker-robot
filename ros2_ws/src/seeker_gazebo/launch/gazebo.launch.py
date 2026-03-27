@@ -2,9 +2,14 @@
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import (
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    LogInfo,
+    TimerAction,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import xacro
@@ -21,6 +26,7 @@ def generate_launch_description():
 
     world_file = os.path.join(gz_pkg, "worlds", "slam_test.sdf")
     bridge_config = os.path.join(gz_pkg, "config", "bridge.yaml")
+    slam_params_file = os.path.join(gz_pkg, "config", "slam_toolbox_params.yaml")
 
     # 1. Start Gazebo Harmonic with the SLAM test world
     gz_sim = IncludeLaunchDescription(
@@ -50,7 +56,7 @@ def generate_launch_description():
         parameters=[{"robot_description": robot_description}],
     )
 
-    # 4. ros_gz_bridge — sensor topics from Gazebo to ROS 2
+    # 4. ros_gz_bridge — sensor topics, odometry, and cmd_vel from Gazebo/ROS 2
     gz_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -58,18 +64,17 @@ def generate_launch_description():
         output="screen",
     )
 
-    # 5. Static odom → base_footprint transform
-    #    Provides the TF frame that slam_toolbox needs.
-    #    slam_toolbox uses scan matching as primary alignment, so SLAM
-    #    still works when manually moving the robot in small increments.
-    odom_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=["0", "0", "0", "0", "0", "0", "odom", "base_footprint"],
+    # 5. Dynamic odom → base_footprint TF from Gazebo odometry.
+    #    Replaces the old static_transform_publisher with ground-truth odometry.
+    gz_odom_bridge = Node(
+        package="seeker_gazebo",
+        executable="gz_odom_bridge.py",
+        name="gz_odom_bridge",
+        parameters=[{"use_sim_time": True}],
+        output="screen",
     )
 
     # 6. Image transport: republish raw camera image as compressed
-    #    so it matches the /camera/image/compressed topic expected by SLAM
     image_republish = Node(
         package="image_transport",
         executable="republish",
@@ -81,13 +86,49 @@ def generate_launch_description():
         output="screen",
     )
 
-    return LaunchDescription(
-        [
-            gz_sim,
-            robot_state_pub,
-            gz_spawn,
-            gz_bridge,
-            odom_tf,
-            image_republish,
-        ]
-    )
+    nodes = [
+        gz_sim,
+        robot_state_pub,
+        gz_spawn,
+        gz_bridge,
+        gz_odom_bridge,
+        image_republish,
+    ]
+
+    # 7. slam_toolbox — async online mapping (lifecycle node).
+    #    In ROS 2 Jazzy slam_toolbox is a lifecycle node that must be
+    #    configured and activated before it starts processing scans.
+    try:
+        get_package_share_directory("slam_toolbox")
+        nodes.append(
+            Node(
+                package="slam_toolbox",
+                executable="async_slam_toolbox_node",
+                name="slam_toolbox",
+                parameters=[slam_params_file, {"use_sim_time": True}],
+                output="screen",
+            )
+        )
+        # Configure → activate the lifecycle node after everything is up
+        nodes.append(
+            TimerAction(
+                period=5.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            "bash", "-c",
+                            "ros2 lifecycle set /slam_toolbox configure && "
+                            "ros2 lifecycle set /slam_toolbox activate",
+                        ],
+                        output="screen",
+                    )
+                ],
+            )
+        )
+    except PackageNotFoundError:
+        nodes.append(
+            LogInfo(msg="slam_toolbox not installed — skipping. "
+                        "Install with: sudo apt install ros-jazzy-slam-toolbox")
+        )
+
+    return LaunchDescription(nodes)

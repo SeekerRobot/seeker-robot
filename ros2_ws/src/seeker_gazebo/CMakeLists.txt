@@ -4,7 +4,7 @@ project(seeker_gazebo)
 find_package(ament_cmake REQUIRED)
 
 install(
-  DIRECTORY worlds launch config
+  DIRECTORY worlds launch config rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
