@@ -22,6 +22,7 @@ namespace Config {
     // D9 - MISO NC
     // D10 - MOSI NC
     constexpr static int gyro_addr = 0x4B;
+    constexpr static uint8_t pca_addr = 0x40;
 #endif
 
 #ifdef ENV_ESP32DEV
@@ -34,6 +35,7 @@ namespace Config {
     constexpr static int tx = 17;    // UART2 TX
     constexpr static int rx = 16;    // UART2 RX
     constexpr static int gyro_addr = 0x4B;
+    constexpr static uint8_t pca_addr = 0x40;
 #endif
 
 };
