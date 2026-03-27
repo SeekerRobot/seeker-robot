@@ -27,6 +27,7 @@ bool GyroSubsystem::init() {
   setReports();
   pinMode(setup_.int_pin_, INPUT_PULLUP);
   attachInterruptArg(digitalPinToInterrupt(setup_.int_pin_), intISR, this, FALLING);
+  Debug::printf(Debug::Level::INFO, "[BNO085] Init success");
   return true;
 }
 
@@ -65,11 +66,15 @@ void GyroSubsystem::update() {
         break;
     }
   }
-  logImuData();
+  if (since_last_log_ >= kLogIntervalMs) {
+    since_last_log_ = 0;
+    logImuData();
+  }
 }
 
 void GyroSubsystem::reset() {
   Threads::Scope lock(i2c_mutex_);
+  Debug::printf(Debug::Level::INFO, "[BNO085] Software resetting");
   sh2_reinitialize();
   delay(500);  // wait for bus to stabilize
 }
@@ -117,5 +122,6 @@ void GyroSubsystem::setReports() {
   if (!bno08x_.enableReport(SH2_STABILITY_CLASSIFIER)) {
     Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable stability classifier");
   }
+  Debug:printf(Debug::Level::INFO, "[BNO085] Reports set");
 }
 };  // namespace Subsystem
