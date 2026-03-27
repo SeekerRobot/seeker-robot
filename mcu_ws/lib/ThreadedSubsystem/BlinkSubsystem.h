@@ -1,6 +1,14 @@
+/**
+ * @file BlinkSubsystem
+ * @author Aldem Pido
+ * @date 3/26/26
+ * @brief Example implementation of a Threaded Subsystem.
+ */
+#pragma once
 #include <Arduino.h>
-#include <ThreadedSubsystem.h>
+#include "ThreadedSubsystem.h"
 
+namespace Subsystem {
 class BlinkSubsystem : public Subsystem::ThreadedSubsystem {
  public:
   explicit BlinkSubsystem(const Classes::BaseSetup& setup)
@@ -18,17 +26,11 @@ class BlinkSubsystem : public Subsystem::ThreadedSubsystem {
   }
 
   bool init() override { return true; }
-  const char* getInfo() override { return "BlinkSubsystem"; }
+  const char* getInfo() override { return setup_.getId(); }
   void pause() override {}
   void reset() override {}
 
  private:
   bool led_state_ = false;
 };
-
-static Classes::BaseSetup blink_setup("blink");
-static BlinkSubsystem blink(blink_setup);
-
-void setup() { blink.beginThreadedPinned(2048, 1, 500, 1); }
-
-void loop() {}
+};
