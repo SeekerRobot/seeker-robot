@@ -32,14 +32,14 @@ namespace Subsystem {
 static constexpr uint8_t kMaxServos = 16;
 
 struct ServoConfig {
-  uint8_t channel;      // PCA9685 channel (0–15)
-  float min_angle;      // lower angle limit (degrees)
-  float max_angle;      // upper angle limit (degrees)
-  uint16_t min_pwm;     // 12-bit PCA9685 value at min_angle
-  uint16_t max_pwm;     // 12-bit PCA9685 value at max_angle
-  bool inverted;        // true → PWM mapping is reversed
-  float max_velocity;   // degrees per second
-  float max_accel;      // degrees per second^2
+  uint8_t channel;     // PCA9685 channel (0–15)
+  float min_angle;     // lower angle limit (degrees)
+  float max_angle;     // upper angle limit (degrees)
+  uint16_t min_pwm;    // 12-bit PCA9685 value at min_angle
+  uint16_t max_pwm;    // 12-bit PCA9685 value at max_angle
+  bool inverted;       // true → PWM mapping is reversed
+  float max_velocity;  // degrees per second
+  float max_accel;     // degrees per second^2
 };
 
 class ServoSetup : public Classes::BaseSetup {
@@ -52,8 +52,10 @@ class ServoSetup : public Classes::BaseSetup {
   /// @param oe_pin     Output-enable pin (-1 to skip OE control).
   /// @param configs    Pointer to ServoConfig array (copied internally).
   /// @param num_servos Number of entries in configs (max 16).
-  /// @param max_total_rate Total deg/s budget across all servos (current-spike limit).
-  /// @param pwm_freq_hz PCA9685 PWM frequency (default 50 Hz for standard servos).
+  /// @param max_total_rate Total deg/s budget across all servos (current-spike
+  /// limit).
+  /// @param pwm_freq_hz PCA9685 PWM frequency (default 50 Hz for standard
+  /// servos).
   ServoSetup(TwoWire& wire, uint8_t addr, int8_t oe_pin,
              const ServoConfig* configs, uint8_t num_servos,
              float max_total_rate, float pwm_freq_hz = 50.0f)

@@ -30,10 +30,10 @@ bool ServoSubsystem::init() {
   // PCA9685 begin() zeroes all channels and leaves OE disabled
   pwm_.begin(setup_.pwm_freq_hz_);
 
-  Debug::printf(Debug::Level::INFO,
-                "[Servo] PCA9685 @ 0x%02X, %.0f Hz, %u servos, budget %.0f deg/s",
-                setup_.addr_, setup_.pwm_freq_hz_, setup_.num_servos_,
-                max_total_rate_);
+  Debug::printf(
+      Debug::Level::INFO,
+      "[Servo] PCA9685 @ 0x%02X, %.0f Hz, %u servos, budget %.0f deg/s",
+      setup_.addr_, setup_.pwm_freq_hz_, setup_.num_servos_, max_total_rate_);
   return true;
 }
 
@@ -104,9 +104,7 @@ void ServoSubsystem::update() {
   }
 }
 
-void ServoSubsystem::pause() {
-  disarm();
-}
+void ServoSubsystem::pause() { disarm(); }
 
 void ServoSubsystem::reset() {
   disarm();
@@ -155,9 +153,9 @@ void ServoSubsystem::detach(uint8_t index) {
 bool ServoSubsystem::arm() {
   for (uint8_t i = 0; i < setup_.num_servos_; i++) {
     if (state_[i].attached && !state_[i].initialized) {
-      Debug::printf(Debug::Level::ERROR,
-                    "[Servo] Cannot arm — servo %u attached but not initialized",
-                    i);
+      Debug::printf(
+          Debug::Level::ERROR,
+          "[Servo] Cannot arm — servo %u attached but not initialized", i);
       return false;
     }
   }
@@ -210,7 +208,7 @@ void ServoSubsystem::setAngleLimits(uint8_t index, float min_a, float max_a) {
 }
 
 void ServoSubsystem::setPwmLimits(uint8_t index, uint16_t min_p,
-                                   uint16_t max_p) {
+                                  uint16_t max_p) {
   if (index >= setup_.num_servos_ || min_p >= max_p) return;
   if (max_p > Driver::PCA9685::kMaxDuty) return;
   configs_[index].min_pwm = min_p;
@@ -265,8 +263,7 @@ const ServoConfig& ServoSubsystem::getConfig(uint8_t index) const {
 
 // --- Private helpers ---
 
-uint16_t ServoSubsystem::angleToPwm(const ServoConfig& cfg,
-                                     float angle) const {
+uint16_t ServoSubsystem::angleToPwm(const ServoConfig& cfg, float angle) const {
   float t = (angle - cfg.min_angle) / (cfg.max_angle - cfg.min_angle);
   if (t < 0.0f) t = 0.0f;
   if (t > 1.0f) t = 1.0f;

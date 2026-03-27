@@ -8,6 +8,7 @@
  */
 #pragma once
 #include <Wire.h>
+
 #include <cstdint>
 
 namespace Driver {
@@ -41,7 +42,8 @@ class PCA9685 {
   /// @brief Flush dirty channels to the device over I2C.
   void update();
 
-  /// @brief Change the PWM frequency. Sleeps the oscillator, sets prescaler, wakes.
+  /// @brief Change the PWM frequency. Sleeps the oscillator, sets prescaler,
+  /// wakes.
   /// @param freq_hz 24–1526 Hz.
   void setFrequency(float freq_hz);
 
@@ -63,7 +65,8 @@ class PCA9685 {
   /// @brief Drive OE low (outputs active). No-op if no OE pin configured.
   void enableOutputs();
 
-  /// @brief Drive OE high (outputs Hi-Z / low depending on OUTNE). No-op if no OE pin.
+  /// @brief Drive OE high (outputs Hi-Z / low depending on OUTNE). No-op if no
+  /// OE pin.
   void disableOutputs();
 
   /// @brief Software reset (writes MODE1 = 0x00).
@@ -77,25 +80,25 @@ class PCA9685 {
 
  private:
   enum Reg : uint8_t {
-    MODE1         = 0x00,
-    MODE2         = 0x01,
-    SUBADR1       = 0x02,
-    SUBADR2       = 0x03,
-    SUBADR3       = 0x04,
-    ALLCALLADR    = 0x05,
-    LED0_ON_L     = 0x06,
-    ALL_LED_ON_L  = 0xFA,
-    ALL_LED_ON_H  = 0xFB,
+    MODE1 = 0x00,
+    MODE2 = 0x01,
+    SUBADR1 = 0x02,
+    SUBADR2 = 0x03,
+    SUBADR3 = 0x04,
+    ALLCALLADR = 0x05,
+    LED0_ON_L = 0x06,
+    ALL_LED_ON_L = 0xFA,
+    ALL_LED_ON_H = 0xFB,
     ALL_LED_OFF_L = 0xFC,
     ALL_LED_OFF_H = 0xFD,
-    PRE_SCALE     = 0xFE,
+    PRE_SCALE = 0xFE,
   };
 
   // MODE1 bits
   static constexpr uint8_t kRestart = 0x80;
-  static constexpr uint8_t kExtclk  = 0x40;
+  static constexpr uint8_t kExtclk = 0x40;
   static constexpr uint8_t kAutoInc = 0x20;
-  static constexpr uint8_t kSleep   = 0x10;
+  static constexpr uint8_t kSleep = 0x10;
   static constexpr uint8_t kAllCall = 0x01;
 
   void writeReg(uint8_t reg, uint8_t value);
@@ -108,8 +111,8 @@ class PCA9685 {
   int8_t oe_pin_;
 
   uint16_t duty_[kNumChannels] = {};
-  uint16_t dirty_ = 0;       // bitmask: bit N = channel N needs flush
-  bool all_dirty_ = false;    // true when setAll() queued a bulk write
+  uint16_t dirty_ = 0;      // bitmask: bit N = channel N needs flush
+  bool all_dirty_ = false;  // true when setAll() queued a bulk write
   uint16_t all_duty_ = 0;
 };
 

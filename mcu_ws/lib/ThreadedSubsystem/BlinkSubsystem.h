@@ -6,6 +6,7 @@
  */
 #pragma once
 #include <Arduino.h>
+
 #include "ThreadedSubsystem.h"
 
 namespace Subsystem {
@@ -33,4 +34,4 @@ class BlinkSubsystem : public Subsystem::ThreadedSubsystem {
  private:
   bool led_state_ = false;
 };
-};
+};  // namespace Subsystem
