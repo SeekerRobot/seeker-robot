@@ -20,11 +20,11 @@
 static constexpr uint8_t kNumServos = 16;
 static constexpr float kDefaultMinAngle = 0.0f;
 static constexpr float kDefaultMaxAngle = 180.0f;
-static constexpr uint16_t kDefaultMinPwm = 120;   // ~500 us @ 50 Hz
-static constexpr uint16_t kDefaultMaxPwm = 512;   // ~2500 us @ 50 Hz
+static constexpr uint16_t kDefaultMinPwm = 120;    // ~500 us @ 50 Hz
+static constexpr uint16_t kDefaultMaxPwm = 512;    // ~2500 us @ 50 Hz
 static constexpr float kDefaultVelocity = 720.0f;  // deg/s
-static constexpr float kDefaultAccel = 1000.0f;     // deg/s^2
-static constexpr float kDefaultBudget = 1000.0f;    // total deg/s
+static constexpr float kDefaultAccel = 1000.0f;    // deg/s^2
+static constexpr float kDefaultBudget = 1000.0f;   // total deg/s
 static constexpr float kDefaultFreqHz = 50.0f;
 
 // ---------------------------------------------------------------------------
@@ -149,20 +149,16 @@ static void printServoStatus(uint8_t i) {
   Serial.printf(
       "  [%2u] ch=%2u %s%s | angle: %.1f -> %.1f (vel %.1f) | "
       "limits [%.1f, %.1f] | pwm [%u, %u]%s | vel_max=%.1f accel=%.1f\r\n",
-      i, cfg.channel,
-      servos->isAttached(i) ? "ATT" : "DET",
-      servos->isInitialized(i) ? "" : " UNINIT",
-      servos->getCurrentAngle(i), servos->getTargetAngle(i),
-      servos->getVelocity(i),
-      cfg.min_angle, cfg.max_angle, cfg.min_pwm, cfg.max_pwm,
-      cfg.inverted ? " INV" : "",
+      i, cfg.channel, servos->isAttached(i) ? "ATT" : "DET",
+      servos->isInitialized(i) ? "" : " UNINIT", servos->getCurrentAngle(i),
+      servos->getTargetAngle(i), servos->getVelocity(i), cfg.min_angle,
+      cfg.max_angle, cfg.min_pwm, cfg.max_pwm, cfg.inverted ? " INV" : "",
       cfg.max_velocity, cfg.max_accel);
 }
 
 static void cmdStatus() {
   Serial.printf("Armed: %s | Budget: %.0f deg/s\r\n",
-                servos->isArmed() ? "YES" : "NO",
-                servos->getTotalRateBudget());
+                servos->isArmed() ? "YES" : "NO", servos->getTotalRateBudget());
   if (num_tokens >= 2) {
     uint8_t idx;
     if (parseIndex(tokens[1], idx)) printServoStatus(idx);
@@ -431,9 +427,9 @@ void setup() {
   blink.beginThreadedPinned(2048, 1, 500, 1);
 
   // Servo subsystem
-  static Subsystem::ServoSetup servo_setup(Wire, Config::pca_addr, Config::servo_en,
-                                           servo_configs, kNumServos,
-                                           kDefaultBudget, kDefaultFreqHz);
+  static Subsystem::ServoSetup servo_setup(
+      Wire, Config::pca_addr, Config::servo_en, servo_configs, kNumServos,
+      kDefaultBudget, kDefaultFreqHz);
   auto& srv = Subsystem::ServoSubsystem::getInstance(servo_setup, i2c_mutex);
   if (!srv.init()) {
     Debug::printf(Debug::Level::ERROR, "[MAIN] Servo init failed");
@@ -449,6 +445,4 @@ void setup() {
   printHelp();
 }
 
-void loop() {
-  processSerial();
-}
+void loop() { processSerial(); }

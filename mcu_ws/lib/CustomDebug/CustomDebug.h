@@ -9,10 +9,11 @@
 // @TODO: actually implement
 #pragma once
 
+#include <hal_thread.h>
+
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-#include <hal_thread.h>
 
 #ifdef DEBUG_TRANSPORT_SERIAL
 #include <Arduino.h>
@@ -45,12 +46,18 @@ enum class Level : uint8_t {
 
 inline const char* levelPrefix(Level level) {
   switch (level) {
-    case Level::ERROR:   return "[E]";
-    case Level::WARN:    return "[W]";
-    case Level::INFO:    return "[I]";
-    case Level::DEBUG:   return "[D]";
-    case Level::VERBOSE: return "[V]";
-    default:             return "[?]";
+    case Level::ERROR:
+      return "[E]";
+    case Level::WARN:
+      return "[W]";
+    case Level::INFO:
+      return "[I]";
+    case Level::DEBUG:
+      return "[D]";
+    case Level::VERBOSE:
+      return "[V]";
+    default:
+      return "[?]";
   }
 }
 

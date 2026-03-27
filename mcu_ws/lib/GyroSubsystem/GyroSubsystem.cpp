@@ -16,7 +16,8 @@ bool GyroSubsystem::init() {
     return false;
   }
   for (int n = 0; n < bno08x_.prodIds.numEntries; n++) {
-    Debug::printf(Debug::Level::INFO, "[BNO085] Part %u: Version :%u.%u.%u Build %u",
+    Debug::printf(Debug::Level::INFO,
+                  "[BNO085] Part %u: Version :%u.%u.%u Build %u",
                   bno08x_.prodIds.entry[n].swPartNumber,
                   bno08x_.prodIds.entry[n].swVersionMajor,
                   bno08x_.prodIds.entry[n].swVersionMinor,
@@ -26,7 +27,8 @@ bool GyroSubsystem::init() {
   reset();
   setReports();
   pinMode(setup_.int_pin_, INPUT_PULLUP);
-  attachInterruptArg(digitalPinToInterrupt(setup_.int_pin_), intISR, this, FALLING);
+  attachInterruptArg(digitalPinToInterrupt(setup_.int_pin_), intISR, this,
+                     FALLING);
   Debug::printf(Debug::Level::INFO, "[BNO085] Init success");
   return true;
 }
@@ -80,29 +82,20 @@ void GyroSubsystem::reset() {
 }
 
 void GyroSubsystem::logImuData() {
-  Debug::printf(Debug::Level::VERBOSE,
-                "[BNO085] GRV: i=%.3f j=%.3f k=%.3f r=%.3f",
-                imu_data_.gameRotationVector.i,
-                imu_data_.gameRotationVector.j,
-                imu_data_.gameRotationVector.k,
-                imu_data_.gameRotationVector.real);
+  Debug::printf(
+      Debug::Level::VERBOSE, "[BNO085] GRV: i=%.3f j=%.3f k=%.3f r=%.3f",
+      imu_data_.gameRotationVector.i, imu_data_.gameRotationVector.j,
+      imu_data_.gameRotationVector.k, imu_data_.gameRotationVector.real);
   Debug::printf(Debug::Level::VERBOSE,
                 "[BNO085] LinAccel: x=%.3f y=%.3f z=%.3f",
-                imu_data_.linearAcceleration.x,
-                imu_data_.linearAcceleration.y,
+                imu_data_.linearAcceleration.x, imu_data_.linearAcceleration.y,
                 imu_data_.linearAcceleration.z);
-  Debug::printf(Debug::Level::VERBOSE,
-                "[BNO085] Gravity: x=%.3f y=%.3f z=%.3f",
-                imu_data_.gravity.x,
-                imu_data_.gravity.y,
-                imu_data_.gravity.z);
-  Debug::printf(Debug::Level::VERBOSE,
-                "[BNO085] Gyro: x=%.3f y=%.3f z=%.3f",
-                imu_data_.gyroscope.x,
-                imu_data_.gyroscope.y,
+  Debug::printf(Debug::Level::VERBOSE, "[BNO085] Gravity: x=%.3f y=%.3f z=%.3f",
+                imu_data_.gravity.x, imu_data_.gravity.y, imu_data_.gravity.z);
+  Debug::printf(Debug::Level::VERBOSE, "[BNO085] Gyro: x=%.3f y=%.3f z=%.3f",
+                imu_data_.gyroscope.x, imu_data_.gyroscope.y,
                 imu_data_.gyroscope.z);
-  Debug::printf(Debug::Level::VERBOSE,
-                "[BNO085] Stability: %u",
+  Debug::printf(Debug::Level::VERBOSE, "[BNO085] Stability: %u",
                 imu_data_.stabilityClassifier.classification);
 }
 
@@ -111,17 +104,22 @@ void GyroSubsystem::setReports() {
     Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable gyroscope");
   }
   if (!bno08x_.enableReport(SH2_LINEAR_ACCELERATION)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable linear acceleration");
+    Debug::printf(Debug::Level::ERROR,
+                  "[BNO085] Could not enable linear acceleration");
   }
   if (!bno08x_.enableReport(SH2_GRAVITY)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable gravity vector");
+    Debug::printf(Debug::Level::ERROR,
+                  "[BNO085] Could not enable gravity vector");
   }
   if (!bno08x_.enableReport(SH2_GAME_ROTATION_VECTOR)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable game rotation vector");
+    Debug::printf(Debug::Level::ERROR,
+                  "[BNO085] Could not enable game rotation vector");
   }
   if (!bno08x_.enableReport(SH2_STABILITY_CLASSIFIER)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable stability classifier");
+    Debug::printf(Debug::Level::ERROR,
+                  "[BNO085] Could not enable stability classifier");
   }
-  Debug:printf(Debug::Level::INFO, "[BNO085] Reports set");
+Debug:
+  printf(Debug::Level::INFO, "[BNO085] Reports set");
 }
 };  // namespace Subsystem

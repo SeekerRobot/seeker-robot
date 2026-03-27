@@ -7,12 +7,12 @@
  */
 #pragma once
 #include <Adafruit_BNO08x.h>
+#include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
 #include <Wire.h>
-#include <sh2.h>
-#include <CustomDebug.h>
 #include <elapsedMillis.h>
 #include <hal_thread.h>
+#include <sh2.h>
 
 namespace Subsystem {
 
@@ -33,7 +33,10 @@ class GyroSetup : public Classes::BaseSetup {
   /// @param addr BNO085 Address.
   /// @param int_pin Interrupt pin used (required)
   GyroSetup(TwoWire& wire, uint8_t addr, int8_t int_pin)
-      : Classes::BaseSetup("GyroSubsystem"), wire_(wire), addr_(addr), int_pin_(int_pin) {}
+      : Classes::BaseSetup("GyroSubsystem"),
+        wire_(wire),
+        addr_(addr),
+        int_pin_(int_pin) {}
 
   TwoWire& wire_;
   uint8_t addr_;
