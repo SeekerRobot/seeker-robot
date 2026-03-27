@@ -11,6 +11,7 @@
 #include <Wire.h>
 #include <sh2.h>
 #include <CustomDebug.h>
+#include <elapsedMillis.h>
 #include <hal_thread.h>
 
 namespace Subsystem {
@@ -71,9 +72,12 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   const GyroSetup setup_;
   Threads::Mutex& i2c_mutex_;
 
+  static constexpr unsigned long kLogIntervalMs = 500;
+
   Adafruit_BNO08x bno08x_;
   ImuData imu_data_ = {};
   SemaphoreHandle_t int_semaphore_;
+  elapsedMillis since_last_log_;
 
   static void IRAM_ATTR intISR(void* arg);
 

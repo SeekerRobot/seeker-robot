@@ -12,6 +12,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <hal_thread.h>
 
 #ifdef DEBUG_TRANSPORT_SERIAL
 #include <Arduino.h>
@@ -24,6 +25,11 @@
 #endif
 
 namespace Debug {
+
+inline Threads::Mutex& serialMutex() {
+  static Threads::Mutex mtx;
+  return mtx;
+}
 
 enum class Level : uint8_t {
   ERROR = 0,
@@ -58,6 +64,7 @@ inline void printf(Level level, const char* fmt, ...) {
   va_start(args, fmt);
   vsnprintf(buf + offset, sizeof(buf) - offset, fmt, args);
   va_end(args);
+  Threads::Scope lock(serialMutex());
   Serial.println(buf);
 #else
   (void)fmt;
@@ -71,6 +78,7 @@ inline void printf(const char* fmt, ...) {
   va_start(args, fmt);
   vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
+  Threads::Scope lock(serialMutex());
   Serial.println(buf);
 #else
   (void)fmt;

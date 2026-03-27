@@ -20,11 +20,11 @@
 static constexpr uint8_t kNumServos = 16;
 static constexpr float kDefaultMinAngle = 0.0f;
 static constexpr float kDefaultMaxAngle = 180.0f;
-static constexpr uint16_t kDefaultMinPwm = 102;   // ~500 us @ 50 Hz
+static constexpr uint16_t kDefaultMinPwm = 120;   // ~500 us @ 50 Hz
 static constexpr uint16_t kDefaultMaxPwm = 512;   // ~2500 us @ 50 Hz
-static constexpr float kDefaultVelocity = 180.0f;  // deg/s
-static constexpr float kDefaultAccel = 360.0f;     // deg/s^2
-static constexpr float kDefaultBudget = 540.0f;    // total deg/s
+static constexpr float kDefaultVelocity = 720.0f;  // deg/s
+static constexpr float kDefaultAccel = 1000.0f;     // deg/s^2
+static constexpr float kDefaultBudget = 1000.0f;    // total deg/s
 static constexpr float kDefaultFreqHz = 50.0f;
 
 // ---------------------------------------------------------------------------
