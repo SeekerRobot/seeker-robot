@@ -17,6 +17,7 @@ class ThreadedSubsystem : public Classes::BaseSubsystem {
       : Classes::BaseSubsystem(setup) {}
 
   // Inherited Pure Virtual BaseSubsystem functions redefined here for clarity
+  virtual bool init() = 0;
   virtual void update() = 0;
   virtual void begin() = 0;
   virtual void pause() = 0;
