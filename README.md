@@ -243,9 +243,9 @@ A `ros2_ws/.vscode/c_cpp_properties.json` is included in the repository and is b
 
 Build artifacts are stored in named Docker volumes to avoid polluting the host filesystem and to improve I/O performance on Windows/macOS.
 
-## SLAM Subsystem
+## SLAM & Navigation Subsystem
 
-The SLAM input subsystem provides LiDAR and camera data to SLAM algorithms. It has two sides: **MCU firmware** running on an ESP32 that reads physical sensors, and a **Gazebo simulation** for testing without hardware.
+The SLAM and navigation subsystem provides autonomous exploration and ball-seeking capability. It combines LiDAR-based SLAM mapping, Nav2 path planning, frontier exploration, and camera-based ball detection.
 
 ### What Was Implemented
 
@@ -258,14 +258,34 @@ The SLAM input subsystem provides LiDAR and camera data to SLAM algorithms. It h
 | `lib/camera/CameraSubscriber.h`  | Camera subscriber (header-only) — lightweight ROS subscriber for `/camera/image/compressed`, tracks frame count and reception timeout     |
 | `src/slam-sensors/main.cpp`      | Entry point — wires MicrorosManager (core 0), LidarSubsystem (core 1), CameraSubscriber (core 1) using FreeRTOS tasks                     |
 
-The firmware follows the existing BaseSubsystem + IMicroRosParticipant pattern. The LiDAR subsystem parses LD14P packets byte-by-byte (WAIT_HEADER -> WAIT_VER_LEN -> COLLECT_DATA), assembles a full 360-degree scan from multiple 12-point packets, and publishes when an angle wrap is detected.
-
 #### Gazebo Simulation (`ros2_ws/src/`)
 
 | Package              | Purpose                                                                                                                        |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `seeker_description` | URDF/Xacro model of the hexapod with simulated LiDAR (gpu_lidar, 720 samples, 0.1-8.0m range, 10Hz) and camera (640x480, 15Hz) |
-| `seeker_gazebo`      | Gazebo Harmonic launch files, world file (5m x 5m walled room with obstacles), ros_gz_bridge config, slam_toolbox params       |
+| `seeker_gazebo`      | Gazebo Harmonic launch files, world file (5m x 5m room), ros_gz_bridge config, slam_toolbox params, ground-truth odometry bridge |
+
+#### Navigation (`ros2_ws/src/seeker_navigation/`)
+
+| File | Purpose |
+| ---- | ------- |
+| `seeker_navigation/ball_searcher.py` | Main autonomy node — state machine with frontier exploration, coverage grid fallback, ball detection (HSV thresholding), and ball approach via Nav2 |
+| `config/nav2_params.yaml` | Nav2 configuration — DWB local planner, NavfnPlanner, costmap2D with inflation, recovery behaviors, lifecycle manager |
+| `launch/nav2_ball_search.launch.py` | Launches Nav2 stack (controller, planner, behavior, bt_navigator, velocity_smoother, lifecycle_manager) + ball_searcher |
+
+#### Ball Searcher State Machine
+
+```
+WAITING_FOR_NAV2 -> INITIAL_ROTATION -> FRONTIER_NAV -> COVERAGE_NAV
+                                                    \-> APPROACH_BALL -> BALL_REACHED
+```
+
+1. **WAITING_FOR_NAV2** — waits for the Nav2 action server to become available
+2. **INITIAL_ROTATION** — rotates 360 degrees in place to seed the SLAM map and check for the ball
+3. **FRONTIER_NAV** — finds boundaries between free and unknown cells in the occupancy grid, navigates to them via Nav2
+4. **COVERAGE_NAV** — fallback when no frontiers remain; generates a grid of waypoints across free space (prioritizing areas near unknown space) and visits each one
+5. **APPROACH_BALL** — when the camera detects a red ball (HSV thresholding), cancels the current goal and navigates toward it using the pixel centroid to estimate bearing
+6. **BALL_REACHED** — ball fills enough of the camera frame; robot stops
 
 #### micro-ROS Manager Changes
 
@@ -274,103 +294,108 @@ The firmware follows the existing BaseSubsystem + IMicroRosParticipant pattern. 
 
 ### ROS 2 Topic Structure
 
-| Topic                      | Type                          | Source                                |
-| -------------------------- | ----------------------------- | ------------------------------------- |
-| `/lidar/scan`              | `sensor_msgs/LaserScan`       | LiDAR (MCU or Gazebo)                 |
-| `/camera/image`            | `sensor_msgs/Image`           | Camera (Gazebo raw)                   |
-| `/camera/image/compressed` | `sensor_msgs/CompressedImage` | image_transport republisher           |
-| `/map`                     | `nav_msgs/OccupancyGrid`      | slam_toolbox                          |
-| `/tf`                      | `tf2_msgs/TFMessage`          | robot_state_publisher, static odom TF |
+| Topic                      | Type                             | Source                                |
+| -------------------------- | -------------------------------- | ------------------------------------- |
+| `/lidar/scan`              | `sensor_msgs/LaserScan`          | LiDAR (MCU or Gazebo)                 |
+| `/camera/image`            | `sensor_msgs/Image`              | Camera (Gazebo raw)                   |
+| `/camera/image/compressed` | `sensor_msgs/CompressedImage`    | image_transport republisher           |
+| `/map`                     | `nav_msgs/OccupancyGrid`         | slam_toolbox (TRANSIENT_LOCAL QoS)    |
+| `/odom`                    | `nav_msgs/Odometry`              | gz_odom_bridge (Gazebo ground truth)  |
+| `/cmd_vel`                 | `geometry_msgs/Twist`            | Nav2 controller / ball_searcher       |
+| `/tf`                      | `tf2_msgs/TFMessage`             | robot_state_publisher, odom bridge    |
+| `/navigate_to_pose`        | `nav2_msgs/NavigateToPose`       | Nav2 action server                    |
 
-### Running the Gazebo SLAM Simulation
+### Running the Navigation Simulation
 
 All commands run inside the dev container (`docker compose exec ros2 bash`). You need 3 terminal sessions.
 
 #### Prerequisites
 
-- Docker container running with `BUILD_TARGET=dev` (includes Gazebo Harmonic and RViz)
-- X server running on host (VcXsrv on Windows, XQuartz on macOS — see [X11 Setup](#x11-server-setup))
-- slam_toolbox installed: `sudo apt-get install -y ros-jazzy-slam-toolbox`
+- Docker container running with `BUILD_TARGET=dev`
+- X server running on host (see [X11 Setup](#x11-server-setup))
+- Required packages installed inside the container:
+  ```bash
+  sudo apt-get install -y ros-jazzy-slam-toolbox ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+  ```
 
-#### Terminal 1 — Gazebo + Sensor Bridges
+#### Terminal 1 — Gazebo + SLAM
 
 ```bash
 cd ~/ros2_workspaces
-source /opt/ros/jazzy/setup.bash
-colcon build --packages-select seeker_description seeker_gazebo
+colcon build
 source install/setup.bash
 
 ros2 launch seeker_gazebo gazebo.launch.py
 ```
 
-This launches:
+Wait ~10 seconds for slam_toolbox to activate, then verify:
+```bash
+ros2 lifecycle get /slam_toolbox
+# Should output: active [3]
+```
 
-- Gazebo Harmonic with a 5m x 5m walled room containing boxes, cylinders, and L-shaped wall obstacles
-- The hexapod robot model with simulated LiDAR and camera
-- `robot_state_publisher` (broadcasts the URDF TF tree)
-- `ros_gz_bridge` (bridges `/lidar/scan` and `/camera/image` from Gazebo to ROS 2)
-- `static_transform_publisher` (provides `odom -> base_footprint` TF)
-- `image_transport` republisher (raw -> compressed)
+For better performance, run Gazebo headless (no 3D window):
+```bash
+ros2 launch seeker_gazebo gazebo.launch.py headless:=true
+```
 
-#### Terminal 2 — slam_toolbox
+#### Terminal 2 — RViz
 
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_workspaces/install/setup.bash
 
-ros2 launch slam_toolbox online_async_launch.py \
-  slam_params_file:=/home/ubuntu/ros2_workspaces/src/seeker_ros/seeker_gazebo/config/slam_toolbox_params.yaml
+ros2 run rviz2 rviz2 -d ~/ros2_workspaces/install/seeker_gazebo/share/seeker_gazebo/rviz/slam.rviz
 ```
 
-The params file configures slam_toolbox to subscribe to `/lidar/scan`, use `base_footprint` as the base frame, and allow the first scan to be processed without movement (`minimum_travel_distance: 0.0`).
+> **Note:** The `/map` topic uses TRANSIENT_LOCAL QoS. If the map doesn't appear in RViz, expand the Map display's Topic settings and set **Durability** to **Transient Local** and **Reliability** to **Reliable**.
 
-#### Terminal 3 — RViz
+#### Terminal 3 — Nav2 + Ball Searcher
+
+**Important:** Only launch after slam_toolbox is active (the `map` frame must exist).
 
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_workspaces/install/setup.bash
 
-rviz2
+ros2 launch seeker_navigation nav2_ball_search.launch.py
 ```
 
-In RViz:
+The robot will:
+1. Rotate 360 degrees to build an initial map
+2. Explore unknown areas using frontier detection + Nav2 path planning
+3. Fall back to coverage grid waypoints if no frontiers remain
+4. Detect a red ball via camera HSV thresholding and approach it
+5. Stop when the ball fills enough of the camera frame
 
-1. Set **Fixed Frame** to `map`
-2. Click **Add** -> **By topic** -> `/map` -> `Map` (to see the occupancy grid)
-3. Click **Add** -> **By topic** -> `/lidar/scan` -> `LaserScan` (to see live LiDAR rays)
-
-### Moving the Robot in Gazebo
-
-Since the hexapod has fixed joints (leg articulation is not simulated), there are two ways to move it:
-
-**GUI drag (easiest):**
-
-1. Click on the robot in the Gazebo window
-2. Press **T** to activate the translate tool
-3. Drag the robot using the axis arrows
-
-**Command-line teleport:**
+### Useful Debugging Commands
 
 ```bash
-gz service -s /world/slam_test_world/set_pose \
-  --reqtype gz.msgs.Pose \
-  --reptype gz.msgs.Boolean \
-  --timeout 2000 \
-  --req 'name: "seeker_hexapod", position: {x: 1.0, y: 1.0, z: 0.15}'
+# Check Nav2 node status
+ros2 node list | grep -E "controller|planner|behavior|bt_navigator"
+
+# Verify TF tree
+ros2 run tf2_ros tf2_echo map base_footprint
+
+# Monitor cmd_vel output
+ros2 topic echo /cmd_vel --once
+
+# Check SLAM lifecycle state
+ros2 lifecycle get /slam_toolbox
+
+# Kill all Nav2 processes (for clean restart)
+pkill -f "controller_server|planner_server|behavior_server|bt_navigator|velocity_smoother|lifecycle_manager|ball_searcher"
 ```
 
-Change `x` and `y` to move to different positions within the 5m x 5m room (valid range: approximately -2.3 to 2.3 for both axes).
+### Nav2 Tuning Reference
 
-### Known Limitations (No Odometry)
+Key parameters in `config/nav2_params.yaml`:
 
-The simulation currently uses a **static identity transform** for `odom -> base_footprint`. This means the ROS 2 TF tree always reports the robot at the origin, even when it has been moved in Gazebo.
-
-**Practical impact:**
-
-- **slam_toolbox still works** because it uses scan matching (comparing consecutive LiDAR scans) as its primary alignment method, not odometry
-- Move the robot in **small increments** so the scan matcher can track changes between consecutive scans
-- **Large jumps** (teleporting across the room) will confuse the scan matcher and produce map artifacts (phantom walls, distorted geometry)
-- The built map may accumulate drift over large distances since there is no odometry correction
-
-**Future fix:** bridge the Gazebo model pose to ROS 2 as a dynamic `odom -> base_footprint` transform so slam_toolbox has accurate odometry. This requires the `gz-sim-pose-publisher-system` plugin and a `Pose_V -> TFMessage` bridge with frame remapping.
+| Parameter | Location | Effect |
+| --------- | -------- | ------ |
+| `robot_radius` | both costmaps | Inscribed lethal zone around obstacles (black in RViz) |
+| `inflation_radius` | inflation_layer | Additional cost gradient beyond inscribed zone |
+| `cost_scaling_factor` | inflation_layer | Higher = costs drop off faster from obstacles |
+| `movement_time_allowance` | progress_checker | Seconds without progress before recovery triggers |
+| `xy_goal_tolerance` | goal_checker | How close the robot must get to a goal |
 
 ### Running on Real Hardware (ESP32 + LD14P)
 
@@ -382,7 +407,7 @@ pio run -e slam-sensors -t upload
 # 2. Start the micro-ROS agent (in another terminal)
 ros2 run micro_ros_agent micro_ros_agent wifi4 -p 8888
 
-# 3. Run slam_toolbox as above (Terminal 2 instructions)
+# 3. Run slam_toolbox and Nav2 as above
 ```
 
 The ESP32 connects to the micro-ROS agent over WiFi UDP. The LD14P LiDAR should be wired to ESP32 pins D6 (TX) and D7 (RX) at 230400 baud.

@@ -144,6 +144,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-$ROS_DISTRO-rqt-graph && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+    # Install Nav2 navigation stack and slam_toolbox
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-$ROS_DISTRO-navigation2 \
+    ros-$ROS_DISTRO-nav2-bringup \
+    ros-$ROS_DISTRO-slam-toolbox && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 USER $USER_NAME
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
