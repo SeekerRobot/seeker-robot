@@ -13,17 +13,24 @@ static IPAddress static_ip STATIC_IP;
 static IPAddress gateway GATEWAY;
 static IPAddress subnet SUBNET;
 
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "WifiSubsystem", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("WifiSubsystem", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 static const char* stateStr(Subsystem::WifiState s) {
   switch (s) {
-    case Subsystem::WifiState::DISCONNECTED: return "DISCONNECTED";
-    case Subsystem::WifiState::CONNECTING:   return "CONNECTING";
-    case Subsystem::WifiState::CONNECTED:    return "CONNECTED";
-    case Subsystem::WifiState::RECONNECTING: return "RECONNECTING";
-    case Subsystem::WifiState::FAILED:       return "FAILED";
-    default:                                 return "UNKNOWN";
+    case Subsystem::WifiState::DISCONNECTED:
+      return "DISCONNECTED";
+    case Subsystem::WifiState::CONNECTING:
+      return "CONNECTING";
+    case Subsystem::WifiState::CONNECTED:
+      return "CONNECTED";
+    case Subsystem::WifiState::RECONNECTING:
+      return "RECONNECTING";
+    case Subsystem::WifiState::FAILED:
+      return "FAILED";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -39,7 +46,8 @@ void setup() {
 
   // Core 1, priority 3, 100 ms update interval, 4 KB stack
   wifi.beginThreadedPinned(4096, 3, 100, 1);
-  Debug::printf(Debug::Level::INFO, "[Main] WiFi subsystem started, connecting to \"%s\"",
+  Debug::printf(Debug::Level::INFO,
+                "[Main] WiFi subsystem started, connecting to \"%s\"",
                 WIFI_SSID);
 }
 

@@ -61,9 +61,9 @@ class ESP32WifiSubsystemSetup : public Classes::BaseSetup {
 
   const char* ssid_;
   const char* password_;
-  uint32_t connection_timeout_ms_;   ///< Timeout per connection attempt (ms).
-  uint32_t reconnect_interval_ms_;   ///< Delay between retry attempts (ms).
-  uint8_t max_retries_;              ///< Max failures before FAILED state. 0 = infinite.
+  uint32_t connection_timeout_ms_;  ///< Timeout per connection attempt (ms).
+  uint32_t reconnect_interval_ms_;  ///< Delay between retry attempts (ms).
+  uint8_t max_retries_;  ///< Max failures before FAILED state. 0 = infinite.
 
   IPAddress local_ip_{INADDR_NONE};
   IPAddress gateway_{INADDR_NONE};
