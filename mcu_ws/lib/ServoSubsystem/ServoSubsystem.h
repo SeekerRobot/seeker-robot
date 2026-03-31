@@ -156,6 +156,7 @@ class ServoSubsystem : public Subsystem::ThreadedSubsystem {
     float velocity = 0.0f;
     bool attached = false;
     bool initialized = false;
+    bool detached_by_disarm = false;
   };
 
   const ServoSetup setup_;
