@@ -65,8 +65,8 @@ inline const char* levelPrefix(Level level) {
 inline void printf(Level level, const char* fmt, ...) {
   if (static_cast<uint8_t>(level) > DEBUG_LEVEL) return;
 
-  char    buf[256];
-  int     offset = snprintf(buf, sizeof(buf), "%s ", levelPrefix(level));
+  char buf[256];
+  int offset = snprintf(buf, sizeof(buf), "%s ", levelPrefix(level));
   va_list args;
   va_start(args, fmt);
   vsnprintf(buf + offset, sizeof(buf) - offset, fmt, args);
@@ -89,7 +89,7 @@ inline void printf(Level level, const char* fmt, ...) {
 }
 
 inline void printf(const char* fmt, ...) {
-  char    buf[256];
+  char buf[256];
   va_list args;
   va_start(args, fmt);
   vsnprintf(buf, sizeof(buf), fmt, args);

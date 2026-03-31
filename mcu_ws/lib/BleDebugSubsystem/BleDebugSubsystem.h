@@ -40,11 +40,11 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
     return instance;
   }
 
-  bool        init() override;
-  void        begin() override;
-  void        update() override;
-  void        pause() override {}
-  void        reset() override {}
+  bool init() override;
+  void begin() override;
+  void update() override;
+  void pause() override {}
+  void reset() override {}
   const char* getInfo() override { return setup_.getId(); }
 
   /// @brief Write buf + newline over BLE if a client is subscribed.
@@ -58,7 +58,7 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
   }
 
   const BleDebugSetup setup_;
-  NimBLEStreamServer  bleStream_;
+  NimBLEStreamServer bleStream_;
 
   static BleDebugSubsystem* instance_;
 

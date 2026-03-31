@@ -9,10 +9,10 @@
 #include <BlinkSubsystem.h>
 #include <CustomDebug.h>
 
-static Subsystem::BleDebugSetup  ble_setup("SeekerDebug");
+static Subsystem::BleDebugSetup ble_setup("SeekerDebug");
 
-static Classes::BaseSetup         blink_setup("blink");
-static Subsystem::BlinkSubsystem  blink(blink_setup);
+static Classes::BaseSetup blink_setup("blink");
+static Subsystem::BlinkSubsystem blink(blink_setup);
 
 void setup() {
   Serial.begin(921600);
