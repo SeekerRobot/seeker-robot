@@ -20,6 +20,7 @@
 #endif
 
 #ifdef DEBUG_TRANSPORT_BLUETOOTH
+#include <BleDebugSubsystem.h>
 #endif
 
 #ifdef DEBUG_TRANSPORT_MICROROS
@@ -64,30 +65,48 @@ inline const char* levelPrefix(Level level) {
 inline void printf(Level level, const char* fmt, ...) {
   if (static_cast<uint8_t>(level) > DEBUG_LEVEL) return;
 
-#ifdef DEBUG_TRANSPORT_SERIAL
-  char buf[256];
-  int offset = snprintf(buf, sizeof(buf), "%s ", levelPrefix(level));
+  char    buf[256];
+  int     offset = snprintf(buf, sizeof(buf), "%s ", levelPrefix(level));
   va_list args;
   va_start(args, fmt);
   vsnprintf(buf + offset, sizeof(buf) - offset, fmt, args);
   va_end(args);
-  Threads::Scope lock(serialMutex());
-  Serial.println(buf);
-#else
+
+#ifdef DEBUG_TRANSPORT_SERIAL
+  {
+    Threads::Scope lock(serialMutex());
+    Serial.println(buf);
+  }
+#endif
+
+#ifdef DEBUG_TRANSPORT_BLUETOOTH
+  Subsystem::BleDebugSubsystem::writeIfReady(buf);
+#endif
+
+#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH)
   (void)fmt;
 #endif
 }
 
 inline void printf(const char* fmt, ...) {
-#ifdef DEBUG_TRANSPORT_SERIAL
-  char buf[256];
+  char    buf[256];
   va_list args;
   va_start(args, fmt);
   vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
-  Threads::Scope lock(serialMutex());
-  Serial.println(buf);
-#else
+
+#ifdef DEBUG_TRANSPORT_SERIAL
+  {
+    Threads::Scope lock(serialMutex());
+    Serial.println(buf);
+  }
+#endif
+
+#ifdef DEBUG_TRANSPORT_BLUETOOTH
+  Subsystem::BleDebugSubsystem::writeIfReady(buf);
+#endif
+
+#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH)
   (void)fmt;
 #endif
 }
