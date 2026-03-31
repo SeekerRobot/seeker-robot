@@ -15,9 +15,6 @@ void ESP32WifiSubsystem::onWifiEvent(WiFiEvent_t event) {
   if (!s_instance_) return;
 
   switch (event) {
-    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-      s_instance_->event_connected_ = true;
-      break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
       s_instance_->event_disconnected_ = true;
       break;
@@ -35,7 +32,6 @@ bool ESP32WifiSubsystem::init() {
   state_ = WifiState::DISCONNECTED;
   retry_count_ = 0;
   consecutive_failures_ = 0;
-  event_connected_ = false;
   event_disconnected_ = false;
   event_got_ip_ = false;
 
@@ -47,12 +43,6 @@ void ESP32WifiSubsystem::begin() {
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
-
-  if (setup_.use_static_ip_) {
-    WiFi.config(setup_.local_ip_, setup_.gateway_, setup_.subnet_,
-                setup_.gateway_);
-  }
-
   WiFi.onEvent(onWifiEvent);
 
   transitionTo(WifiState::CONNECTING);
@@ -66,7 +56,6 @@ void ESP32WifiSubsystem::update() {
 
   if (event_got_ip_) {
     event_got_ip_ = false;
-    event_connected_ = false;
     event_disconnected_ = false;
     handleConnected();
   }
@@ -107,7 +96,7 @@ void ESP32WifiSubsystem::update() {
     }
 
     case WifiState::CONNECTED:
-      if (now - last_health_check_ms_ >= 5000) {
+      if (now - last_health_check_ms_ >= kHealthCheckIntervalMs) {
         last_health_check_ms_ = now;
         if (WiFi.status() != WL_CONNECTED) {
           handleDisconnected();
@@ -129,7 +118,6 @@ void ESP32WifiSubsystem::reset() {
   WiFi.disconnect(true);
   retry_count_ = 0;
   consecutive_failures_ = 0;
-  event_connected_ = false;
   event_disconnected_ = false;
   event_got_ip_ = false;
   transitionTo(WifiState::DISCONNECTED);
@@ -161,18 +149,19 @@ void ESP32WifiSubsystem::clearFailedState() {
 void ESP32WifiSubsystem::transitionTo(WifiState new_state) {
   if (state_ != new_state) {
     state_ = new_state;
-    state_entry_time_ms_ = millis();
+  }
+}
+
+void ESP32WifiSubsystem::applyStaticIP() {
+  if (setup_.use_static_ip_) {
+    WiFi.config(setup_.local_ip_, setup_.gateway_, setup_.subnet_,
+                setup_.gateway_);
   }
 }
 
 void ESP32WifiSubsystem::attemptConnection() {
   WiFi.disconnect(true);
-
-  if (setup_.use_static_ip_) {
-    WiFi.config(setup_.local_ip_, setup_.gateway_, setup_.subnet_,
-                setup_.gateway_);
-  }
-
+  applyStaticIP();
   WiFi.begin(setup_.ssid_, setup_.password_);
   last_attempt_time_ms_ = millis();
 }
@@ -195,13 +184,9 @@ void ESP32WifiSubsystem::handleDisconnected() {
 void ESP32WifiSubsystem::powerCycleRadio() {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  delay(500);
+  vTaskDelay(pdMS_TO_TICKS(500));
   WiFi.mode(WIFI_STA);
-
-  if (setup_.use_static_ip_) {
-    WiFi.config(setup_.local_ip_, setup_.gateway_, setup_.subnet_,
-                setup_.gateway_);
-  }
+  applyStaticIP();
 }
 
 }  // namespace Subsystem
