@@ -10,6 +10,7 @@
 
 #include <NimBLEDevice.h>
 #include <ThreadedSubsystem.h>
+#include <freertos/queue.h>
 
 namespace Subsystem {
 
@@ -29,8 +30,10 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
       "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
   static constexpr const char* kCharUUID =
       "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
-  static constexpr uint32_t kTxBufSize = 1024;
-  static constexpr uint32_t kRxBufSize = 256;
+  static constexpr uint32_t kTxBufSize  = 1024;
+  static constexpr uint32_t kRxBufSize  = 256;
+  static constexpr uint8_t  kQueueDepth = 16;
+  static constexpr uint16_t kMsgLen     = 256;
 
   BleDebugSubsystem(const BleDebugSubsystem&) = delete;
   BleDebugSubsystem& operator=(const BleDebugSubsystem&) = delete;
@@ -47,8 +50,8 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
   void reset() override {}
   const char* getInfo() override { return setup_.getId(); }
 
-  /// @brief Write buf + newline over BLE if a client is subscribed.
-  /// Called by CustomDebug. Non-blocking; drops silently if not ready.
+  /// @brief Enqueue buf for BLE transmission. Non-blocking; drops if queue
+  /// full. Actual write happens in update() on the BLE task.
   static void writeIfReady(const char* buf);
 
  private:
@@ -58,9 +61,14 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
   }
 
   const BleDebugSetup setup_;
-  NimBLEStreamServer bleStream_;
+  NimBLEStreamServer  bleStream_;
+  QueueHandle_t       msgQueue_ = nullptr;
 
   static BleDebugSubsystem* instance_;
+
+  struct DebugMsg {
+    char text[kMsgLen];
+  };
 
   class ServerCallbacks : public NimBLEServerCallbacks {
    public:

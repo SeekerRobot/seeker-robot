@@ -41,6 +41,12 @@ bool BleDebugSubsystem::init() {
     return false;
   }
 
+  msgQueue_ = xQueueCreate(kQueueDepth, sizeof(DebugMsg));
+  if (!msgQueue_) {
+    Serial.printf("[BleDebug] queue creation failed\n");
+    return false;
+  }
+
   Serial.printf("[BleDebug] Advertising as \"%s\"\n", setup_.deviceName);
   initSuccess_ = true;
   return true;
@@ -49,8 +55,18 @@ bool BleDebugSubsystem::init() {
 void BleDebugSubsystem::begin() { Serial.printf("[BleDebug] Task started\n"); }
 
 void BleDebugSubsystem::update() {
-  if (!initSuccess_) return;
-  // Drain any RX data to prevent ring buffer overflow.
+  // Drain the message queue and write to BLE stream if a client is connected.
+  // Messages are consumed regardless of ready() so the queue never backs up.
+  DebugMsg msg;
+  while (xQueueReceive(msgQueue_, &msg, 0) == pdTRUE) {
+    if (bleStream_.ready()) {
+      // Use printf (single write() call) instead of println (two writes) to
+      // avoid a bare \r\n notification appearing as "" on the client.
+      bleStream_.printf("%s\n", msg.text);
+    }
+  }
+
+  // Drain any RX data from the client to prevent its ring buffer overflow.
   while (bleStream_.available()) {
     if (bleStream_.read() < 0) break;
   }
@@ -58,9 +74,12 @@ void BleDebugSubsystem::update() {
 
 // static
 void BleDebugSubsystem::writeIfReady(const char* buf) {
-  if (!instance_ || !instance_->initSuccess_) return;
-  if (!instance_->bleStream_.ready()) return;
-  instance_->bleStream_.println(buf);
+  if (!instance_ || !instance_->initSuccess_ || !instance_->msgQueue_) return;
+  DebugMsg msg;
+  strncpy(msg.text, buf, kMsgLen - 1);
+  msg.text[kMsgLen - 1] = '\0';
+  // Non-blocking: drop if queue is full rather than stalling the caller.
+  xQueueSendToBack(instance_->msgQueue_, &msg, 0);
 }
 
 void BleDebugSubsystem::ServerCallbacks::onConnect(NimBLEServer* pServer,
