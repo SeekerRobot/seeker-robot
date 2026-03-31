@@ -49,6 +49,7 @@ bool BleDebugSubsystem::init() {
 void BleDebugSubsystem::begin() { Serial.printf("[BleDebug] Task started\n"); }
 
 void BleDebugSubsystem::update() {
+  if (!initSuccess_) return;
   // Drain any RX data to prevent ring buffer overflow.
   while (bleStream_.available()) {
     if (bleStream_.read() < 0) break;
