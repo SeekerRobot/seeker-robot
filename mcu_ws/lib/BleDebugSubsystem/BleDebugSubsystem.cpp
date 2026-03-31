@@ -46,9 +46,7 @@ bool BleDebugSubsystem::init() {
   return true;
 }
 
-void BleDebugSubsystem::begin() {
-  Serial.printf("[BleDebug] Task started\n");
-}
+void BleDebugSubsystem::begin() { Serial.printf("[BleDebug] Task started\n"); }
 
 void BleDebugSubsystem::update() {
   // Drain any RX data to prevent ring buffer overflow.
@@ -64,14 +62,15 @@ void BleDebugSubsystem::writeIfReady(const char* buf) {
   instance_->bleStream_.println(buf);
 }
 
-void BleDebugSubsystem::ServerCallbacks::onConnect(NimBLEServer*   pServer,
-                                                    NimBLEConnInfo& connInfo) {
+void BleDebugSubsystem::ServerCallbacks::onConnect(NimBLEServer* pServer,
+                                                   NimBLEConnInfo& connInfo) {
   Serial.printf("[BleDebug] Client connected, handle=%u\n",
                 connInfo.getConnHandle());
 }
 
-void BleDebugSubsystem::ServerCallbacks::onDisconnect(
-    NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
+void BleDebugSubsystem::ServerCallbacks::onDisconnect(NimBLEServer* pServer,
+                                                      NimBLEConnInfo& connInfo,
+                                                      int reason) {
   Serial.printf("[BleDebug] Client disconnected, handle=%u, reason=%d\n",
                 connInfo.getConnHandle(), reason);
   // advertiseOnDisconnect(true) handles advertising restart automatically.
