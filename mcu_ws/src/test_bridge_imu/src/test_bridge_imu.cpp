@@ -103,7 +103,8 @@ void setup() {
     Debug::printf(Debug::Level::ERROR, "[Main] Gyro init FAILED — halting");
     while (true) vTaskDelay(portMAX_DELAY);
   }
-  // Core 1 | priority 5 | 0 ms update (blocks on interrupt semaphore) | 4096 words
+  // Core 1 | priority 5 | 0 ms update (blocks on interrupt semaphore) | 4096
+  // words
   gyro.beginThreadedPinned(4096, 5, 0, 1);
   Debug::printf(Debug::Level::INFO, "[Main] Gyro started");
 
