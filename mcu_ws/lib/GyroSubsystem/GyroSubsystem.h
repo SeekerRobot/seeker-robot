@@ -64,6 +64,10 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   void reset() override;
   const char* getInfo() override { return setup_.getId(); }
 
+  /// @brief Returns a thread-safe snapshot of the latest IMU data.
+  ///        Safe to call from any task (e.g., the microROS manager task).
+  ImuData getImuData() const;
+
  private:
   // Constructor moved to private to prevent multiple creations
   explicit GyroSubsystem(const GyroSetup& setup, Threads::Mutex& i2c_mutex)
@@ -74,6 +78,8 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
 
   const GyroSetup setup_;
   Threads::Mutex& i2c_mutex_;
+  /// Protects imu_data_ between the gyro task (writer) and any reader task.
+  mutable Threads::Mutex data_mutex_;
 
   static constexpr unsigned long kLogIntervalMs = 500;
 
