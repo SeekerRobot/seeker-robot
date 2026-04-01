@@ -42,36 +42,56 @@ void IRAM_ATTR GyroSubsystem::intISR(void* arg) {
 
 void GyroSubsystem::update() {
   xSemaphoreTake(int_semaphore_, portMAX_DELAY);
-  Threads::Scope lock(i2c_mutex_);
+  Threads::Scope i2c_lock(i2c_mutex_);
+
   if (bno08x_.wasReset()) {
     Debug::printf(Debug::Level::INFO, "[BNO085] Sensor was reset");
     setReports();
+  }
+
+  // Accumulate sensor events into a local copy so data_mutex_ is held only
+  // during the final write, not during I2C communication.
+  ImuData local;
+  {
+    Threads::Scope data_lock(data_mutex_);
+    local = imu_data_;
   }
 
   sh2_SensorValue_t sensorValue;
   while (bno08x_.getSensorEvent(&sensorValue)) {
     switch (sensorValue.sensorId) {
       case SH2_GAME_ROTATION_VECTOR:
-        imu_data_.gameRotationVector = sensorValue.un.gameRotationVector;
+        local.gameRotationVector = sensorValue.un.gameRotationVector;
         break;
       case SH2_LINEAR_ACCELERATION:
-        imu_data_.linearAcceleration = sensorValue.un.linearAcceleration;
+        local.linearAcceleration = sensorValue.un.linearAcceleration;
         break;
       case SH2_GRAVITY:
-        imu_data_.gravity = sensorValue.un.gravity;
+        local.gravity = sensorValue.un.gravity;
         break;
       case SH2_GYROSCOPE_CALIBRATED:
-        imu_data_.gyroscope = sensorValue.un.gyroscope;
+        local.gyroscope = sensorValue.un.gyroscope;
         break;
       case SH2_STABILITY_CLASSIFIER:
-        imu_data_.stabilityClassifier = sensorValue.un.stabilityClassifier;
+        local.stabilityClassifier = sensorValue.un.stabilityClassifier;
         break;
     }
   }
+
+  {
+    Threads::Scope data_lock(data_mutex_);
+    imu_data_ = local;
+  }
+
   if (since_last_log_ >= kLogIntervalMs) {
     since_last_log_ = 0;
     logImuData();
   }
+}
+
+ImuData GyroSubsystem::getImuData() const {
+  Threads::Scope lock(data_mutex_);
+  return imu_data_;
 }
 
 void GyroSubsystem::reset() {
