@@ -2,7 +2,7 @@
 #include <micro_ros_platformio.h>
 
 #ifdef MICRO_ROS_TRANSPORT_ARDUINO_SERIAL
-void printf() {}
+extern "C" int printf(const char* /*format*/, ...) { return 0; }
 #endif
 
 #if defined(MICRO_ROS_TRANSPORT_ARDUINO_WIFI) ||      \
@@ -23,8 +23,7 @@ extern "C" {
 bool platformio_transport_open(struct uxrCustomTransport* transport);
 bool platformio_transport_close(struct uxrCustomTransport* transport);
 size_t platformio_transport_write(struct uxrCustomTransport* transport,
-                                  const uint8_t* buf, size_t len,
-                                  uint8_t* err);
+                                  const uint8_t* buf, size_t len, uint8_t* err);
 size_t platformio_transport_read(struct uxrCustomTransport* transport,
                                  uint8_t* buf, size_t len, int timeout,
                                  uint8_t* err);
@@ -56,7 +55,9 @@ extern "C" void set_microros_transports() {
 #if defined(MICRO_ROS_TRANSPORT_ARDUINO_SERIAL)
   // Wait for USB CDC serial to be ready (up to 3s)
   uint32_t start = millis();
-  while (!Serial && (millis() - start < 3000)) { delay(10); }
+  while (!Serial && (millis() - start < 3000)) {
+    delay(10);
+  }
 
   // Flush any stale data from USB enumeration
   delay(100);
@@ -75,11 +76,10 @@ extern "C" void set_microros_transports() {
   static struct micro_ros_agent_locator locator;
   locator.address = agent_ip;
   locator.port = agent_port;
-  rmw_uros_set_custom_transport(false, (void*)&locator,
-                                platformio_transport_open,
-                                platformio_transport_close,
-                                platformio_transport_write,
-                                platformio_transport_read);
+  rmw_uros_set_custom_transport(
+      false, (void*)&locator, platformio_transport_open,
+      platformio_transport_close, platformio_transport_write,
+      platformio_transport_read);
 #elif defined(MICRO_ROS_TRANSPORT_ARDUINO_CUSTOM)
   rmw_uros_set_custom_transport(
       MICROROS_TRANSPORTS_FRAMING_MODE, NULL, platformio_transport_open,

@@ -43,7 +43,8 @@ class HeartbeatParticipant : public IMicroRosParticipant {
 
   /// @brief Publishes the current counter if the publish interval has elapsed,
   ///        then increments. Rate-limited by publish_interval_ms; returns
-  ///        immediately when not yet due. Called by manager under transport lock.
+  ///        immediately when not yet due. Called by manager under transport
+  ///        lock.
   void publishAll() override;
 
  private:

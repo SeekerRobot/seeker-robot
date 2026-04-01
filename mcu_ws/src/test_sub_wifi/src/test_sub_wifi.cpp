@@ -44,7 +44,7 @@ void setup() {
     return;
   }
 
-  // Core 1, priority 3, 100 ms update interval, 4 KB stack
+  // Core 1, priority 3, 100 ms update interval, 4096 words stack
   wifi.beginThreadedPinned(4096, 3, 100, 1);
   Debug::printf(Debug::Level::INFO,
                 "[Main] WiFi subsystem started, connecting to \"%s\"",

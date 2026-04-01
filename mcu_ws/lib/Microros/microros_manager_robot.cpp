@@ -11,10 +11,13 @@ MicrorosManager* MicrorosManager::s_instance_ = nullptr;
 bool MicrorosManager::create_entities() {
   Debug::printf(Debug::Level::INFO, "[uROS] Creating entities...");
   allocator_ = rcl_get_default_allocator();
+  support_ = {};
+  node_ = rcl_get_zero_initialized_node();
   if (rclc_support_init(&support_, 0, NULL, &allocator_) != RCL_RET_OK) {
     Debug::printf(Debug::Level::ERROR, "[uROS] FAIL: rclc_support_init");
     return false;
   }
+  support_initialized_ = true;
   if (rclc_node_init_default(&node_, setup_.node_name, "", &support_) !=
       RCL_RET_OK) {
     Debug::printf(Debug::Level::ERROR, "[uROS] FAIL: rclc_node_init_default");
@@ -46,23 +49,28 @@ bool MicrorosManager::create_entities() {
   last_failed_participant_ = -1;
 
   Debug::printf(Debug::Level::INFO,
-               "[uROS] All %d participants created successfully",
-               (int)participants_count_);
+                "[uROS] All %d participants created successfully",
+                (int)participants_count_);
   return true;
 }
 
 void MicrorosManager::destroy_entities() {
   Debug::printf(Debug::Level::INFO, "[uROS] Destroying entities...");
-  rmw_context_t* rmw_context = rcl_context_get_rmw_context(&support_.context);
-  (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
-  // Do NOT call rcl_node_fini — it queues a DELETE_PARTICIPANT XRCE message
-  // that leaks into the next session's serial stream on reconnect, causing
-  // "unknown reference" errors on the agent.  rclc_support_fini closes the
-  // session; the agent tears down all entities when the session ends.
-  rclc_executor_fini(&executor_);
-  rclc_support_fini(&support_);
+  if (support_initialized_) {
+    rmw_context_t* rmw_context =
+        rcl_context_get_rmw_context(&support_.context);
+    (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
+    // Do NOT call rcl_node_fini — it queues a DELETE_PARTICIPANT XRCE message
+    // that leaks into the next session's serial stream on reconnect, causing
+    // "unknown reference" errors on the agent.  rclc_support_fini closes the
+    // session; the agent tears down all entities when the session ends.
+    rclc_executor_fini(&executor_);
+    rclc_support_fini(&support_);
+    support_initialized_ = false;
+  }
   node_ = rcl_get_zero_initialized_node();
   executor_ = rclc_executor_get_zero_initialized_executor();
+  support_ = {};
   // Notify participants to clean up
   for (size_t i = 0; i < participants_count_; ++i) {
     if (participants_[i]) participants_[i]->onDestroy();
@@ -87,7 +95,8 @@ void MicrorosManager::begin() {
   s_instance_ = this;
   Debug::printf(Debug::Level::INFO, "[uROS] Setting up transport...");
   set_microros_transports();
-  Debug::printf(Debug::Level::INFO, "[uROS] Transport ready — waiting for agent");
+  Debug::printf(Debug::Level::INFO,
+                "[uROS] Transport ready — waiting for agent");
 }
 
 void MicrorosManager::update() {
@@ -140,8 +149,10 @@ void MicrorosManager::update() {
     Debug::printf(Debug::Level::INFO, "[uROS] %s -> %s",
                   state_names[prev_state], state_names[state_]);
     if (state_cb_) {
-      if (state_ == AGENT_CONNECTED) state_cb_(true);
-      else if (state_ == AGENT_DISCONNECTED) state_cb_(false);
+      if (state_ == AGENT_CONNECTED)
+        state_cb_(true);
+      else if (state_ == AGENT_DISCONNECTED)
+        state_cb_(false);
     }
   }
 }
@@ -176,11 +187,16 @@ bool MicrorosManager::isConnected() const {
 const char* MicrorosManager::getStateStr() const {
   Threads::Scope guard(mutex_);
   switch (state_) {
-    case WAITING_AGENT:      return "WAITING_AGENT";
-    case AGENT_AVAILABLE:    return "AGENT_AVAILABLE";
-    case AGENT_CONNECTED:    return "AGENT_CONNECTED";
-    case AGENT_DISCONNECTED: return "AGENT_DISCONNECTED";
-    default:                 return "UNKNOWN";
+    case WAITING_AGENT:
+      return "WAITING_AGENT";
+    case AGENT_AVAILABLE:
+      return "AGENT_AVAILABLE";
+    case AGENT_CONNECTED:
+      return "AGENT_CONNECTED";
+    case AGENT_DISCONNECTED:
+      return "AGENT_DISCONNECTED";
+    default:
+      return "UNKNOWN";
   }
 }
 
