@@ -1,13 +1,12 @@
 /**
- * @file microros_manager.h
+ * @file microros_manager_robot.h
  * @brief Defines the universal microros manager class
  * @author Aldem Pido
  * @date 12/12/2025
  * Edited 3/31/25
  */
 
-#ifndef MICROROS_MANAGER_H
-#define MICROROS_MANAGER_H
+#pragma once
 #include <ThreadedSubsystem.h>
 #include <hal_thread.h>
 // microros includes
@@ -96,16 +95,16 @@ class MicroRosContext {
 class IMicroRosParticipant {
  public:
   virtual ~IMicroRosParticipant() {}
-  
-  /// @brief 
-  /// @param ctx 
-  /// @return 
+
+  /// @brief
+  /// @param ctx
+  /// @return
   virtual bool onCreate(MicroRosContext& ctx) = 0;
-  
-  /// @brief Called when manager tears down entities; participant should clean up any
-  /// resources
+
+  /// @brief Called when manager tears down entities; participant should clean
+  /// up any resources
   virtual void onDestroy() = 0;
-  
+
   /// @brief Called by the manager thread while manager transport lock is held.
   /// Default no-op for non-publishing participants.
   virtual void publishAll() {}
@@ -117,8 +116,7 @@ class MicrorosManagerSetup : public Classes::BaseSetup {
 
   MicrorosManagerSetup(const char* _id,
                        const char* _node_name = "robot_manager")
-      : Classes::BaseSetup(_id),
-        node_name(_node_name) {};
+      : Classes::BaseSetup(_id), node_name(_node_name){};
 };
 
 class MicrorosManager : public Subsystem::ThreadedSubsystem {
@@ -133,7 +131,7 @@ class MicrorosManager : public Subsystem::ThreadedSubsystem {
   void pause() override;
   void reset() override;
   const char* getInfo() override;
-  
+
   // Register a participant; it will be created/destroyed with the manager
   void registerParticipant(IMicroRosParticipant* participant);
 
@@ -170,6 +168,7 @@ class MicrorosManager : public Subsystem::ThreadedSubsystem {
 
   static MicrorosManager* s_instance_;
   mutable Threads::Mutex mutex_;
+  bool support_initialized_ = false;
   int last_failed_participant_ = -1;
   StateCallback state_cb_ = nullptr;
   bool create_entities();
@@ -177,5 +176,3 @@ class MicrorosManager : public Subsystem::ThreadedSubsystem {
 };
 
 }  // namespace Subsystem
-
-#endif

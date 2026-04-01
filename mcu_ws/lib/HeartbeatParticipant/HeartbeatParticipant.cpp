@@ -10,9 +10,7 @@ namespace Subsystem {
 
 HeartbeatParticipant::HeartbeatParticipant(
     const HeartbeatParticipantSetup& setup)
-    : setup_(setup),
-      publisher_(rcl_get_zero_initialized_publisher()),
-      msg_() {}
+    : setup_(setup), publisher_(rcl_get_zero_initialized_publisher()), msg_() {}
 
 bool HeartbeatParticipant::onCreate(MicroRosContext& ctx) {
   rcl_ret_t rc = ctx.createPublisherBestEffort(
@@ -42,7 +40,8 @@ void HeartbeatParticipant::publishAll() {
   elapsed_since_publish_ = 0;
   rcl_ret_t rc = rcl_publish(&publisher_, &msg_, nullptr);
   if (rc != RCL_RET_OK) {
-    Debug::printf(Debug::Level::WARN, "[Heartbeat] publish failed (%d)", (int)rc);
+    Debug::printf(Debug::Level::WARN, "[Heartbeat] publish failed (%d)",
+                  (int)rc);
   }
   msg_.data++;
 }
