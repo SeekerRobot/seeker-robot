@@ -2,7 +2,7 @@ import cv2
 import math
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32MultiArray
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from ultralytics import YOLO
@@ -35,13 +35,16 @@ class ObjectDetectionNode(Node):
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(
             Image,
-            '/camera/image_raw',   #! Change to Gazebo camera topic
+            '/camera/image_raw',   #! Change to your Gazebo camera topic
             self.image_callback,
             10
         )
 
         # Publisher: sends True when the teddy bear is found
-        self.publisher_ = self.create_publisher(Bool, '/object_found', 10)
+        self.found_publisher = self.create_publisher(Bool, '/object_found', 10)
+
+        # Publisher: sends [bbox_area, centroid_x, img_width] 
+        self.detection_pub = self.create_publisher(Float32MultiArray, '/detection_detail', 10)
 
         self.model = YOLO("yolo26n.pt")
         self.target_name = "teddy bear"
@@ -52,6 +55,7 @@ class ObjectDetectionNode(Node):
 
         results = self.model(img, stream=True)
         found_target = False
+        found_box = None  # store the teddy bear box to publish detection data
 
         for r in results:
             boxes = r.boxes
@@ -61,6 +65,7 @@ class ObjectDetectionNode(Node):
 
                 if label == self.target_name:
                     found_target = True
+                    found_box = box
                     print("DESIRED TARGET FOUND -------------------------------------------------")
 
                 # bounding box
@@ -84,10 +89,27 @@ class ObjectDetectionNode(Node):
                 thickness = 2
                 cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
 
-        # Publish found status to ROS2
+        # Publish simple found flag to /object_found
         found_msg = Bool()
         found_msg.data = found_target
-        self.publisher_.publish(found_msg)
+        self.found_publisher.publish(found_msg)
+
+        # Publish [bbox_area, centroid_x, img_width] to /detection_detail
+        detection_msg = Float32MultiArray()
+
+        if found_target and found_box is not None:
+            x1, y1, x2, y2 = found_box.xyxy[0]
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+
+            # find the details of the box
+            bbox_area  = float((x2 - x1) * (y2 - y1))
+            centroid_x = float((x1 + x2) / 2.0)
+            img_width  = float(img.shape[1])
+            detection_msg.data = [bbox_area, centroid_x, img_width]
+        else:
+            detection_msg.data = [0.0, 0.0, float(img.shape[1])]
+       
+        self.detection_pub.publish(detection_msg)
 
         cv2.imshow('Webcam', img)
         if cv2.waitKey(1) == ord('q'):
