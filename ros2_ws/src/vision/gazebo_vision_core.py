@@ -3,6 +3,8 @@ import math
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 from ultralytics import YOLO
 
 classNames = [
@@ -29,25 +31,24 @@ class ObjectDetectionNode(Node):
     def __init__(self):
         super().__init__('object_detection_node')
 
+        # --- GAZEBO: image comes from a ROS2 topic via cv_bridge ---
+        self.bridge = CvBridge()
+        self.subscription = self.create_subscription(
+            Image,
+            '/camera/image_raw',   #! Change to Gazebo camera topic
+            self.image_callback,
+            10
+        )
+
         # Publisher: sends True when the teddy bear is found
         self.publisher_ = self.create_publisher(Bool, '/object_found', 10)
-
-        # --- REAL LIFE: image comes from the ESP32 stream URL ---
-        self.cap = cv2.VideoCapture("http://192.168.8.200/stream")  #! Change to your ESP32 stream URL
-        self.cap.set(3, 640)
-        self.cap.set(4, 480)
 
         self.model = YOLO("yolo26n.pt")
         self.target_name = "teddy bear"
 
-        # Timer drives the detection loop 
-        self.timer = self.create_timer(0.033, self.timer_callback)  # ~30 fps
-
-    def timer_callback(self):
-        success, img = self.cap.read()
-        if not success:
-            self.get_logger().warn("Failed to grab frame from stream.")
-            return
+    def image_callback(self, msg):
+        # Convert ROS2 Image message to OpenCV frame
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
         results = self.model(img, stream=True)
         found_target = False
@@ -90,8 +91,6 @@ class ObjectDetectionNode(Node):
 
         cv2.imshow('Webcam', img)
         if cv2.waitKey(1) == ord('q'):
-            self.cap.release()
-            cv2.destroyAllWindows()
             rclpy.shutdown()
 
 
@@ -100,6 +99,7 @@ def main(args=None):
     node = ObjectDetectionNode()
     rclpy.spin(node)
     node.destroy_node()
+    cv2.destroyAllWindows()
     rclpy.shutdown()
 
 
