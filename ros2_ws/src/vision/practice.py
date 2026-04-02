@@ -4,6 +4,8 @@
 import cv2
 from ultralytics import YOLO 
 import math
+import numpy as np
+from deepface import DeepFace
 
 
 classNames = [
@@ -27,19 +29,48 @@ classNames = [
 
 
 cap = cv2.VideoCapture(0)
+
+#Let's load the pre-trained Haar Cascade Classifier for face detection
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
 cap.set(3, 640)
 cap.set(4, 480)
 
 model = YOLO("yolo26n.pt")
 
-
 while True:
     success, img = cap.read()
     results = model(img, stream=True)
 
-    found_target = False
-    found_wrong_target = False
+    ##############################################
+    # Emotion Detection Starts here
+    ##############################################
 
+    #Convert frame to grayscale (Haar Cascade works better with grayscale images)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # detect faces in the frame
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    
+    # this will draw rectangles around detected faces as shown
+    for (x, y, w, h) in faces:
+        cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+    # Only run DeepFace if at least one face found
+    if len(faces) > 0:
+        try:
+            emotion_analysis = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False)
+            dominant_emotion = emotion_analysis[0]['dominant_emotion']
+            cv2.putText(img, dominant_emotion, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+        except ValueError:
+            pass
+
+
+    ##############################################
+    # Object Detection Starts here
+    ##############################################
+
+    found_target = False
     target_name = "teddy bear"
 
     # coordinates
@@ -56,9 +87,6 @@ while True:
             if label == target_name:
                 found_target = True
                 print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-            else:
-                found_wrong_target = True
-                print("---------------------------------------------")
 
             # bounding box
             x1, y1, x2, y2 = box.xyxy[0]

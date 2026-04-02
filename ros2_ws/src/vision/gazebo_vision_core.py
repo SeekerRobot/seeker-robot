@@ -6,6 +6,8 @@ from std_msgs.msg import Bool, Float32MultiArray
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from ultralytics import YOLO
+from deepface import DeepFace
+from std_msgs.msg import String
 
 classNames = [
     "person", "bicycle", "car", "motorbike", "aeroplane",
@@ -46,6 +48,8 @@ class ObjectDetectionNode(Node):
         # Publisher: sends [bbox_area, centroid_x, img_width] 
         self.detection_pub = self.create_publisher(Float32MultiArray, '/detection_detail', 10)
 
+        self.emotion_publisher = self.create_publisher(String, '/emotion_detail', 10)
+
         self.model = YOLO("yolo26n.pt")
         self.target_name = "teddy bear"
 
@@ -56,6 +60,30 @@ class ObjectDetectionNode(Node):
         results = self.model(img, stream=True)
         found_target = False
         found_box = None  # store the teddy bear box to publish detection data
+
+
+        ##############################################
+        # Emotion Detection Starts here
+        ##############################################
+
+        #Convert frame to grayscale (Haar Cascade works better with grayscale images)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # detect faces in the frame
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        # this will draw rectangles around detected faces as shown
+        for (x, y, w, h) in faces:
+            cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+        # Only run DeepFace if at least one face found
+        if len(faces) > 0:
+            try:
+                emotion_analysis = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False)
+                dominant_emotion = emotion_analysis[0]['dominant_emotion']
+                cv2.putText(img, dominant_emotion, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+            except ValueError:
+                pass
 
         for r in results:
             boxes = r.boxes
@@ -110,6 +138,15 @@ class ObjectDetectionNode(Node):
             detection_msg.data = [0.0, 0.0, float(img.shape[1])]
        
         self.detection_pub.publish(detection_msg)
+
+        # Publish emotion data to /emotion_detail
+        emotion = String()
+        if len(faces) > 0:
+            emotion.data = dominant_emotion
+        else:
+            emotion.data = "No face detected"
+
+        self.emotion_publisher.publish(emotion)
 
         cv2.imshow('Webcam', img)
         if cv2.waitKey(1) == ord('q'):
