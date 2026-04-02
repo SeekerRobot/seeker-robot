@@ -6,8 +6,12 @@
  * @date 3/31/26
  */
 #include <Arduino.h>
+#include <BlinkSubsystem.h>
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
+
+static Classes::BaseSetup blink_setup("blink");
+static Subsystem::BlinkSubsystem blink(blink_setup);
 
 static IPAddress static_ip STATIC_IP;
 static IPAddress gateway GATEWAY;
@@ -45,6 +49,7 @@ void setup() {
   }
 
   // Core 1, priority 3, 100 ms update interval, 4096 words stack
+  blink.beginThreadedPinned(2048, 1, 500, 1);
   wifi.beginThreadedPinned(4096, 3, 100, 1);
   Debug::printf(Debug::Level::INFO,
                 "[Main] WiFi subsystem started, connecting to \"%s\"",

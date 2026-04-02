@@ -21,6 +21,7 @@
  *   ros2 topic hz   /mcu/imu    # should report ~50 Hz
  */
 #include <Arduino.h>
+#include <BlinkSubsystem.h>
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
 #include <GyroSubsystem.h>
@@ -40,6 +41,9 @@ static IPAddress subnet SUBNET;
 // ---------------------------------------------------------------------------
 // Shared I2C mutex (gyro uses the same bus as any future I2C peripherals)
 // ---------------------------------------------------------------------------
+static Classes::BaseSetup blink_setup("blink");
+static Subsystem::BlinkSubsystem blink(blink_setup);
+
 static Threads::Mutex i2c_mutex;
 
 // ---------------------------------------------------------------------------
@@ -85,6 +89,8 @@ static const char* wifiStateStr(Subsystem::WifiState s) {
 void setup() {
   Serial.begin(921600);
   delay(500);
+
+  blink.beginThreadedPinned(2048, 1, 500, 1);
 
   // --- WiFi ---
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
