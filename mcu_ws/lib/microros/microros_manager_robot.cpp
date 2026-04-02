@@ -17,8 +17,8 @@ bool MicrorosManager::create_entities() {
       RCL_RET_OK)
     return false;
   executor_ = rclc_executor_get_zero_initialized_executor();
-  if (rclc_executor_init(&executor_, &support_.context, 1, &allocator_) !=
-      RCL_RET_OK)
+  if (rclc_executor_init(&executor_, &support_.context,
+                         setup_.executor_handles_, &allocator_) != RCL_RET_OK)
     return false;
   // Let registered participants create their pubs/subs
   for (size_t i = 0; i < participants_count_; ++i) {
@@ -30,16 +30,16 @@ bool MicrorosManager::create_entities() {
 }
 
 void MicrorosManager::destroy_entities() {
+  // Notify participants first — they need a valid node to fini their pubs/subs
+  for (size_t i = 0; i < participants_count_; ++i) {
+    if (participants_[i]) participants_[i]->onDestroy();
+  }
   rmw_context_t* rmw_context = rcl_context_get_rmw_context(&support_.context);
   (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
   rclc_executor_fini(&executor_);
   rcl_ret_t _ret_node = rcl_node_fini(&node_);
   (void)_ret_node;
   rclc_support_fini(&support_);
-  // Notify participants to clean up
-  for (size_t i = 0; i < participants_count_; ++i) {
-    if (participants_[i]) participants_[i]->onDestroy();
-  }
 }
 
 // No manager-owned timer; executor spin is driven from update()

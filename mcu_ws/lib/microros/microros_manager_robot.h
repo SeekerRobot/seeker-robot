@@ -64,13 +64,16 @@ class IMicroRosParticipant {
 
 class MicrorosManagerSetup : public Classes::BaseSetup {
  public:
-  MicrorosManagerSetup(const char* _id) : Classes::BaseSetup(_id){};
+  MicrorosManagerSetup(const char* _id, size_t executor_handles = 1)
+      : Classes::BaseSetup(_id), executor_handles_(executor_handles) {};
+  size_t executor_handles_;  ///< Number of executor handle slots (subscribers
+                             ///< etc.)
 };
 class MicrorosManager : public Classes::BaseSubsystem {
  public:
   ~MicrorosManager() override = default;
   MicrorosManager(const MicrorosManagerSetup& setup)
-      : BaseSubsystem(setup), setup_(setup){};
+      : BaseSubsystem(setup), setup_(setup) {};
 
   bool init() override;
   void update() override;

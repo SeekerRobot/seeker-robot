@@ -38,12 +38,12 @@ seeker-robot/
 
 Install the following on your host machine:
 
-| Tool | Link | Notes |
-|------|------|-------|
-| **Git** | [git-scm.com](https://git-scm.com/) | Required for cloning the repo |
-| **Docker Desktop** | [docker.com](https://www.docker.com/products/docker-desktop/) | Runs the development container |
-| **VSCode** | [code.visualstudio.com](https://code.visualstudio.com/) | Recommended editor |
-| **X Server** (for GUI apps) | See [X11 Setup](#x11-server-setup) below | Required for Gazebo, RViz, rqt |
+| Tool                        | Link                                                          | Notes                          |
+| --------------------------- | ------------------------------------------------------------- | ------------------------------ |
+| **Git**                     | [git-scm.com](https://git-scm.com/)                           | Required for cloning the repo  |
+| **Docker Desktop**          | [docker.com](https://www.docker.com/products/docker-desktop/) | Runs the development container |
+| **VSCode**                  | [code.visualstudio.com](https://code.visualstudio.com/)       | Recommended editor             |
+| **X Server** (for GUI apps) | See [X11 Setup](#x11-server-setup) below                      | Required for Gazebo, RViz, rqt |
 
 ### VSCode Extensions (Recommended)
 
@@ -230,15 +230,184 @@ A `ros2_ws/.vscode/c_cpp_properties.json` is included in the repository and is b
 
 ## Volume Layout (Inside Container)
 
-| Host Path | Container Path | Type |
-|-----------|---------------|------|
-| `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | Bind mount |
-| `ros2_ws/.vscode/` | `~/ros2_workspaces/.vscode/` | Bind mount |
-| `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | Bind mount |
-| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount |
-| Named volumes | `~/ros2_workspaces/{build,install,log}` | Docker volume |
-| Named volume | `~/.platformio` | Docker volume |
-| Named volume | `~/mcu_workspaces/seeker_mcu/.pio` | Docker volume |
-| Named volume | `~/mcu_workspaces/seeker_mcu/libs_external` | Docker volume |
+| Host Path               | Container Path                                         | Type          |
+| ----------------------- | ------------------------------------------------------ | ------------- |
+| `ros2_ws/src/`          | `~/ros2_workspaces/src/seeker_ros/`                    | Bind mount    |
+| `ros2_ws/.vscode/`      | `~/ros2_workspaces/.vscode/`                           | Bind mount    |
+| `mcu_ws/`               | `~/mcu_workspaces/seeker_mcu/`                         | Bind mount    |
+| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount    |
+| Named volumes           | `~/ros2_workspaces/{build,install,log}`                | Docker volume |
+| Named volume            | `~/.platformio`                                        | Docker volume |
+| Named volume            | `~/mcu_workspaces/seeker_mcu/.pio`                     | Docker volume |
+| Named volume            | `~/mcu_workspaces/seeker_mcu/libs_external`            | Docker volume |
 
 Build artifacts are stored in named Docker volumes to avoid polluting the host filesystem and to improve I/O performance on Windows/macOS.
+
+## SLAM & Navigation Subsystem
+
+The SLAM and navigation subsystem provides autonomous exploration and ball-seeking capability. It combines LiDAR-based SLAM mapping, Nav2 path planning, frontier exploration, and camera-based ball detection.
+
+### What Was Implemented
+
+#### MCU Firmware (`mcu_ws/`, build target `slam-sensors`)
+
+| File                             | Purpose                                                                                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/lidar/ld14p_protocol.h`     | LD14P LiDAR protocol — 47-byte packet structs, CRC8 validation, constants                                                                 |
+| `lib/lidar/LidarSubsystem.h/cpp` | LiDAR subsystem — UART parsing at 230400 baud, 360-degree scan assembly, publishes `sensor_msgs/LaserScan` on `/lidar/scan` via micro-ROS |
+| `lib/camera/CameraSubscriber.h`  | Camera subscriber (header-only) — lightweight ROS subscriber for `/camera/image/compressed`, tracks frame count and reception timeout     |
+| `src/slam-sensors/main.cpp`      | Entry point — wires MicrorosManager (core 0), LidarSubsystem (core 1), CameraSubscriber (core 1) using FreeRTOS tasks                     |
+
+#### Gazebo Simulation (`ros2_ws/src/`)
+
+| Package              | Purpose                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `seeker_description` | URDF/Xacro model of the hexapod with simulated LiDAR (gpu_lidar, 720 samples, 0.1-8.0m range, 10Hz) and camera (640x480, 15Hz) |
+| `seeker_gazebo`      | Gazebo Harmonic launch files, world file (5m x 5m room), ros_gz_bridge config, slam_toolbox params, ground-truth odometry bridge |
+
+#### Navigation (`ros2_ws/src/seeker_navigation/`)
+
+| File | Purpose |
+| ---- | ------- |
+| `seeker_navigation/ball_searcher.py` | Main autonomy node — state machine with frontier exploration, coverage grid fallback, ball detection (HSV thresholding), and ball approach via Nav2 |
+| `config/nav2_params.yaml` | Nav2 configuration — DWB local planner, NavfnPlanner, costmap2D with inflation, recovery behaviors, lifecycle manager |
+| `launch/nav2_ball_search.launch.py` | Launches Nav2 stack (controller, planner, behavior, bt_navigator, velocity_smoother, lifecycle_manager) + ball_searcher |
+
+#### Ball Searcher State Machine
+
+```
+WAITING_FOR_NAV2 -> INITIAL_ROTATION -> FRONTIER_NAV -> COVERAGE_NAV
+                                                    \-> APPROACH_BALL -> BALL_REACHED
+```
+
+1. **WAITING_FOR_NAV2** — waits for the Nav2 action server to become available
+2. **INITIAL_ROTATION** — rotates 360 degrees in place to seed the SLAM map and check for the ball
+3. **FRONTIER_NAV** — finds boundaries between free and unknown cells in the occupancy grid, navigates to them via Nav2
+4. **COVERAGE_NAV** — fallback when no frontiers remain; generates a grid of waypoints across free space (prioritizing areas near unknown space) and visits each one
+5. **APPROACH_BALL** — when the camera detects a red ball (HSV thresholding), cancels the current goal and navigates toward it using the pixel centroid to estimate bearing
+6. **BALL_REACHED** — ball fills enough of the camera frame; robot stops
+
+#### micro-ROS Manager Changes
+
+- `MicrorosManagerSetup` now accepts a configurable `executor_handles` count (default 1, backwards compatible)
+- `destroy_entities()` was fixed to call participant `onDestroy()` **before** `rcl_node_fini()`, preventing use-after-finalize when publishers/subscribers try to clean up against a dead node
+
+### ROS 2 Topic Structure
+
+| Topic                      | Type                             | Source                                |
+| -------------------------- | -------------------------------- | ------------------------------------- |
+| `/lidar/scan`              | `sensor_msgs/LaserScan`          | LiDAR (MCU or Gazebo)                 |
+| `/camera/image`            | `sensor_msgs/Image`              | Camera (Gazebo raw)                   |
+| `/camera/image/compressed` | `sensor_msgs/CompressedImage`    | image_transport republisher           |
+| `/map`                     | `nav_msgs/OccupancyGrid`         | slam_toolbox (TRANSIENT_LOCAL QoS)    |
+| `/odom`                    | `nav_msgs/Odometry`              | gz_odom_bridge (Gazebo ground truth)  |
+| `/cmd_vel`                 | `geometry_msgs/Twist`            | Nav2 controller / ball_searcher       |
+| `/tf`                      | `tf2_msgs/TFMessage`             | robot_state_publisher, odom bridge    |
+| `/navigate_to_pose`        | `nav2_msgs/NavigateToPose`       | Nav2 action server                    |
+
+### Running the Navigation Simulation
+
+All commands run inside the dev container (`docker compose exec ros2 bash`). You need 3 terminal sessions.
+
+#### Prerequisites
+
+- Docker container running with `BUILD_TARGET=dev`
+- X server running on host (see [X11 Setup](#x11-server-setup))
+- Required packages installed inside the container:
+  ```bash
+  sudo apt-get install -y ros-jazzy-slam-toolbox ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+  ```
+
+#### Terminal 1 — Gazebo + SLAM
+
+```bash
+cd ~/ros2_workspaces
+colcon build
+source install/setup.bash
+
+ros2 launch seeker_gazebo gazebo.launch.py
+```
+
+Wait ~10 seconds for slam_toolbox to activate, then verify:
+```bash
+ros2 lifecycle get /slam_toolbox
+# Should output: active [3]
+```
+
+For better performance, run Gazebo headless (no 3D window):
+```bash
+ros2 launch seeker_gazebo gazebo.launch.py headless:=true
+```
+
+#### Terminal 2 — RViz
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_workspaces/install/setup.bash
+
+ros2 run rviz2 rviz2 -d ~/ros2_workspaces/install/seeker_gazebo/share/seeker_gazebo/rviz/slam.rviz
+```
+
+> **Note:** The `/map` topic uses TRANSIENT_LOCAL QoS. If the map doesn't appear in RViz, expand the Map display's Topic settings and set **Durability** to **Transient Local** and **Reliability** to **Reliable**.
+
+#### Terminal 3 — Nav2 + Ball Searcher
+
+**Important:** Only launch after slam_toolbox is active (the `map` frame must exist).
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_workspaces/install/setup.bash
+
+ros2 launch seeker_navigation nav2_ball_search.launch.py
+```
+
+The robot will:
+1. Rotate 360 degrees to build an initial map
+2. Explore unknown areas using frontier detection + Nav2 path planning
+3. Fall back to coverage grid waypoints if no frontiers remain
+4. Detect a red ball via camera HSV thresholding and approach it
+5. Stop when the ball fills enough of the camera frame
+
+### Useful Debugging Commands
+
+```bash
+# Check Nav2 node status
+ros2 node list | grep -E "controller|planner|behavior|bt_navigator"
+
+# Verify TF tree
+ros2 run tf2_ros tf2_echo map base_footprint
+
+# Monitor cmd_vel output
+ros2 topic echo /cmd_vel --once
+
+# Check SLAM lifecycle state
+ros2 lifecycle get /slam_toolbox
+
+# Kill all Nav2 processes (for clean restart)
+pkill -f "controller_server|planner_server|behavior_server|bt_navigator|velocity_smoother|lifecycle_manager|ball_searcher"
+```
+
+### Nav2 Tuning Reference
+
+Key parameters in `config/nav2_params.yaml`:
+
+| Parameter | Location | Effect |
+| --------- | -------- | ------ |
+| `robot_radius` | both costmaps | Inscribed lethal zone around obstacles (black in RViz) |
+| `inflation_radius` | inflation_layer | Additional cost gradient beyond inscribed zone |
+| `cost_scaling_factor` | inflation_layer | Higher = costs drop off faster from obstacles |
+| `movement_time_allowance` | progress_checker | Seconds without progress before recovery triggers |
+| `xy_goal_tolerance` | goal_checker | How close the robot must get to a goal |
+
+### Running on Real Hardware (ESP32 + LD14P)
+
+```bash
+# 1. Build and flash the firmware
+cd ~/mcu_workspaces/seeker_mcu
+pio run -e slam-sensors -t upload
+
+# 2. Start the micro-ROS agent (in another terminal)
+ros2 run micro_ros_agent micro_ros_agent wifi4 -p 8888
+
+# 3. Run slam_toolbox and Nav2 as above
+```
+
+The ESP32 connects to the micro-ROS agent over WiFi UDP. The LD14P LiDAR should be wired to ESP32 pins D6 (TX) and D7 (RX) at 230400 baud.
