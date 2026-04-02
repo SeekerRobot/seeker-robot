@@ -35,7 +35,7 @@ class ObjectDetectionNode(Node):
         self.bridge = CvBridge()
         self.subscription = self.create_subscription(
             Image,
-            '/camera/image_raw',   #! Change to your Gazebo camera topic
+            '/camera/image',   #! Change to Gazebo camera topic
             self.image_callback,
             10
         )
