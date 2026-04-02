@@ -1,64 +1,90 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-from std_msgs.msg import String
-from cv_bridge import CvBridge
+# Code to use your device's camera to practice opencv and obj detection
+# This is not for the robot, but for reference!!
+
 import cv2
 from ultralytics import YOLO 
+import math
 
-class RobotVisionNode(Node):
-    def __init__(self):
-        super().__init__('robot_vision_node')
-        
-        # load trained model
-        self.model = YOLO("best.pt") 
-        
-        self.subscription = self.create_subscription(
-            Image, '/camera/image_raw', self.process_image, 10) #! Change image topic if needed
-        self.marker_pub = self.create_publisher(String, 'map_updates', 10)
-        self.bridge = CvBridge()
-        
-        self.target_name = "spoon" #! Change to target type as desired
-                                   # This target type is a classifier type in the yolo data set
 
-    def process_image(self, msg):
-        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+classNames = [
+    "person", "bicycle", "car", "motorbike", "aeroplane",
+    "bus", "train", "truck", "boat", "traffic light",
+    "fire hydrant", "stop sign", "parking meter", "bench", "bird",
+    "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe", "backpack",
+    "umbrella", "handbag", "tie", "suitcase", "frisbee",
+    "skis", "snowboard", "sports ball", "kite", "baseball bat",
+    "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
+    "wine glass", "cup", "fork", "knife", "spoon",
+    "bowl", "banana", "apple", "sandwich", "orange",
+    "broccoli", "carrot", "hot dog", "pizza", "donut",
+    "cake", "chair", "sofa", "pottedplant", "bed",
+    "diningtable", "toilet", "tvmonitor", "laptop", "mouse",
+    "remote", "keyboard", "cell phone", "microwave", "oven",
+    "toaster", "sink", "refrigerator", "book", "clock",
+    "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+]
 
-        # stream=True makes it run faster for live video
-        results = self.model(frame, stream=True, conf=0.6)
 
-        found_target = False
-        found_wrong_object = False
+cap = cv2.VideoCapture("http://192.168.8.200/stream") #! Change url to the url that frames are streaming to
+                                                      # This is currently the ESP32 static_ip/stream
+cap.set(3, 640)
+cap.set(4, 480)
 
-        for r in results:
-            for box in r.boxes:
-                # get the name of the object detected
-                class_id = int(box.cls[0])
-                label = self.model.names[class_id]
+model = YOLO("yolo26n.pt")
 
-                if label == self.target_name:
-                    found_target = True
-                else:
-                    found_wrong_object = True
 
-        # Mapping
-        if found_target:
-            self.get_logger().info("GOAL FOUND!")
-        elif found_wrong_object:
-            # mark the spot on the map to avoid this area 
-            self.get_logger().info("Wrong object detected. Marking map.")
-            status_msg = String()
-            status_msg.data = "mark_as_obstacle"
-            self.marker_pub.publish(status_msg)
+while True:
+    success, img = cap.read()
+    results = model(img, stream=True)
 
-        # Drawing the boxes on the screen so you can see what the robot sees
-        annotated_frame = next(results).plot()
-        cv2.imshow("YOLO Robot View", annotated_frame)
-        cv2.waitKey(1)
+    found_target = False
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = RobotVisionNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    target_name = "teddy bear"
+
+    # coordinates
+    for r in results:
+        boxes = r.boxes
+
+        for box in boxes:
+
+            # get the name of the object detected
+            cls = int(box.cls[0])
+            label = classNames[cls]
+            
+
+            if label == target_name:
+                found_target = True
+                print("DESIRED TARGET FOUND -------------------------------------------------")
+
+            # bounding box
+            x1, y1, x2, y2 = box.xyxy[0]
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
+
+            # put box in cam
+            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 255), 3)
+
+            # confidence
+            confidence = math.ceil((box.conf[0]*100))/100
+            print("Confidence --->",confidence)
+
+            # class name
+            cls = int(box.cls[0])
+            print("Class name -->", classNames[cls],"\n")
+
+            # object details
+            org = [x1, y1]
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            fontScale = 1
+            color = (255, 0, 0)
+            thickness = 2
+
+            cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
+
+    cv2.imshow('Webcam', img)
+
+    if cv2.waitKey(1) == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()

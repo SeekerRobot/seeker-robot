@@ -37,11 +37,29 @@ while True:
     success, img = cap.read()
     results = model(img, stream=True)
 
+    found_target = False
+    found_wrong_target = False
+
+    target_name = "teddy bear"
+
     # coordinates
     for r in results:
         boxes = r.boxes
 
         for box in boxes:
+
+            # get the name of the object detected
+            cls = int(box.cls[0])
+            label = classNames[cls]
+            
+
+            if label == target_name:
+                found_target = True
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            else:
+                found_wrong_target = True
+                print("---------------------------------------------")
+
             # bounding box
             x1, y1, x2, y2 = box.xyxy[0]
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
