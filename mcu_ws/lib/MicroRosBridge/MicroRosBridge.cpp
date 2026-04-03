@@ -94,7 +94,8 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
                   "[Bridge] BRIDGE_ENABLE_LIDAR=1 but lidar pointer is null");
     ok = false;
   } else {
-    // Without __init(), header.frame_id.data is nullptr → micro-CDR crash on publish.
+    // Without __init(), header.frame_id.data is nullptr → micro-CDR crash on
+    // publish.
     sensor_msgs__msg__LaserScan__init(&lidar_.msg);
     // Wire pre-allocated buffers so __fini() never frees them.
     lidar_.msg.ranges.data = lidar_.ranges_buf;

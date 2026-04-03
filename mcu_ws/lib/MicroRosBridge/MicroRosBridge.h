@@ -55,9 +55,9 @@
 
 // Compile-time sanity check — warns if every feature is disabled so a silent
 // no-op bridge isn't mistaken for a working one.
-#if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO && \
-    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && \
-    !BRIDGE_ENABLE_LIDAR && !BRIDGE_ENABLE_DEBUG
+#if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO &&                        \
+    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_LIDAR && \
+    !BRIDGE_ENABLE_DEBUG
 #pragma message( \
     "MicroRosBridge: all features disabled — no publishers will be created. Set -DBRIDGE_ENABLE_*=1 in build_flags.")
 #endif
