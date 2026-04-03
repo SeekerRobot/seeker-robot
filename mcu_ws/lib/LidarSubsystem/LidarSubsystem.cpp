@@ -161,10 +161,11 @@ void LidarSubsystem::infoCb(LDS::info_t code, String info) {
 void LidarSubsystem::errorCb(LDS::result_t code, String aux) {
   if (!instance_) return;
   // ERROR_CHECKSUM fires frequently during motor spin-up — demote to DEBUG.
-  Debug::Level lvl = (code == LDS::ERROR_CHECKSUM) ? Debug::Level::DEBUG
-                                                    : Debug::Level::WARN;
+  Debug::Level lvl =
+      (code == LDS::ERROR_CHECKSUM) ? Debug::Level::DEBUG : Debug::Level::WARN;
   Debug::printf(lvl, "[Lidar] %s: %s",
-                instance_->lidar_.resultCodeToString(code).c_str(), aux.c_str());
+                instance_->lidar_.resultCodeToString(code).c_str(),
+                aux.c_str());
 }
 
 }  // namespace Subsystem

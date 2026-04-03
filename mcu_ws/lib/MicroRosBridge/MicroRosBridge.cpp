@@ -111,8 +111,7 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     lidar_.msg.range_max = 12.0f;
 
     rcl_ret_t rc = ctx.createPublisherBestEffort(
-        &lidar_.pub,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
+        &lidar_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
         setup_.scan_topic);
     if (rc != RCL_RET_OK) {
       Debug::printf(Debug::Level::ERROR,
@@ -145,7 +144,8 @@ void MicroRosBridge::onDestroy() {
   servo_.pub = rcl_get_zero_initialized_publisher();
 #endif
 #if BRIDGE_ENABLE_LIDAR
-  // Null backing pointers before __fini() to prevent free() of our struct buffer.
+  // Null backing pointers before __fini() to prevent free() of our struct
+  // buffer.
   lidar_.msg.ranges.data = nullptr;
   lidar_.msg.ranges.size = 0;
   lidar_.msg.ranges.capacity = 0;
@@ -236,9 +236,8 @@ void MicroRosBridge::publishAll() {
       lidar_.msg.angle_min = a_min * kDeg2Rad;
       lidar_.msg.angle_max = a_max * kDeg2Rad;
       lidar_.msg.angle_increment =
-          (scan.count > 1)
-              ? ((a_max - a_min) * kDeg2Rad / (scan.count - 1))
-              : 0.0f;
+          (scan.count > 1) ? ((a_max - a_min) * kDeg2Rad / (scan.count - 1))
+                           : 0.0f;
 
       float freq = setup_.lidar->getCurrentScanFreqHz();
       if (freq > 0.0f) {
