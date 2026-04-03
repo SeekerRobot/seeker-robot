@@ -86,6 +86,45 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
                 "[Bridge] BRIDGE_ENABLE_SERVO=1 but not yet implemented");
 #endif
 
+#if BRIDGE_ENABLE_LIDAR
+  if (!setup_.lidar) {
+    Debug::printf(Debug::Level::ERROR,
+                  "[Bridge] BRIDGE_ENABLE_LIDAR=1 but lidar pointer is null");
+    ok = false;
+  } else {
+    // __init allocates the header.frame_id string sequence; must be called
+    // before any publish or micro-CDR will dereference a nullptr.
+    sensor_msgs__msg__LaserScan__init(&lidar_.msg);
+
+    // Override the sequence data pointers with our pre-allocated buffers.
+    // __init() sets data=nullptr; leaving it would cause micro-CDR to
+    // dereference nullptr during serialisation → crash.
+    lidar_.msg.ranges.data = lidar_.ranges_buf;
+    lidar_.msg.ranges.size = 0;
+    lidar_.msg.ranges.capacity = LidarPublisherState::kCapacity;
+    lidar_.msg.intensities.data = lidar_.intensities_buf;
+    lidar_.msg.intensities.size = 0;
+    lidar_.msg.intensities.capacity = LidarPublisherState::kCapacity;
+
+    // Physical limits for the LD14P (metres).
+    lidar_.msg.range_min = 0.02f;
+    lidar_.msg.range_max = 12.0f;
+
+    rcl_ret_t rc = ctx.createPublisherBestEffort(
+        &lidar_.pub,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
+        setup_.scan_topic);
+    if (rc != RCL_RET_OK) {
+      Debug::printf(Debug::Level::ERROR,
+                    "[Bridge] LaserScan publisher failed (%d)", (int)rc);
+      ok = false;
+    } else {
+      Debug::printf(Debug::Level::INFO, "[Bridge] LaserScan publisher -> %s",
+                    setup_.scan_topic);
+    }
+  }
+#endif  // BRIDGE_ENABLE_LIDAR
+
   initialized_ = ok;
   return ok;
 }
@@ -104,6 +143,17 @@ void MicroRosBridge::onDestroy() {
 #endif
 #if BRIDGE_ENABLE_SERVO
   servo_.pub = rcl_get_zero_initialized_publisher();
+#endif
+#if BRIDGE_ENABLE_LIDAR
+  // Null backing pointers before __fini() to prevent free() of our struct buffer.
+  lidar_.msg.ranges.data = nullptr;
+  lidar_.msg.ranges.size = 0;
+  lidar_.msg.ranges.capacity = 0;
+  lidar_.msg.intensities.data = nullptr;
+  lidar_.msg.intensities.size = 0;
+  lidar_.msg.intensities.capacity = 0;
+  sensor_msgs__msg__LaserScan__fini(&lidar_.msg);
+  lidar_.pub = rcl_get_zero_initialized_publisher();
 #endif
   initialized_ = false;
   Debug::printf(Debug::Level::INFO, "[Bridge] onDestroy");
@@ -166,6 +216,54 @@ void MicroRosBridge::publishAll() {
 #if BRIDGE_ENABLE_SERVO
   // TODO
 #endif
+
+#if BRIDGE_ENABLE_LIDAR
+  if (setup_.lidar && lidar_.elapsed >= setup_.scan_interval_ms) {
+    LidarScanData scan = setup_.lidar->getScanData();
+    if (scan.valid && scan.scan_count != lidar_.last_scan_count &&
+        scan.count > 0) {
+      lidar_.last_scan_count = scan.scan_count;
+      lidar_.elapsed = 0;
+
+      // Compute angle bounds from actual delivered angles. The LD14P applies
+      // geometric correction so points are not perfectly uniform.
+      static constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
+      float a_min = scan.angles_deg[0], a_max = scan.angles_deg[0];
+      for (uint16_t i = 1; i < scan.count; i++) {
+        if (scan.angles_deg[i] < a_min) a_min = scan.angles_deg[i];
+        if (scan.angles_deg[i] > a_max) a_max = scan.angles_deg[i];
+      }
+      lidar_.msg.angle_min = a_min * kDeg2Rad;
+      lidar_.msg.angle_max = a_max * kDeg2Rad;
+      lidar_.msg.angle_increment =
+          (scan.count > 1)
+              ? ((a_max - a_min) * kDeg2Rad / (scan.count - 1))
+              : 0.0f;
+
+      float freq = setup_.lidar->getCurrentScanFreqHz();
+      if (freq > 0.0f) {
+        lidar_.msg.scan_time = 1.0f / freq;
+        lidar_.msg.time_increment = lidar_.msg.scan_time / scan.count;
+      }
+
+      uint16_t n = (scan.count < LidarPublisherState::kCapacity)
+                       ? scan.count
+                       : LidarPublisherState::kCapacity;
+      for (uint16_t i = 0; i < n; i++) {
+        lidar_.ranges_buf[i] = scan.distances_mm[i] * 0.001f;  // mm → m
+        lidar_.intensities_buf[i] = scan.qualities[i];
+      }
+      lidar_.msg.ranges.size = n;
+      lidar_.msg.intensities.size = n;
+
+      rcl_ret_t rc = rcl_publish(&lidar_.pub, &lidar_.msg, nullptr);
+      if (rc != RCL_RET_OK) {
+        Debug::printf(Debug::Level::WARN,
+                      "[Bridge] LaserScan publish failed (%d)", (int)rc);
+      }
+    }
+  }
+#endif  // BRIDGE_ENABLE_LIDAR
 }
 
 }  // namespace Subsystem

@@ -62,10 +62,18 @@ Each sketch under `mcu_ws/src/` is its own PlatformIO project. Build from within
 
 ```bash
 # Inside the container
-cd ~/mcu_workspaces/seeker_mcu/src/main
-pio run                        # build default board env
+cd ~/mcu_workspaces/seeker_mcu/src/<sketch_name>
+pio run                        # build default env (esp32s3sense)
 pio run -e esp32dev            # build for specific board
 pio run -e esp32dev -t upload  # flash via serial
+pio run -t upload              # flash default env
+```
+
+Start the micro-ROS agent on the host before flashing any `test_bridge_*` sketch:
+
+```bash
+# Inside the container — runs the micro-ROS WiFi agent
+ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
 ```
 
 ## Volume Layout (inside container)
@@ -83,3 +91,86 @@ pio run -e esp32dev -t upload  # flash via serial
 - **Commit messages**: Conventional Commits enforced via commitlint (`@commitlint/config-conventional`). Use prefixes like `feat:`, `fix:`, `docs:`, `chore:`, etc.
 - **ROS 2 distro**: Jazzy (matches micro-ROS distro setting in `platformio.ini`).
 - **`mcu_msgs` is shared**: Any changes to message definitions in `ros2_ws/src/mcu_msgs/` must be rebuilt on both the ROS 2 side (`colcon build --packages-select mcu_msgs`) and the MCU side (`pio run` with the extra_packages symlink).
+
+## MCU Library Architecture
+
+### Subsystem Pattern
+
+All hardware abstractions follow the same pattern. A subsystem:
+
+1. Inherits from `Subsystem::ThreadedSubsystem` (which wraps FreeRTOS `xTaskCreatePinnedToCore`).
+2. Uses a singleton via `static getInstance(const XxxSetup&)`.
+3. Implements `init()` (called from Arduino `setup()`), `begin()` (called once from the task before the loop), and `update()` (called in the task loop at the configured interval).
+4. Stores its state behind a `Threads::Mutex` (from `hal_thread.h`) and exposes thread-safe getters for other tasks to read.
+5. Is configured via an `XxxSetup` struct (inherits `Classes::BaseSetup`).
+
+Start a subsystem with:
+```cpp
+auto& sub = Subsystem::XxxSubsystem::getInstance(setup);
+sub.init();
+sub.beginThreadedPinned(stackWords, priority, delayMs, core);
+```
+
+### Threading Conventions
+
+| Resource | Core | Priority | Notes |
+|---|---|---|---|
+| WiFi | 1 | 3 | |
+| micro-ROS manager | 1 | 4 | |
+| Gyro | 1 | 5 | Semaphore-blocked on interrupt |
+| Battery | 1 | 2 | 100 ms sampling |
+| LiDAR | **0** | 4 | Needs its own core; drains serial at 1 ms |
+| Blink | 1 | 1 | |
+
+Use `Threads::Scope lock(mutex_)` (RAII) for all critical sections. Minimize lock hold time by reading into a local, then updating protected state in a short critical section.
+
+Stack sizes (in words, 1 word = 4 bytes): 2048 for blink; 4096 for WiFi/gyro/battery; 6144 for LiDAR; 8192 for micro-ROS manager.
+
+### Pin Definitions
+
+`mcu_ws/lib/RobotConfig/RobotConfig.h` defines all GPIO pins for both board targets, selected at compile time by `-DENV_ESP32DEV` or `-DENV_ESP32S3SENSE`.
+
+- **ESP32DEV**: standard WROOM-32 pinout
+- **ESP32S3SENSE**: Seeed XIAO ESP32S3
+
+`Config::tx`/`Config::rx` are the UART2 pins used for the LiDAR on both targets.
+
+### MicroRosBridge — Adding a New Publisher
+
+`mcu_ws/lib/MicroRosBridge/MicroRosBridge.h/.cpp` is a "God bridge" `IMicroRosParticipant` that owns all ROS publishers. Each publisher is gated by a compile-time flag:
+
+```
+-DBRIDGE_ENABLE_HEARTBEAT=1
+-DBRIDGE_ENABLE_GYRO=1
+-DBRIDGE_ENABLE_BATTERY=1
+-DBRIDGE_ENABLE_LIDAR=1
+```
+
+To add a new publisher:
+1. Add `#ifndef BRIDGE_ENABLE_FOO / #define BRIDGE_ENABLE_FOO 0` in the header.
+2. Conditionally include the subsystem header and the ROS message header.
+3. Define `FooPublisherState` struct (`pub`, `msg`, `elapsedMillis`). If the message has dynamic arrays (like `LaserScan`), add pre-allocated backing buffers in the struct and wire them in `onCreate()` after calling `__init()` on the msg.
+4. Add `FooSubsystem* foo = nullptr;` and topic/interval fields to `MicroRosBridgeSetup`.
+5. Add `std::conditional_t<BridgeConfig::kEnableLidar, FooPublisherState, EmptyState> foo_;` to `MicroRosBridge`.
+6. Implement `#if BRIDGE_ENABLE_FOO` blocks in onCreate / onDestroy / publishAll.
+
+**Critical**: For any message with dynamic sequences (e.g., `sensor_msgs/LaserScan`), call `__init()` before use (it allocates `header.frame_id`), then replace `.data` pointers with struct-allocated buffers. Before calling `__fini()` in `onDestroy()`, null those pointers first to prevent `free()` of stack/struct memory.
+
+The `MicroRosBridgeSetup` struct holds raw pointers to subsystems — construct it in `setup()` after calling `getInstance()`, not at global-static init time.
+
+### Test Sketch Conventions
+
+Two kinds of test sketches:
+
+- **`test_sub_*`** — Serial-only hardware tests. No micro-ROS, no WiFi. The `platformio.ini` excludes `libs_external/esp32` (the micro-ROS library) and only links `common.lib_base`. Interactive command parser over Serial at 921600 baud.
+- **`test_bridge_*`** — Full integration tests with WiFi + micro-ROS agent. Inherits from `esp32_microros_wifi` and enables bridge flags. `test_bridge_all` is the canonical integration test enabling all four publishers.
+
+When writing a new `test_sub_*`, do not include `../../libs_external/esp32` in `lib_extra_dirs` — that pulls in micro-ROS which requires network config macros to be defined.
+
+### LDS LiDAR Library
+
+The LDS library (kaiaai/LDS, pinned in `platformio.ini`) uses plain C function-pointer callbacks with no context parameter. The `LidarSubsystem` bridges them via a `static LidarSubsystem* instance_` pointer set in `init()`. Include `<LDS_LDROBOT_LD14P.h>` directly (not `<lds_all_models.h>`) to avoid compiling all 25+ drivers.
+
+`LidarScanData` is ~8.6 KB. When using it as a local variable in a function called from the Arduino main task (default stack ~8 KB), declare it `static` to keep it in BSS.
+
+The `scan_completed=true` flag in the scan point callback fires on the **first point of the new revolution**, not the last of the completed one.

@@ -1,30 +1,34 @@
 /**
- * @file test_bridge_imu.cpp
+ * @file test_bridge_all.cpp
  * @author Aldem Pido
- * @date 3/31/2026
- * @brief Integration test: WiFi + MicrorosManager + MicroRosBridge (IMU
- * publisher).
+ * @date 4/2/2026
+ * @brief Integration test: WiFi + MicrorosManager + MicroRosBridge with all
+ *        subsystems enabled (heartbeat, gyro, battery, lidar).
  *
- * Demonstrates the bridge pattern: GyroSubsystem runs independently on its own
- * FreeRTOS task (interrupt-driven, no ROS knowledge). MicroRosBridge is the
- * sole IMicroRosParticipant — it reads from the gyro via getImuData() and
- * publishes sensor_msgs/Imu at 50 Hz once the micro-ROS agent is reachable.
+ * Each subsystem runs on its own FreeRTOS task with no ROS knowledge.
+ * MicroRosBridge is the sole IMicroRosParticipant — it reads subsystem data
+ * via thread-safe getters and publishes at the configured rates once the
+ * micro-ROS agent is reachable.
  *
- * Build flags required (set in this sketch's platformio.ini):
- *   -D BRIDGE_ENABLE_GYRO=1
- *
- * Expected Serial output at ~2 s intervals:
- *   [Loop] wifi=CONNECTED    microros=CONNECTED    ip=192.168.x.x  rssi=-XX dBm
+ * Topics published once agent connects:
+ *   mcu/heartbeat        std_msgs/Int32        1 Hz
+ *   mcu/imu              sensor_msgs/Imu      50 Hz
+ *   mcu/battery_voltage  std_msgs/Float32      1 Hz
+ *   mcu/scan             sensor_msgs/LaserScan ~6 Hz (per completed scan)
  *
  * Verify on the host:
- *   ros2 topic echo /mcu/imu
- *   ros2 topic hz   /mcu/imu    # should report ~50 Hz
+ *   ros2 topic hz /mcu/imu             # ~50 Hz
+ *   ros2 topic hz /mcu/scan            # ~6 Hz
+ *   ros2 topic echo /mcu/battery_voltage
+ *   ros2 topic echo /mcu/scan
  */
 #include <Arduino.h>
+#include <BatterySubsystem.h>
 #include <BlinkSubsystem.h>
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
 #include <GyroSubsystem.h>
+#include <LidarSubsystem.h>
 #include <MicroRosBridge.h>
 #include <RobotConfig.h>
 #include <Wire.h>
@@ -39,16 +43,13 @@ static IPAddress gateway GATEWAY;
 static IPAddress subnet SUBNET;
 
 // ---------------------------------------------------------------------------
-// Shared I2C mutex (gyro uses the same bus as any future I2C peripherals)
+// Globals safe to construct at static-init time (no runtime dependencies)
 // ---------------------------------------------------------------------------
 static Classes::BaseSetup blink_setup("blink");
 static Subsystem::BlinkSubsystem blink(blink_setup);
 
 static Threads::Mutex i2c_mutex;
 
-// ---------------------------------------------------------------------------
-// Subsystem setup structs (no runtime dependencies — safe as globals)
-// ---------------------------------------------------------------------------
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
                                                      WIFI_PASSWORD, static_ip,
                                                      gateway, subnet);
@@ -56,11 +57,19 @@ static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
 static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
 
-static Subsystem::MicrorosManagerSetup manager_setup("microros",
-                                                     "bridge_imu_node");
+static constexpr Subsystem::BatteryCalibration kBattCal(
+    /*raw_lo=*/1862, /*volt_lo=*/3.0f,
+    /*raw_hi=*/2480, /*volt_hi=*/4.2f);
+static Subsystem::BatterySetup battery_setup(Config::batt, kBattCal,
+                                             /*num_samples=*/16);
 
-// MicrorosManager has no runtime-resolved pointers in its setup — safe as
-// global.
+// LidarSetup holds a HardwareSerial& — Serial2 is a global object, safe here.
+static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
+                                         /*rx_buf_size=*/512,
+                                         /*scan_freq_hz=*/6.0f);
+
+static Subsystem::MicrorosManagerSetup manager_setup("microros",
+                                                     "bridge_all_node");
 static Subsystem::MicrorosManager manager(manager_setup);
 
 // ---------------------------------------------------------------------------
@@ -68,18 +77,12 @@ static Subsystem::MicrorosManager manager(manager_setup);
 // ---------------------------------------------------------------------------
 static const char* wifiStateStr(Subsystem::WifiState s) {
   switch (s) {
-    case Subsystem::WifiState::DISCONNECTED:
-      return "DISCONNECTED";
-    case Subsystem::WifiState::CONNECTING:
-      return "CONNECTING";
-    case Subsystem::WifiState::CONNECTED:
-      return "CONNECTED";
-    case Subsystem::WifiState::RECONNECTING:
-      return "RECONNECTING";
-    case Subsystem::WifiState::FAILED:
-      return "FAILED";
-    default:
-      return "UNKNOWN";
+    case Subsystem::WifiState::DISCONNECTED:  return "DISCONNECTED";
+    case Subsystem::WifiState::CONNECTING:    return "CONNECTING";
+    case Subsystem::WifiState::CONNECTED:     return "CONNECTED";
+    case Subsystem::WifiState::RECONNECTING:  return "RECONNECTING";
+    case Subsystem::WifiState::FAILED:        return "FAILED";
+    default:                                  return "UNKNOWN";
   }
 }
 
@@ -92,41 +95,56 @@ void setup() {
 
   blink.beginThreadedPinned(2048, 1, 500, 1);
 
-  // --- WiFi ---
+  // --- WiFi --- core 1 | priority 3 | 100 ms | 4096 words
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
   if (!wifi.init()) {
     Debug::printf(Debug::Level::ERROR, "[Main] WiFi init FAILED — halting");
     while (true) vTaskDelay(portMAX_DELAY);
   }
-  // Core 1 | priority 3 | 100 ms update | 4096 words
   wifi.beginThreadedPinned(4096, 3, 100, 1);
   Debug::printf(Debug::Level::INFO, "[Main] WiFi started, connecting to \"%s\"",
                 WIFI_SSID);
 
-  // --- Gyro ---
+  // --- Gyro --- core 1 | priority 5 | 0 ms (semaphore-blocked) | 4096 words
+  // GyroSubsystem::init() calls Wire.begin() and Wire.setClock() internally.
   auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
   if (!gyro.init()) {
     Debug::printf(Debug::Level::ERROR, "[Main] Gyro init FAILED — halting");
     while (true) vTaskDelay(portMAX_DELAY);
   }
-  // Core 1 | priority 5 | 0 ms update (blocks on interrupt semaphore) | 4096
-  // words
   gyro.beginThreadedPinned(4096, 5, 0, 1);
   Debug::printf(Debug::Level::INFO, "[Main] Gyro started");
 
+  // --- Battery --- core 1 | priority 2 | 100 ms | 4096 words
+  auto& battery = Subsystem::BatterySubsystem::getInstance(battery_setup);
+  if (!battery.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] Battery init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  battery.beginThreadedPinned(4096, 2, 100, 1);
+  Debug::printf(Debug::Level::INFO, "[Main] Battery started");
+
+  // --- Lidar --- core 0 | priority 4 | 1 ms | 6144 words
+  auto& lidar = Subsystem::LidarSubsystem::getInstance(lidar_setup);
+  if (!lidar.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] Lidar init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  lidar.beginThreadedPinned(6144, 4, 1, 0);
+  Debug::printf(Debug::Level::INFO, "[Main] Lidar started");
+
   // --- Bridge ---
-  // MicroRosBridgeSetup holds a pointer to the gyro singleton, so it must be
-  // constructed here — after getInstance() — not at global-static init time.
-  // The local statics below live for the duration of the program.
-  // Note: fields not set here use their defaults from MicroRosBridgeSetup
-  // (imu_topic = "mcu/imu", imu_interval_ms = 20).
+  // MicroRosBridgeSetup holds subsystem pointers, so it must be constructed
+  // after getInstance() calls — not at global-static init time.
+  // Declared static so it outlives setup().
   static Subsystem::MicroRosBridgeSetup bridge_setup;
-  bridge_setup.gyro = &gyro;
+  bridge_setup.gyro    = &gyro;
+  bridge_setup.battery = &battery;
+  bridge_setup.lidar   = &lidar;
   static Subsystem::MicroRosBridge bridge(bridge_setup);
 
-  // --- micro-ROS manager ---
+  // --- micro-ROS manager --- core 1 | priority 4 | 10 ms | 8192 words
   manager.registerParticipant(&bridge);
-
   if (!manager.init()) {
     Debug::printf(Debug::Level::ERROR, "[Main] Manager init FAILED — halting");
     while (true) vTaskDelay(portMAX_DELAY);
@@ -135,7 +153,6 @@ void setup() {
     Debug::printf(Debug::Level::INFO, "[Main] micro-ROS agent %s",
                   connected ? "CONNECTED" : "DISCONNECTED");
   });
-  // Core 1 | priority 4 | 10 ms update | 8192 word stack
   manager.beginThreadedPinned(8192, 4, 10, 1);
   Debug::printf(Debug::Level::INFO, "[Main] micro-ROS manager started");
 }
