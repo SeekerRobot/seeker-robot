@@ -56,7 +56,7 @@ static Subsystem::MicrorosManager manager(manager_setup);
 
 void setup() {
   blink.beginThreadedPinned(2048, 1, 500, 1);
-  delay(1000); // Let things stabilize before starting anything
+  delay(1000);  // Let things stabilize before starting anything
 
   auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
   if (!gyro.init()) {

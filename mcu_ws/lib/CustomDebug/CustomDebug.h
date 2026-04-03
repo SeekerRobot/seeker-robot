@@ -9,13 +9,12 @@
 // @TODO: actually implement
 #pragma once
 
+#include <Arduino.h>
 #include <hal_thread.h>
 
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-
-#include <Arduino.h>
 #ifdef DEBUG_TRANSPORT_BLUETOOTH
 #include <BleDebugSubsystem.h>
 #endif
