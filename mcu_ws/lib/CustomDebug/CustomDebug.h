@@ -15,15 +15,12 @@
 #include <cstdint>
 #include <cstdio>
 
-#ifdef DEBUG_TRANSPORT_SERIAL
 #include <Arduino.h>
-#endif
-
 #ifdef DEBUG_TRANSPORT_BLUETOOTH
 #include <BleDebugSubsystem.h>
 #endif
-
 #ifdef DEBUG_TRANSPORT_MICROROS
+#include <MicroRosDebug.h>
 #endif
 
 namespace Debug {
@@ -83,7 +80,12 @@ inline void printf(Level level, const char* fmt, ...) {
   Subsystem::BleDebugSubsystem::writeIfReady(buf);
 #endif
 
-#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH)
+#ifdef DEBUG_TRANSPORT_MICROROS
+  MicroRosDebug::enqueue(buf);
+#endif
+
+#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH) && \
+    !defined(DEBUG_TRANSPORT_MICROROS)
   (void)fmt;
 #endif
 }
@@ -106,7 +108,12 @@ inline void printf(const char* fmt, ...) {
   Subsystem::BleDebugSubsystem::writeIfReady(buf);
 #endif
 
-#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH)
+#ifdef DEBUG_TRANSPORT_MICROROS
+  MicroRosDebug::enqueue(buf);
+#endif
+
+#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH) && \
+    !defined(DEBUG_TRANSPORT_MICROROS)
   (void)fmt;
 #endif
 }
