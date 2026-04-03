@@ -113,10 +113,11 @@ void loop() {
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
 
   if (wifi.isConnected()) {
-    Debug::printf(Debug::Level::INFO,
-                  "[Loop] wifi=CONNECTED  microros=%-18s  ip=%-15s  rssi=%d dBm",
-                  manager.getStateStr(),
-                  wifi.getLocalIP().toString().c_str(), wifi.getRSSI());
+    Debug::printf(
+        Debug::Level::INFO,
+        "[Loop] wifi=CONNECTED  microros=%-18s  ip=%-15s  rssi=%d dBm",
+        manager.getStateStr(), wifi.getLocalIP().toString().c_str(),
+        wifi.getRSSI());
   } else {
     Debug::printf(Debug::Level::INFO, "[Loop] wifi=%-12s  microros=%s",
                   wifi.getState() == Subsystem::WifiState::CONNECTING
