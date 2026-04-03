@@ -13,6 +13,7 @@
  * @date 3/31/26
  */
 #include <Arduino.h>
+#include <BlinkSubsystem.h>
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
 #include <HeartbeatParticipant.h>
@@ -28,6 +29,9 @@ static IPAddress subnet SUBNET;
 // ---------------------------------------------------------------------------
 // Subsystem instances
 // ---------------------------------------------------------------------------
+static Classes::BaseSetup blink_setup("blink");
+static Subsystem::BlinkSubsystem blink(blink_setup);
+
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
                                                      WIFI_PASSWORD, static_ip,
                                                      gateway, subnet);
@@ -73,6 +77,7 @@ void setup() {
     while (true) vTaskDelay(portMAX_DELAY);
   }
   // Core 1 | priority 3 | 100 ms update | 4192 words
+  blink.beginThreadedPinned(2048, 1, 500, 1);
   wifi.beginThreadedPinned(4096, 3, 100, 1);
   Debug::printf(Debug::Level::INFO, "[Main] WiFi started, connecting to \"%s\"",
                 WIFI_SSID);

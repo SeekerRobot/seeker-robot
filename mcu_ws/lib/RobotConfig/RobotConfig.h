@@ -22,7 +22,7 @@ constexpr static int rx = D7;
 // D8 - SCK NC
 // D9 - MISO NC
 // D10 - MOSI NC
-constexpr static int gyro_addr = 0x4B;
+constexpr static int gyro_addr = 0x4A;
 constexpr static uint8_t pca_addr = 0x40;
 #endif
 
