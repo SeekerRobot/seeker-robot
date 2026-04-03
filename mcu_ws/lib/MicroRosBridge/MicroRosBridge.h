@@ -49,11 +49,15 @@
 #ifndef BRIDGE_ENABLE_LIDAR
 #define BRIDGE_ENABLE_LIDAR 0
 #endif
+#ifndef BRIDGE_ENABLE_DEBUG
+#define BRIDGE_ENABLE_DEBUG 0
+#endif
 
 // Compile-time sanity check — warns if every feature is disabled so a silent
 // no-op bridge isn't mistaken for a working one.
 #if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO && \
-    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_LIDAR
+    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && \
+    !BRIDGE_ENABLE_LIDAR && !BRIDGE_ENABLE_DEBUG
 #pragma message( \
     "MicroRosBridge: all features disabled — no publishers will be created. Set -DBRIDGE_ENABLE_*=1 in build_flags.")
 #endif
@@ -78,6 +82,9 @@
 #if BRIDGE_ENABLE_LIDAR
 #include <LidarSubsystem.h>
 #include <sensor_msgs/msg/laser_scan.h>
+#endif
+#if BRIDGE_ENABLE_DEBUG
+#include <std_msgs/msg/string.h>
 #endif
 
 namespace Subsystem {
@@ -104,6 +111,7 @@ struct BridgeConfig {
   static constexpr bool kEnableBattery = BRIDGE_ENABLE_BATTERY;
   static constexpr bool kEnableServo = BRIDGE_ENABLE_SERVO;
   static constexpr bool kEnableLidar = BRIDGE_ENABLE_LIDAR;
+  static constexpr bool kEnableDebug = BRIDGE_ENABLE_DEBUG;
 };
 
 // ---- Zero-cost placeholder for disabled features
@@ -168,6 +176,20 @@ struct LidarPublisherState {
 using LidarPublisherState = EmptyState;
 #endif
 
+#if BRIDGE_ENABLE_DEBUG
+// Debug log publisher: Debug::printf output → std_msgs/String → mcu/log.
+// Messages are enqueued from any task via MicroRosDebug::enqueue() and
+// drained in publishAll() on the manager task.
+struct DebugPublisherState {
+  static constexpr uint16_t kMsgLen = 240;
+  rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
+  std_msgs__msg__String msg{};
+  char data_buf[kMsgLen + 1];  // backing buffer wired to msg.data.data
+};
+#else
+using DebugPublisherState = EmptyState;
+#endif
+
 // ---- Setup struct
 // ------------------------------------------------------------
 
@@ -195,6 +217,9 @@ struct MicroRosBridgeSetup {
   LidarSubsystem* lidar = nullptr;
   const char* scan_topic = "mcu/scan";
   uint32_t scan_interval_ms = 50;  ///< Min ms between publishes (~20 Hz cap).
+
+  // Debug log — used only when BridgeConfig::kEnableDebug is true.
+  const char* log_topic = "mcu/log";
 };
 
 // ---- Bridge
@@ -226,6 +251,9 @@ class MicroRosBridge : public IMicroRosParticipant {
   std::conditional_t<BridgeConfig::kEnableLidar, LidarPublisherState,
                      EmptyState>
       lidar_;
+  std::conditional_t<BridgeConfig::kEnableDebug, DebugPublisherState,
+                     EmptyState>
+      debug_;
 };
 
 }  // namespace Subsystem
