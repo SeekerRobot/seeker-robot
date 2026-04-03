@@ -190,10 +190,9 @@ static void printStreamSummary() {
         (unsigned long)scan.scan_count, scan.count, dmin, dmax,
         lidar.getCurrentScanFreqHz());
   } else {
-    Serial.printf(
-        "[Lidar] scan #%lu  pts=%u  dist=[none]  freq=%.2f Hz\r\n",
-        (unsigned long)scan.scan_count, scan.count,
-        lidar.getCurrentScanFreqHz());
+    Serial.printf("[Lidar] scan #%lu  pts=%u  dist=[none]  freq=%.2f Hz\r\n",
+                  (unsigned long)scan.scan_count, scan.count,
+                  lidar.getCurrentScanFreqHz());
   }
 }
 
