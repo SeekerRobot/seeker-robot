@@ -2,20 +2,15 @@
  * @file LedSubsystem.h
  * @author Aldem Pido, Claude Code
  * @date 4/2/2026
- * @brief Threaded LED subsystem for a mixed SK6812 + WS2812B chain via
- * FastLED.
+ * @brief Threaded LED subsystem for an SK6812 chain via FastLED.
  *
  * Disclaimer: This file was written mostly with Claude Code.
  *
  * Usage:
  *   1. Declare with data pin as template arg: LedSubsystem<Config::rgb_data>
- *   2. Construct with LedSetup (SK6812 count, WS2812B count).
+ *   2. Construct with LedSetup (LED count).
  *   3. beginThreadedPinned(...) — calls begin() then loops update() at ~50 Hz.
  *   4. Use setEffect(), setAll(), setLed(), setBrightness() from any thread.
- *
- * Hardware layout: SK6812 LEDs occupy indices [0, num_sk6812),
- *                  WS2812B LEDs occupy indices [num_sk6812, total).
- * Both chip types share the same 800 kHz WS2811-compatible protocol.
  *
  * Color/brightness separation: per-LED colors are stored independently of
  * global brightness, which is applied by FastLED at show() time.
@@ -25,7 +20,6 @@
 #include <Arduino.h>
 #include <FastLED.h>
 #include <ThreadedSubsystem.h>
-#include <elapsedMillis.h>
 #include <hal_thread.h>
 
 namespace Subsystem {
@@ -45,20 +39,11 @@ class LedSetup : public Classes::BaseSetup {
   LedSetup() = delete;
   ~LedSetup() = default;
 
-  /// @param num_sk6812    Number of SK6812 LEDs (always first in chain).
-  /// @param num_ws2812b   Number of WS2812B LEDs (always last in chain).
-  /// @param sk6812_rgbw   If true, drive SK6812s as RGBW (4-channel) via
-  ///                      FastLED's setRgbw(). Use this when the SK6812 LEDs
-  ///                      have a white channel (SK6812-RGBW / NeoPixel RGBW).
-  LedSetup(uint8_t num_sk6812, uint8_t num_ws2812b, bool sk6812_rgbw = false)
-      : Classes::BaseSetup("LedSubsystem"),
-        num_sk6812_(num_sk6812),
-        num_ws2812b_(num_ws2812b),
-        sk6812_rgbw_(sk6812_rgbw) {}
+  /// @param num_leds  Number of SK6812 LEDs in the chain.
+  explicit LedSetup(uint8_t num_leds)
+      : Classes::BaseSetup("LedSubsystem"), num_leds_(num_leds) {}
 
-  const uint8_t num_sk6812_;
-  const uint8_t num_ws2812b_;
-  const bool sk6812_rgbw_;
+  const uint8_t num_leds_;
 };
 
 /// @tparam DataPin FastLED data pin — must be a compile-time constant.
@@ -74,10 +59,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
   explicit LedSubsystem(const LedSetup& setup)
       : ThreadedSubsystem(setup),
         setup_(setup),
-        num_sk6812_(setup.num_sk6812_),
-        num_ws2812b_(setup.num_ws2812b_),
-        sk6812_rgbw_(setup.sk6812_rgbw_),
-        total_leds_(setup.num_sk6812_ + setup.num_ws2812b_) {}
+        total_leds_(setup.num_leds_) {}
 
   // -------------------------------------------------------------------------
   // ThreadedSubsystem overrides
@@ -93,19 +75,12 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
   }
 
   void begin() override {
-    uint8_t n = total_leds_;
-    if (n > kMaxLeds) n = kMaxLeds;
-
-    if (num_sk6812_ > 0) {
-      auto& ctl =
-          FastLED.addLeds<SK6812, DataPin, GRB>(leds_, 0, num_sk6812_);
-      if (sk6812_rgbw_) ctl.setRgbw(RgbwDefault());
-    }
-    if (num_ws2812b_ > 0) {
-      FastLED.addLeds<WS2812B, DataPin, GRB>(leds_, num_sk6812_, num_ws2812b_);
-    }
+    // Register FastLED against display_ (the DMA source buffer).
+    // Rendering happens into leds_ so DMA reads and CPU writes never race.
+    FastLED.addLeds<SK6812, DataPin, GRB>(display_, total_leds_);
     FastLED.setBrightness(global_brightness_);
-    fill_solid(leds_, n, CRGB::Black);
+    fill_solid(leds_, total_leds_, CRGB::Black);
+    fill_solid(display_, total_leds_, CRGB::Black);
     FastLED.show();
     init_success_ = true;
   }
@@ -182,6 +157,10 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
     }
 
     anim_phase_ += speed;
+
+    // Copy render buffer → display buffer, then show.
+    // FastLED's async DMA reads display_[] while the next frame renders into leds_[].
+    memcpy(display_, leds_, total_leds_ * sizeof(CRGB));
     FastLED.show();
   }
 
@@ -234,19 +213,14 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
     return mode_;
   }
   uint8_t getTotalLeds() const { return total_leds_; }
-  uint8_t getNumSk6812() const { return num_sk6812_; }
-  uint8_t getNumWs2812b() const { return num_ws2812b_; }
-  bool isSk6812Rgbw() const { return sk6812_rgbw_; }
 
  private:
   const LedSetup setup_;
-  const uint8_t num_sk6812_;
-  const uint8_t num_ws2812b_;
-  const bool sk6812_rgbw_;
   const uint8_t total_leds_;
 
-  CRGB leds_[kMaxLeds] = {};    ///< FastLED output buffer.
-  CRGB colors_[kMaxLeds] = {};  ///< Per-LED user-set colors (for SOLID mode).
+  CRGB leds_[kMaxLeds] = {};     ///< Render buffer — animation writes here.
+  CRGB display_[kMaxLeds] = {}; ///< Display buffer — FastLED DMA reads here.
+  CRGB colors_[kMaxLeds] = {};  ///< Write buffer — API callers set colors here.
 
   LedMode mode_ = LedMode::CLEAR;
   CRGB effect_color_ = CRGB::White;
