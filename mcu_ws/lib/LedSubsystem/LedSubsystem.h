@@ -57,9 +57,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
   LedSubsystem& operator=(const LedSubsystem&) = delete;
 
   explicit LedSubsystem(const LedSetup& setup)
-      : ThreadedSubsystem(setup),
-        setup_(setup),
-        total_leds_(setup.num_leds_) {}
+      : ThreadedSubsystem(setup), setup_(setup), total_leds_(setup.num_leds_) {}
 
   // -------------------------------------------------------------------------
   // ThreadedSubsystem overrides
@@ -159,7 +157,8 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
     anim_phase_ += speed;
 
     // Copy render buffer → display buffer, then show.
-    // FastLED's async DMA reads display_[] while the next frame renders into leds_[].
+    // FastLED's async DMA reads display_[] while the next frame renders into
+    // leds_[].
     memcpy(display_, leds_, total_leds_ * sizeof(CRGB));
     FastLED.show();
   }
@@ -197,7 +196,8 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
 
   /// @brief Set an animation effect.
   /// @param mode   The LedMode to use.
-  /// @param color  Base color (used by PULSE, CHASE; ignored for rainbow modes).
+  /// @param color  Base color (used by PULSE, CHASE; ignored for rainbow
+  /// modes).
   /// @param speed  Animation speed 1–4096 (phase increment per update tick).
   void setEffect(LedMode mode, CRGB color = CRGB::White, uint16_t speed = 128) {
     Threads::Scope lock(mutex_);
@@ -219,7 +219,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
   const uint8_t total_leds_;
 
   CRGB leds_[kMaxLeds] = {};     ///< Render buffer — animation writes here.
-  CRGB display_[kMaxLeds] = {}; ///< Display buffer — FastLED DMA reads here.
+  CRGB display_[kMaxLeds] = {};  ///< Display buffer — FastLED DMA reads here.
   CRGB colors_[kMaxLeds] = {};  ///< Write buffer — API callers set colors here.
 
   LedMode mode_ = LedMode::CLEAR;

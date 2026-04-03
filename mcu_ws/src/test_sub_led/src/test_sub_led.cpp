@@ -201,8 +201,8 @@ static void cmdRainbowSpread() {
 }
 
 static void cmdInfo() {
-  Serial.printf("Chain: %u SK6812 LEDs | data pin: %d\r\n",
-                leds.getTotalLeds(), Config::rgb_data);
+  Serial.printf("Chain: %u SK6812 LEDs | data pin: %d\r\n", leds.getTotalLeds(),
+                Config::rgb_data);
 }
 
 // ---------------------------------------------------------------------------

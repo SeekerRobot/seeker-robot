@@ -29,8 +29,8 @@
 // Example divider: Vbatt → 100kΩ → ADC pin → 100kΩ → GND
 //   Gives Vadc = Vbatt / 2, so a 3.7 V lipo reads ~1.85 V → ~2300 raw.
 static constexpr Subsystem::BatteryCalibration kCalibration(
-    /*raw_lo=*/1862, /*volt_lo=*/3.0f,   // low point  (e.g. discharged lipo)
-    /*raw_hi=*/2480, /*volt_hi=*/4.2f    // high point (e.g. fully charged)
+    /*raw_lo=*/1862, /*volt_lo=*/3.0f,  // low point  (e.g. discharged lipo)
+    /*raw_hi=*/2480, /*volt_hi=*/4.2f   // high point (e.g. fully charged)
 );
 static constexpr uint8_t kNumSamples = 16;  // ADC samples averaged per reading
 
@@ -46,13 +46,13 @@ static Subsystem::BlinkSubsystem blink(blink_setup);
 // ---------------------------------------------------------------------------
 // Serial parser
 // ---------------------------------------------------------------------------
-static constexpr size_t  kLineBufSize = 64;
-static char              line_buf[kLineBufSize];
-static uint8_t           line_pos = 0;
+static constexpr size_t kLineBufSize = 64;
+static char line_buf[kLineBufSize];
+static uint8_t line_pos = 0;
 
 static constexpr uint8_t kMaxTokens = 4;
-static char*             tokens[kMaxTokens];
-static uint8_t           num_tokens = 0;
+static char* tokens[kMaxTokens];
+static uint8_t num_tokens = 0;
 
 static bool stream_enabled = true;
 
@@ -98,27 +98,26 @@ static void cmdStream() {
     return;
   }
   char* end;
-  long  v = strtol(tokens[1], &end, 10);
+  long v = strtol(tokens[1], &end, 10);
   if (end == tokens[1] || (v != 0 && v != 1)) {
     printErr("value must be 0 or 1");
     return;
   }
   stream_enabled = (v == 1);
-  Serial.printf("OK: streaming %s\r\n", stream_enabled ? "enabled" : "disabled");
+  Serial.printf("OK: streaming %s\r\n",
+                stream_enabled ? "enabled" : "disabled");
 }
 
 static void cmdCal() {
   const auto& c = battery_setup.calibration_;
-  Serial.printf(
-      "Calibration: [raw %u → %.3f V]  [raw %u → %.3f V]\r\n",
-      c.raw_lo, c.volt_lo, c.raw_hi, c.volt_hi);
+  Serial.printf("Calibration: [raw %u → %.3f V]  [raw %u → %.3f V]\r\n",
+                c.raw_lo, c.volt_lo, c.raw_hi, c.volt_hi);
 }
 
 static void cmdInfo() {
-  Serial.printf(
-      "BatterySubsystem — pin %d  samples %u  id '%s'\r\n",
-      battery_setup.adc_pin_, battery_setup.num_samples_,
-      battery_setup.getId());
+  Serial.printf("BatterySubsystem — pin %d  samples %u  id '%s'\r\n",
+                battery_setup.adc_pin_, battery_setup.num_samples_,
+                battery_setup.getId());
   cmdCal();
 }
 

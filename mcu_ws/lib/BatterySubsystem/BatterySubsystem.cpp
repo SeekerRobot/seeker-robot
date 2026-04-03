@@ -28,7 +28,7 @@ void BatterySubsystem::update() {
     acc += static_cast<uint32_t>(analogRead(setup_.adc_pin_));
   }
   const uint16_t raw = static_cast<uint16_t>(acc / setup_.num_samples_);
-  const float    v   = setup_.calibration_.toVoltage(raw);
+  const float v = setup_.calibration_.toVoltage(raw);
 
   {
     Threads::Scope lock(data_mutex_);
