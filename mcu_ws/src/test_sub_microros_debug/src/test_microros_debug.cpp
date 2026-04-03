@@ -43,12 +43,18 @@ static Subsystem::MicrorosManager manager(manager_setup);
 
 static const char* wifiStateStr(Subsystem::WifiState s) {
   switch (s) {
-    case Subsystem::WifiState::DISCONNECTED:  return "DISCONNECTED";
-    case Subsystem::WifiState::CONNECTING:    return "CONNECTING";
-    case Subsystem::WifiState::CONNECTED:     return "CONNECTED";
-    case Subsystem::WifiState::RECONNECTING:  return "RECONNECTING";
-    case Subsystem::WifiState::FAILED:        return "FAILED";
-    default:                                  return "UNKNOWN";
+    case Subsystem::WifiState::DISCONNECTED:
+      return "DISCONNECTED";
+    case Subsystem::WifiState::CONNECTING:
+      return "CONNECTING";
+    case Subsystem::WifiState::CONNECTED:
+      return "CONNECTED";
+    case Subsystem::WifiState::RECONNECTING:
+      return "RECONNECTING";
+    case Subsystem::WifiState::FAILED:
+      return "FAILED";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -96,10 +102,12 @@ void loop() {
   }
 
   // One message per level every 2 s to exercise the full pipeline.
-  Debug::printf(Debug::Level::DEBUG, "[Test] counter=%u  level=DEBUG", s_counter);
-  Debug::printf(Debug::Level::INFO,  "[Test] counter=%u  level=INFO",  s_counter);
-  Debug::printf(Debug::Level::WARN,  "[Test] counter=%u  level=WARN",  s_counter);
-  Debug::printf(Debug::Level::ERROR, "[Test] counter=%u  level=ERROR", s_counter);
+  Debug::printf(Debug::Level::DEBUG, "[Test] counter=%u  level=DEBUG",
+                s_counter);
+  Debug::printf(Debug::Level::INFO, "[Test] counter=%u  level=INFO", s_counter);
+  Debug::printf(Debug::Level::WARN, "[Test] counter=%u  level=WARN", s_counter);
+  Debug::printf(Debug::Level::ERROR, "[Test] counter=%u  level=ERROR",
+                s_counter);
   s_counter++;
 
   delay(2000);
