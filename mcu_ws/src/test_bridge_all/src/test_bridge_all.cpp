@@ -55,6 +55,8 @@ static Subsystem::MicrorosManagerSetup manager_setup("microros",
 static Subsystem::MicrorosManager manager(manager_setup);
 
 void setup() {
+  Serial.begin(921600);
+  
   blink.beginThreadedPinned(2048, 1, 500, 1);
   delay(1000); // Let things stabilize before starting anything
 

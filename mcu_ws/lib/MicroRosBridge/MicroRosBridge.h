@@ -58,18 +58,34 @@
     "MicroRosBridge: all features disabled — no publishers will be created. Set -DBRIDGE_ENABLE_*=1 in build_flags.")
 #endif
 
-// ---- Includes for all features
-#include <BatterySubsystem.h>
+#if BRIDGE_ENABLE_HEARTBEAT
+#include <std_msgs/msg/int32.h>
+#endif
+#if BRIDGE_ENABLE_GYRO
 #include <GyroSubsystem.h>
 #include <sensor_msgs/msg/imu.h>
+#endif
+#if BRIDGE_ENABLE_BATTERY
+#include <BatterySubsystem.h>
 #include <std_msgs/msg/float32.h>
-#include <std_msgs/msg/int32.h>
+#endif
+#if BRIDGE_ENABLE_DEBUG
+#include <MicroRosDebug.h>
 #include <std_msgs/msg/string.h>
+#endif
+// #if BRIDGE_ENABLE_SERVO
 // #include <ServoSubsystem.h>
 // #include <sensor_msgs/msg/joint_state.h>
+// #endif
 
 namespace Subsystem {
 
+#if !BRIDGE_ENABLE_GYRO
+class GyroSubsystem;
+#endif
+#if !BRIDGE_ENABLE_BATTERY
+class BatterySubsystem;
+#endif
 // class ServoSubsystem;
 
 // ---- Compile-time feature switches
@@ -132,14 +148,11 @@ using ServoPublisherState = EmptyState;
 #endif
 
 #if BRIDGE_ENABLE_DEBUG
-// Debug log publisher: Debug::printf output → std_msgs/String → mcu/log.
-// Messages are enqueued from any task via MicroRosDebug::enqueue() and
-// drained in publishAll() on the manager task.
 struct DebugPublisherState {
-  static constexpr uint16_t kMsgLen = 240;
   rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
   std_msgs__msg__String msg{};
-  char data_buf[kMsgLen + 1];  // backing buffer wired to msg.data.data
+  // Backing buffer wired to msg.data.data; sized to match the queue entry.
+  char data_buf[MicroRosDebug::kMsgLen + 1];
 };
 #else
 using DebugPublisherState = EmptyState;

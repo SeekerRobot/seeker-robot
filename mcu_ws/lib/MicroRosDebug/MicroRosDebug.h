@@ -14,8 +14,12 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace MicroRosDebug {
+
+/// Maximum message length (bytes), excluding the null terminator.
+static constexpr uint16_t kMsgLen = 240;
 
 /// Enqueue a formatted debug string for publishing over micro-ROS.
 /// Non-blocking: drops silently if the queue is full or not yet initialised.
