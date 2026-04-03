@@ -64,10 +64,10 @@
 #include <GyroSubsystem.h>
 #include <sensor_msgs/msg/imu.h>
 #endif
-// #if BRIDGE_ENABLE_BATTERY
-// #include <BatterySubsystem.h>
-// #include <sensor_msgs/msg/battery_state.h>
-// #endif
+#if BRIDGE_ENABLE_BATTERY
+#include <BatterySubsystem.h>
+#include <std_msgs/msg/float32.h>
+#endif
 // #if BRIDGE_ENABLE_SERVO
 // #include <ServoSubsystem.h>
 // #include <sensor_msgs/msg/joint_state.h>
@@ -80,7 +80,9 @@ namespace Subsystem {
 #if !BRIDGE_ENABLE_GYRO
 class GyroSubsystem;
 #endif
-// class BatterySubsystem;
+#if !BRIDGE_ENABLE_BATTERY
+class BatterySubsystem;
+#endif
 // class ServoSubsystem;
 
 // ---- Compile-time feature switches
@@ -124,7 +126,7 @@ using GyroPublisherState = EmptyState;
 #if BRIDGE_ENABLE_BATTERY
 struct BatteryPublisherState {
   rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
-  // TODO: sensor_msgs__msg__BatteryState msg{};
+  std_msgs__msg__Float32 msg{};
   elapsedMillis elapsed{};
 };
 #else
@@ -155,9 +157,9 @@ struct MicroRosBridgeSetup {
   uint32_t imu_interval_ms = 20;  ///< ms (50 Hz default)
 
   // Battery — used only when BridgeConfig::kEnableBattery is true.
-  // BatterySubsystem* battery             = nullptr;
-  // const char*       battery_topic       = "mcu/battery";
-  // uint32_t          battery_interval_ms = 1000;
+  BatterySubsystem* battery            = nullptr;
+  const char*       battery_topic      = "mcu/battery_voltage";
+  uint32_t          battery_interval_ms = 1000;  ///< ms (1 Hz default)
 
   // Servo — used only when BridgeConfig::kEnableServo is true.
   // ServoSubsystem* servo             = nullptr;

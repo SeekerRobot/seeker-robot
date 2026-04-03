@@ -60,9 +60,26 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 #endif  // BRIDGE_ENABLE_GYRO
 
 #if BRIDGE_ENABLE_BATTERY
-  Debug::printf(Debug::Level::WARN,
-                "[Bridge] BRIDGE_ENABLE_BATTERY=1 but not yet implemented");
-#endif
+  if (!setup_.battery) {
+    Debug::printf(Debug::Level::ERROR,
+                  "[Bridge] BRIDGE_ENABLE_BATTERY=1 but battery pointer is null");
+    ok = false;
+  } else {
+    battery_.msg.data = 0.0f;
+    rcl_ret_t rc = ctx.createPublisherBestEffort(
+        &battery_.pub,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+        setup_.battery_topic);
+    if (rc != RCL_RET_OK) {
+      Debug::printf(Debug::Level::ERROR,
+                    "[Bridge] Battery publisher failed (%d)", (int)rc);
+      ok = false;
+    } else {
+      Debug::printf(Debug::Level::INFO, "[Bridge] Battery publisher -> %s",
+                    setup_.battery_topic);
+    }
+  }
+#endif  // BRIDGE_ENABLE_BATTERY
 
 #if BRIDGE_ENABLE_SERVO
   Debug::printf(Debug::Level::WARN,
@@ -82,7 +99,8 @@ void MicroRosBridge::onDestroy() {
   sensor_msgs__msg__Imu__fini(&gyro_.msg);
 #endif
 #if BRIDGE_ENABLE_BATTERY
-  battery_.pub = rcl_get_zero_initialized_publisher();
+  battery_.pub    = rcl_get_zero_initialized_publisher();
+  battery_.msg    = {};
 #endif
 #if BRIDGE_ENABLE_SERVO
   servo_.pub = rcl_get_zero_initialized_publisher();
@@ -134,8 +152,16 @@ void MicroRosBridge::publishAll() {
 #endif  // BRIDGE_ENABLE_GYRO
 
 #if BRIDGE_ENABLE_BATTERY
-  // TODO
-#endif
+  if (setup_.battery && battery_.elapsed >= setup_.battery_interval_ms) {
+    battery_.elapsed  = 0;
+    battery_.msg.data = setup_.battery->getVoltage();
+    rcl_ret_t rc      = rcl_publish(&battery_.pub, &battery_.msg, nullptr);
+    if (rc != RCL_RET_OK) {
+      Debug::printf(Debug::Level::WARN,
+                    "[Bridge] Battery publish failed (%d)", (int)rc);
+    }
+  }
+#endif  // BRIDGE_ENABLE_BATTERY
 
 #if BRIDGE_ENABLE_SERVO
   // TODO
