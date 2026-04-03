@@ -2,13 +2,13 @@
  * @file test_bridge_all.cpp
  * @author Aldem Pido
  * @date 4/3/2026
- * @brief Integration test: serial micro-ROS + MicroRosBridge with all features
+ * @brief Integration test: WiFi micro-ROS + MicroRosBridge with all features
  * enabled (heartbeat, gyro, battery, debug log).
  *
- * Serial transport: the USB serial port is owned by micro-ROS. Debug output
- * before the agent connects is routed through DEBUG_TRANSPORT_SERIAL; once
- * connected all Debug::printf calls are also forwarded to /mcu/log via
- * DEBUG_TRANSPORT_MICROROS.
+ * WiFi transport: ESP32WifiSubsystem brings up the network connection before
+ * the micro-ROS manager starts. All Debug::printf output is forwarded to
+ * /mcu/log via DEBUG_TRANSPORT_MICROROS once the agent is connected.
+ * Serial is free for pre-connect debug output (DEBUG_TRANSPORT_SERIAL).
  *
  * Build flags (set in this sketch's platformio.ini):
  *   -DDEBUG_TRANSPORT_SERIAL
@@ -19,7 +19,7 @@
  *   -DBRIDGE_ENABLE_DEBUG=1
  *
  * Verify on host:
- *   ros2 run micro_ros_agent micro_ros_agent serial -D /dev/ttyUSB0 -b 921600
+ *   ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
  *   ros2 topic echo /mcu/heartbeat
  *   ros2 topic hz   /mcu/imu        # ~50 Hz
  *   ros2 topic echo /mcu/battery_voltage
@@ -29,12 +29,17 @@
 #include <BatterySubsystem.h>
 #include <BlinkSubsystem.h>
 #include <CustomDebug.h>
+#include <ESP32WifiSubsystem.h>
 #include <GyroSubsystem.h>
 #include <MicroRosBridge.h>
 #include <RobotConfig.h>
 #include <Wire.h>
 #include <hal_thread.h>
 #include <microros_manager_robot.h>
+
+static IPAddress static_ip STATIC_IP;
+static IPAddress gateway GATEWAY;
+static IPAddress subnet SUBNET;
 
 static constexpr Subsystem::BatteryCalibration kBattCalibration(
     /*raw_lo=*/1862, /*volt_lo=*/3.0f,
@@ -50,15 +55,28 @@ static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
 
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
+
 static Subsystem::MicrorosManagerSetup manager_setup("microros",
                                                      "bridge_all_node");
 static Subsystem::MicrorosManager manager(manager_setup);
 
 void setup() {
   Serial.begin(921600);
+  delay(500);
 
+  // --- WiFi ---
+  auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
+  if (!wifi.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] WiFi init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
   blink.beginThreadedPinned(2048, 1, 500, 1);
-  delay(1000);  // Let things stabilize before starting anything
+  wifi.beginThreadedPinned(4096, 3, 100, 1);
+  Debug::printf(Debug::Level::INFO, "[Main] WiFi started, connecting to \"%s\"",
+                WIFI_SSID);
 
   auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
   if (!gyro.init()) {
@@ -92,7 +110,19 @@ void setup() {
 }
 
 void loop() {
-  Debug::printf(Debug::Level::INFO, "[Loop] microros=%s",
-                manager.getStateStr());
+  auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
+
+  if (wifi.isConnected()) {
+    Debug::printf(Debug::Level::INFO,
+                  "[Loop] wifi=CONNECTED  microros=%-18s  ip=%-15s  rssi=%d dBm",
+                  manager.getStateStr(),
+                  wifi.getLocalIP().toString().c_str(), wifi.getRSSI());
+  } else {
+    Debug::printf(Debug::Level::INFO, "[Loop] wifi=%-12s  microros=%s",
+                  wifi.getState() == Subsystem::WifiState::CONNECTING
+                      ? "CONNECTING"
+                      : "DISCONNECTED",
+                  manager.getStateStr());
+  }
   delay(2000);
 }
