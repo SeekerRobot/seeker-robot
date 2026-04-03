@@ -89,9 +89,8 @@ static void cmdScan() {
   Serial.printf("Scan #%lu  points=%u\r\n", (unsigned long)scan.scan_count,
                 scan.count);
   for (uint16_t i = 0; i < scan.count; i++) {
-    Serial.printf("  [%3u] angle=%6.2f deg  dist=%7.1f mm  quality=%.0f\r\n",
-                  i, scan.angles_deg[i], scan.distances_mm[i],
-                  scan.qualities[i]);
+    Serial.printf("  [%3u] angle=%6.2f deg  dist=%7.1f mm  quality=%.0f\r\n", i,
+                  scan.angles_deg[i], scan.distances_mm[i], scan.qualities[i]);
   }
 }
 
@@ -107,12 +106,13 @@ static void cmdStream() {
     return;
   }
   stream_enabled = (v == 1);
-  Serial.printf("OK: streaming %s\r\n", stream_enabled ? "enabled" : "disabled");
+  Serial.printf("OK: streaming %s\r\n",
+                stream_enabled ? "enabled" : "disabled");
 }
 
 static void cmdFreq() {
-  float hz =
-      Subsystem::LidarSubsystem::getInstance(lidar_setup).getCurrentScanFreqHz();
+  float hz = Subsystem::LidarSubsystem::getInstance(lidar_setup)
+                 .getCurrentScanFreqHz();
   Serial.printf("Scan freq: %.2f Hz\r\n", hz);
 }
 

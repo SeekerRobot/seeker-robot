@@ -77,12 +77,18 @@ static Subsystem::MicrorosManager manager(manager_setup);
 // ---------------------------------------------------------------------------
 static const char* wifiStateStr(Subsystem::WifiState s) {
   switch (s) {
-    case Subsystem::WifiState::DISCONNECTED:  return "DISCONNECTED";
-    case Subsystem::WifiState::CONNECTING:    return "CONNECTING";
-    case Subsystem::WifiState::CONNECTED:     return "CONNECTED";
-    case Subsystem::WifiState::RECONNECTING:  return "RECONNECTING";
-    case Subsystem::WifiState::FAILED:        return "FAILED";
-    default:                                  return "UNKNOWN";
+    case Subsystem::WifiState::DISCONNECTED:
+      return "DISCONNECTED";
+    case Subsystem::WifiState::CONNECTING:
+      return "CONNECTING";
+    case Subsystem::WifiState::CONNECTED:
+      return "CONNECTED";
+    case Subsystem::WifiState::RECONNECTING:
+      return "RECONNECTING";
+    case Subsystem::WifiState::FAILED:
+      return "FAILED";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -138,9 +144,9 @@ void setup() {
   // after getInstance() calls — not at global-static init time.
   // Declared static so it outlives setup().
   static Subsystem::MicroRosBridgeSetup bridge_setup;
-  bridge_setup.gyro    = &gyro;
+  bridge_setup.gyro = &gyro;
   bridge_setup.battery = &battery;
-  bridge_setup.lidar   = &lidar;
+  bridge_setup.lidar = &lidar;
   static Subsystem::MicroRosBridge bridge(bridge_setup);
 
   // --- micro-ROS manager --- core 1 | priority 4 | 10 ms | 8192 words

@@ -70,12 +70,13 @@ class LidarSetup : public Classes::BaseSetup {
 // LidarScanData — POD snapshot of one complete 360° scan
 // ---------------------------------------------------------------------------
 struct LidarScanData {
-  float angles_deg[kLidarMaxPoints];    ///< Angle for each point (degrees, 0–360).
+  float
+      angles_deg[kLidarMaxPoints];  ///< Angle for each point (degrees, 0–360).
   float distances_mm[kLidarMaxPoints];  ///< Distance (mm); 0 = invalid.
-  float qualities[kLidarMaxPoints];     ///< Intensity / quality (raw LDS value).
-  uint16_t count = 0;                   ///< Number of valid entries in this scan.
-  bool valid = false;                   ///< False until first scan completes.
-  uint32_t scan_count = 0;             ///< Monotonically incrementing scan index.
+  float qualities[kLidarMaxPoints];  ///< Intensity / quality (raw LDS value).
+  uint16_t count = 0;                ///< Number of valid entries in this scan.
+  bool valid = false;                ///< False until first scan completes.
+  uint32_t scan_count = 0;           ///< Monotonically incrementing scan index.
 };
 
 // ---------------------------------------------------------------------------
