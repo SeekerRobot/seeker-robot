@@ -176,16 +176,25 @@ static void printStreamSummary() {
     return;
   }
   float dmin = 1.0e9f, dmax = 0.0f;
+  bool have_valid_distance = false;
   for (uint16_t i = 0; i < scan.count; i++) {
     if (scan.distances_mm[i] > 0.0f) {
+      have_valid_distance = true;
       if (scan.distances_mm[i] < dmin) dmin = scan.distances_mm[i];
       if (scan.distances_mm[i] > dmax) dmax = scan.distances_mm[i];
     }
   }
-  Serial.printf(
-      "[Lidar] scan #%lu  pts=%u  dist=[%.0f..%.0f] mm  freq=%.2f Hz\r\n",
-      (unsigned long)scan.scan_count, scan.count, dmin, dmax,
-      lidar.getCurrentScanFreqHz());
+  if (have_valid_distance) {
+    Serial.printf(
+        "[Lidar] scan #%lu  pts=%u  dist=[%.0f..%.0f] mm  freq=%.2f Hz\r\n",
+        (unsigned long)scan.scan_count, scan.count, dmin, dmax,
+        lidar.getCurrentScanFreqHz());
+  } else {
+    Serial.printf(
+        "[Lidar] scan #%lu  pts=%u  dist=[none]  freq=%.2f Hz\r\n",
+        (unsigned long)scan.scan_count, scan.count,
+        lidar.getCurrentScanFreqHz());
+  }
 }
 
 // ---------------------------------------------------------------------------

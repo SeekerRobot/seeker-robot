@@ -262,29 +262,31 @@ void MicroRosBridge::publishAll() {
       lidar_.last_scan_count = scan.scan_count;
       lidar_.elapsed = 0;
 
-      // Compute angle bounds from actual delivered angles. The LD14P applies
+      uint16_t n = (scan.count < LidarPublisherState::kCapacity)
+                       ? scan.count
+                       : LidarPublisherState::kCapacity;
+
+      // Compute angle bounds from published angles. The LD14P applies
       // geometric correction so points are not perfectly uniform.
       static constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
       float a_min = scan.angles_deg[0], a_max = scan.angles_deg[0];
-      for (uint16_t i = 1; i < scan.count; i++) {
+      for (uint16_t i = 1; i < n; i++) {
         if (scan.angles_deg[i] < a_min) a_min = scan.angles_deg[i];
         if (scan.angles_deg[i] > a_max) a_max = scan.angles_deg[i];
       }
       lidar_.msg.angle_min = a_min * kDeg2Rad;
       lidar_.msg.angle_max = a_max * kDeg2Rad;
       lidar_.msg.angle_increment =
-          (scan.count > 1) ? ((a_max - a_min) * kDeg2Rad / (scan.count - 1))
-                           : 0.0f;
+          (n > 1) ? ((a_max - a_min) * kDeg2Rad / (n - 1)) : 0.0f;
 
       float freq = setup_.lidar->getCurrentScanFreqHz();
       if (freq > 0.0f) {
         lidar_.msg.scan_time = 1.0f / freq;
-        lidar_.msg.time_increment = lidar_.msg.scan_time / scan.count;
+        lidar_.msg.time_increment = lidar_.msg.scan_time / n;
+      } else {
+        lidar_.msg.scan_time = 0.0f;
+        lidar_.msg.time_increment = 0.0f;
       }
-
-      uint16_t n = (scan.count < LidarPublisherState::kCapacity)
-                       ? scan.count
-                       : LidarPublisherState::kCapacity;
       for (uint16_t i = 0; i < n; i++) {
         lidar_.ranges_buf[i] = scan.distances_mm[i] * 0.001f;  // mm → m
         lidar_.intensities_buf[i] = scan.qualities[i];
