@@ -134,7 +134,8 @@ void MicroRosBridge::onDestroy() {
 #endif
 #if BRIDGE_ENABLE_DEBUG
   MicroRosDebug::close();
-  // Null backing pointer before __fini() to prevent free() of our struct buffer.
+  // Null backing pointer before __fini() to prevent free() of our struct
+  // buffer.
   debug_.msg.data.data = nullptr;
   debug_.msg.data.size = 0;
   debug_.msg.data.capacity = 0;
