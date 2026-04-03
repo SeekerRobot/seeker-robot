@@ -23,29 +23,32 @@
 
 namespace Subsystem {
 
-// ---- Calibration model -------------------------------------------------------
+// ---- Calibration model
+// -------------------------------------------------------
 
 /// @brief Two-point linear calibration: maps raw ADC counts to real voltage.
 struct BatteryCalibration {
-  uint16_t raw_lo;   ///< Raw ADC reading at the low-voltage calibration point.
-  float    volt_lo;  ///< Actual voltage (V) at raw_lo.
-  uint16_t raw_hi;   ///< Raw ADC reading at the high-voltage calibration point.
-  float    volt_hi;  ///< Actual voltage (V) at raw_hi.
+  uint16_t raw_lo;  ///< Raw ADC reading at the low-voltage calibration point.
+  float volt_lo;    ///< Actual voltage (V) at raw_lo.
+  uint16_t raw_hi;  ///< Raw ADC reading at the high-voltage calibration point.
+  float volt_hi;    ///< Actual voltage (V) at raw_hi.
 
-  constexpr BatteryCalibration(uint16_t raw_lo, float volt_lo,
-                                uint16_t raw_hi, float volt_hi)
+  constexpr BatteryCalibration(uint16_t raw_lo, float volt_lo, uint16_t raw_hi,
+                               float volt_hi)
       : raw_lo(raw_lo), volt_lo(volt_lo), raw_hi(raw_hi), volt_hi(volt_hi) {}
 
   /// @brief Convert a raw ADC count to volts via linear interpolation.
   float toVoltage(uint16_t raw) const {
     if (raw_hi == raw_lo) return volt_lo;  // degenerate guard
-    return volt_lo + (volt_hi - volt_lo) *
+    return volt_lo +
+           (volt_hi - volt_lo) *
                (static_cast<float>(raw) - static_cast<float>(raw_lo)) /
                static_cast<float>(raw_hi - raw_lo);
   }
 };
 
-// ---- Setup struct ------------------------------------------------------------
+// ---- Setup struct
+// ------------------------------------------------------------
 
 class BatterySetup : public Classes::BaseSetup {
  public:
@@ -68,7 +71,8 @@ class BatterySetup : public Classes::BaseSetup {
   uint8_t num_samples_;
 };
 
-// ---- Subsystem ---------------------------------------------------------------
+// ---- Subsystem
+// ---------------------------------------------------------------
 
 class BatterySubsystem : public Subsystem::ThreadedSubsystem {
  public:
@@ -80,11 +84,11 @@ class BatterySubsystem : public Subsystem::ThreadedSubsystem {
     return instance;
   }
 
-  bool        init() override;
-  void        begin() override { return; }
-  void        update() override;
-  void        pause() override { return; }
-  void        reset() override;
+  bool init() override;
+  void begin() override { return; }
+  void update() override;
+  void pause() override { return; }
+  void reset() override;
   const char* getInfo() override { return setup_.getId(); }
 
   /// @brief Latest calibrated battery voltage in volts.  Thread-safe.
@@ -97,12 +101,12 @@ class BatterySubsystem : public Subsystem::ThreadedSubsystem {
   explicit BatterySubsystem(const BatterySetup& setup)
       : ThreadedSubsystem(setup), setup_(setup) {}
 
-  const BatterySetup  setup_;
+  const BatterySetup setup_;
   mutable Threads::Mutex data_mutex_;
 
-  float    voltage_     = 0.0f;
-  uint16_t raw_adc_     = 0;
-  bool     initialized_ = false;
+  float voltage_ = 0.0f;
+  uint16_t raw_adc_ = 0;
+  bool initialized_ = false;
 };
 
 }  // namespace Subsystem

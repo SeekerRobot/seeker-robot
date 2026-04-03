@@ -157,9 +157,9 @@ struct MicroRosBridgeSetup {
   uint32_t imu_interval_ms = 20;  ///< ms (50 Hz default)
 
   // Battery — used only when BridgeConfig::kEnableBattery is true.
-  BatterySubsystem* battery            = nullptr;
-  const char*       battery_topic      = "mcu/battery_voltage";
-  uint32_t          battery_interval_ms = 1000;  ///< ms (1 Hz default)
+  BatterySubsystem* battery = nullptr;
+  const char* battery_topic = "mcu/battery_voltage";
+  uint32_t battery_interval_ms = 1000;  ///< ms (1 Hz default)
 
   // Servo — used only when BridgeConfig::kEnableServo is true.
   // ServoSubsystem* servo             = nullptr;
