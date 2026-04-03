@@ -91,7 +91,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
     // Snapshot effect params under lock — show() runs outside.
     LedMode mode;
     CRGB color;
-    uint8_t speed;
+    uint16_t speed;
     uint8_t brightness;
     CRGB colors_snap[kMaxLeds];
 
@@ -198,12 +198,12 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
   /// @brief Set an animation effect.
   /// @param mode   The LedMode to use.
   /// @param color  Base color (used by PULSE, CHASE; ignored for rainbow modes).
-  /// @param speed  Animation speed 1–255 (phase increment per update tick).
-  void setEffect(LedMode mode, CRGB color = CRGB::White, uint8_t speed = 128) {
+  /// @param speed  Animation speed 1–4096 (phase increment per update tick).
+  void setEffect(LedMode mode, CRGB color = CRGB::White, uint16_t speed = 128) {
     Threads::Scope lock(mutex_);
     mode_ = mode;
     effect_color_ = color;
-    effect_speed_ = (speed == 0) ? 1 : speed;
+    effect_speed_ = (speed == 0) ? 1 : (speed > 4096 ? 4096 : speed);
     anim_phase_ = 0;
   }
 
@@ -224,7 +224,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
 
   LedMode mode_ = LedMode::CLEAR;
   CRGB effect_color_ = CRGB::White;
-  uint8_t effect_speed_ = 128;
+  uint16_t effect_speed_ = 128;
   uint8_t global_brightness_ = 128;
   uint16_t anim_phase_ = 0;
 
