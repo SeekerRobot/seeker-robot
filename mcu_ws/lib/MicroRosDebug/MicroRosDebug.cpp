@@ -56,6 +56,7 @@ void enqueue(const char* text) {
 }
 
 bool dequeue(char* buf, size_t len) {
+  if (!buf || len == 0) return false;
   Threads::Scope lock(s_mutex);
   if (!s_open || s_tail == s_head) return false;
   strncpy(buf, s_queue[s_tail].text, len - 1);
