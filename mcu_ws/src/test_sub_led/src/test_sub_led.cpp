@@ -62,6 +62,17 @@ static bool parseU8(const char* tok, uint8_t& out) {
   return true;
 }
 
+static bool parseU16(const char* tok, uint16_t& out) {
+  char* end;
+  long v = strtol(tok, &end, 10);
+  if (end == tok || *end != '\0' || v < 0 || v > 65535) {
+    printErr("value must be 0–65535");
+    return false;
+  }
+  out = static_cast<uint16_t>(v);
+  return true;
+}
+
 static bool requireArgs(uint8_t n) {
   if (num_tokens < n) {
     Serial.printf("ERR: expected %u args, got %u. Type 'help'.\r\n", n - 1,
@@ -90,7 +101,7 @@ static void printHelp() {
       "rainbow_spread [speed]         Each LED different hue, all cycle\r\n"
       "info                           Show LED chain info\r\n"
       "=====================================================\r\n"
-      "speed default = 128 (1=slowest, 255=fastest)\r\n");
+      "speed default = 128 (1=slowest, 4096=fastest)\r\n");
 }
 
 static void cmdClear() {
@@ -136,12 +147,13 @@ static void cmdBrightness() {
 
 static void cmdPulse() {
   if (!requireArgs(4)) return;
-  uint8_t r, g, b, speed = 128;
+  uint8_t r, g, b;
+  uint16_t speed = 128;
   if (!parseU8(tokens[1], r)) return;
   if (!parseU8(tokens[2], g)) return;
   if (!parseU8(tokens[3], b)) return;
   if (num_tokens >= 5) {
-    if (!parseU8(tokens[4], speed)) return;
+    if (!parseU16(tokens[4], speed)) return;
   }
   leds.setEffect(Subsystem::LedMode::PULSE, CRGB(r, g, b), speed);
   Serial.printf("OK: PULSE (%u, %u, %u) speed=%u\r\n", r, g, b, speed);
@@ -149,39 +161,40 @@ static void cmdPulse() {
 
 static void cmdChase() {
   if (!requireArgs(4)) return;
-  uint8_t r, g, b, speed = 128;
+  uint8_t r, g, b;
+  uint16_t speed = 128;
   if (!parseU8(tokens[1], r)) return;
   if (!parseU8(tokens[2], g)) return;
   if (!parseU8(tokens[3], b)) return;
   if (num_tokens >= 5) {
-    if (!parseU8(tokens[4], speed)) return;
+    if (!parseU16(tokens[4], speed)) return;
   }
   leds.setEffect(Subsystem::LedMode::CHASE, CRGB(r, g, b), speed);
   Serial.printf("OK: CHASE (%u, %u, %u) speed=%u\r\n", r, g, b, speed);
 }
 
 static void cmdRainbowPulse() {
-  uint8_t speed = 128;
+  uint16_t speed = 128;
   if (num_tokens >= 2) {
-    if (!parseU8(tokens[1], speed)) return;
+    if (!parseU16(tokens[1], speed)) return;
   }
   leds.setEffect(Subsystem::LedMode::RAINBOW_PULSE, CRGB::White, speed);
   Serial.printf("OK: RAINBOW_PULSE speed=%u\r\n", speed);
 }
 
 static void cmdChaseRainbow() {
-  uint8_t speed = 128;
+  uint16_t speed = 128;
   if (num_tokens >= 2) {
-    if (!parseU8(tokens[1], speed)) return;
+    if (!parseU16(tokens[1], speed)) return;
   }
   leds.setEffect(Subsystem::LedMode::CHASE_RAINBOW, CRGB::White, speed);
   Serial.printf("OK: CHASE_RAINBOW speed=%u\r\n", speed);
 }
 
 static void cmdRainbowSpread() {
-  uint8_t speed = 128;
+  uint16_t speed = 128;
   if (num_tokens >= 2) {
-    if (!parseU8(tokens[1], speed)) return;
+    if (!parseU16(tokens[1], speed)) return;
   }
   leds.setEffect(Subsystem::LedMode::RAINBOW_SPREAD, CRGB::White, speed);
   Serial.printf("OK: RAINBOW_SPREAD speed=%u\r\n", speed);
