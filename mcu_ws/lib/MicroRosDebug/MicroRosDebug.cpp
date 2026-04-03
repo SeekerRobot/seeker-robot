@@ -18,10 +18,9 @@
 namespace {
 
 static constexpr uint8_t kQueueDepth = 8;
-static constexpr uint16_t kMsgLen = 240;
 
 struct Entry {
-  char text[kMsgLen + 1];
+  char text[MicroRosDebug::kMsgLen + 1];
 };
 
 static Entry s_queue[kQueueDepth];
@@ -51,8 +50,8 @@ void enqueue(const char* text) {
   if (!s_open) return;
   uint8_t next = (s_head + 1) % kQueueDepth;
   if (next == s_tail) return;  // full — drop silently
-  strncpy(s_queue[s_head].text, text, kMsgLen);
-  s_queue[s_head].text[kMsgLen] = '\0';
+  strncpy(s_queue[s_head].text, text, MicroRosDebug::kMsgLen);
+  s_queue[s_head].text[MicroRosDebug::kMsgLen] = '\0';
   s_head = next;
 }
 
