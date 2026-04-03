@@ -46,43 +46,30 @@
 #ifndef BRIDGE_ENABLE_SERVO
 #define BRIDGE_ENABLE_SERVO 0
 #endif
+#ifndef BRIDGE_ENABLE_DEBUG
+#define BRIDGE_ENABLE_DEBUG 0
+#endif
 
 // Compile-time sanity check — warns if every feature is disabled so a silent
 // no-op bridge isn't mistaken for a working one.
 #if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO && \
-    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO
+    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_DEBUG
 #pragma message( \
     "MicroRosBridge: all features disabled — no publishers will be created. Set -DBRIDGE_ENABLE_*=1 in build_flags.")
 #endif
 
-// ---- Conditional includes for enabled features
-// --------------------------------
-#if BRIDGE_ENABLE_HEARTBEAT
-#include <std_msgs/msg/int32.h>
-#endif
-#if BRIDGE_ENABLE_GYRO
+// ---- Includes for all features
+#include <BatterySubsystem.h>
 #include <GyroSubsystem.h>
 #include <sensor_msgs/msg/imu.h>
-#endif
-#if BRIDGE_ENABLE_BATTERY
-#include <BatterySubsystem.h>
 #include <std_msgs/msg/float32.h>
-#endif
-// #if BRIDGE_ENABLE_SERVO
+#include <std_msgs/msg/int32.h>
+#include <std_msgs/msg/string.h>
 // #include <ServoSubsystem.h>
 // #include <sensor_msgs/msg/joint_state.h>
-// #endif
 
 namespace Subsystem {
 
-// Forward-declare subsystem types so the setup struct can hold pointers to them
-// regardless of which features are enabled.
-#if !BRIDGE_ENABLE_GYRO
-class GyroSubsystem;
-#endif
-#if !BRIDGE_ENABLE_BATTERY
-class BatterySubsystem;
-#endif
 // class ServoSubsystem;
 
 // ---- Compile-time feature switches
@@ -93,6 +80,7 @@ struct BridgeConfig {
   static constexpr bool kEnableGyro = BRIDGE_ENABLE_GYRO;
   static constexpr bool kEnableBattery = BRIDGE_ENABLE_BATTERY;
   static constexpr bool kEnableServo = BRIDGE_ENABLE_SERVO;
+  static constexpr bool kEnableDebug = BRIDGE_ENABLE_DEBUG;
 };
 
 // ---- Zero-cost placeholder for disabled features
@@ -143,6 +131,20 @@ struct ServoPublisherState {
 using ServoPublisherState = EmptyState;
 #endif
 
+#if BRIDGE_ENABLE_DEBUG
+// Debug log publisher: Debug::printf output → std_msgs/String → mcu/log.
+// Messages are enqueued from any task via MicroRosDebug::enqueue() and
+// drained in publishAll() on the manager task.
+struct DebugPublisherState {
+  static constexpr uint16_t kMsgLen = 240;
+  rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
+  std_msgs__msg__String msg{};
+  char data_buf[kMsgLen + 1];  // backing buffer wired to msg.data.data
+};
+#else
+using DebugPublisherState = EmptyState;
+#endif
+
 // ---- Setup struct
 // ------------------------------------------------------------
 
@@ -165,6 +167,9 @@ struct MicroRosBridgeSetup {
   // ServoSubsystem* servo             = nullptr;
   // const char*     servo_topic       = "mcu/joint_states";
   // uint32_t        servo_interval_ms = 20;
+
+  // Debug log — used only when BridgeConfig::kEnableDebug is true.
+  const char* log_topic = "mcu/log";
 };
 
 // ---- Bridge
@@ -193,6 +198,9 @@ class MicroRosBridge : public IMicroRosParticipant {
   std::conditional_t<BridgeConfig::kEnableServo, ServoPublisherState,
                      EmptyState>
       servo_;
+  std::conditional_t<BridgeConfig::kEnableDebug, DebugPublisherState,
+                     EmptyState>
+      debug_;
 };
 
 }  // namespace Subsystem
