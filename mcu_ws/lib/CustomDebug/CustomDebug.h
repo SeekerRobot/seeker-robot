@@ -59,35 +59,34 @@ inline const char* levelPrefix(Level level) {
   }
 }
 
-inline void printf(Level level, const char* fmt, ...) {
-  if (static_cast<uint8_t>(level) > DEBUG_LEVEL) return;
-
-  char buf[256];
-  int offset = snprintf(buf, sizeof(buf), "%s ", levelPrefix(level));
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(buf + offset, sizeof(buf) - offset, fmt, args);
-  va_end(args);
-
+inline void _dispatch(const char* buf) {
 #ifdef DEBUG_TRANSPORT_SERIAL
   {
     Threads::Scope lock(serialMutex());
     Serial.println(buf);
   }
 #endif
-
 #ifdef DEBUG_TRANSPORT_BLUETOOTH
   Subsystem::BleDebugSubsystem::writeIfReady(buf);
 #endif
-
 #ifdef DEBUG_TRANSPORT_MICROROS
   MicroRosDebug::enqueue(buf);
 #endif
-
 #if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH) && \
     !defined(DEBUG_TRANSPORT_MICROROS)
-  (void)fmt;
+  (void)buf;
 #endif
+}
+
+inline void printf(Level level, const char* fmt, ...) {
+  if (static_cast<uint8_t>(level) > DEBUG_LEVEL) return;
+  char buf[256];
+  int offset = snprintf(buf, sizeof(buf), "%s ", levelPrefix(level));
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buf + offset, sizeof(buf) - offset, fmt, args);
+  va_end(args);
+  _dispatch(buf);
 }
 
 inline void printf(const char* fmt, ...) {
@@ -96,26 +95,7 @@ inline void printf(const char* fmt, ...) {
   va_start(args, fmt);
   vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
-
-#ifdef DEBUG_TRANSPORT_SERIAL
-  {
-    Threads::Scope lock(serialMutex());
-    Serial.println(buf);
-  }
-#endif
-
-#ifdef DEBUG_TRANSPORT_BLUETOOTH
-  Subsystem::BleDebugSubsystem::writeIfReady(buf);
-#endif
-
-#ifdef DEBUG_TRANSPORT_MICROROS
-  MicroRosDebug::enqueue(buf);
-#endif
-
-#if !defined(DEBUG_TRANSPORT_SERIAL) && !defined(DEBUG_TRANSPORT_BLUETOOTH) && \
-    !defined(DEBUG_TRANSPORT_MICROROS)
-  (void)fmt;
-#endif
+  _dispatch(buf);
 }
 
 inline void flush() {

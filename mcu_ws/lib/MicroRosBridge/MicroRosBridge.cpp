@@ -95,7 +95,7 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     // Wire pre-allocated buffer so __fini() never frees it.
     debug_.msg.data.data = debug_.data_buf;
     debug_.msg.data.size = 0;
-    debug_.msg.data.capacity = DebugPublisherState::kMsgLen + 1;
+    debug_.msg.data.capacity = MicroRosDebug::kMsgLen + 1;
 
     rcl_ret_t rc = ctx.createPublisherBestEffort(
         &debug_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
@@ -204,16 +204,11 @@ void MicroRosBridge::publishAll() {
 #endif
 
 #if BRIDGE_ENABLE_DEBUG
-  // Drain one queued debug message per publishAll() call.
   // publish failures are not logged here — that would recurse into the queue.
-  {
-    char text[DebugPublisherState::kMsgLen + 1];
-    if (MicroRosDebug::dequeue(text, sizeof(text))) {
-      size_t len = strnlen(text, DebugPublisherState::kMsgLen);
-      memcpy(debug_.data_buf, text, len + 1);
-      debug_.msg.data.size = len;
-      rcl_publish(&debug_.pub, &debug_.msg, nullptr);
-    }
+  if (MicroRosDebug::dequeue(debug_.data_buf, sizeof(debug_.data_buf))) {
+    debug_.msg.data.size =
+        strnlen(debug_.data_buf, sizeof(debug_.data_buf) - 1);
+    rcl_publish(&debug_.pub, &debug_.msg, nullptr);
   }
 #endif  // BRIDGE_ENABLE_DEBUG
 }
