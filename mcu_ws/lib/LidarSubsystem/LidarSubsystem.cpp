@@ -90,9 +90,9 @@ void LidarSubsystem::reset() {
 // ---------------------------------------------------------------------------
 // getScanData() — thread-safe getter
 // ---------------------------------------------------------------------------
-LidarScanData LidarSubsystem::getScanData() const {
+void LidarSubsystem::getScanData(LidarScanData& out) const {
   Threads::Scope lock(data_mutex_);
-  return published_;
+  out = published_;
 }
 
 float LidarSubsystem::getCurrentScanFreqHz() {

@@ -98,7 +98,7 @@ void setup() {
     Debug::printf(Debug::Level::ERROR, "[Main] Battery init FAILED — halting");
     while (true) vTaskDelay(portMAX_DELAY);
   }
-  batt.beginThreadedPinned(2048, 2, 50, 1);
+  batt.beginThreadedPinned(4096, 2, 50, 1);
 
   // --- Lidar --- core 0 | priority 4 | 1 ms | 6144 words
   auto& lidar = Subsystem::LidarSubsystem::getInstance(lidar_setup);

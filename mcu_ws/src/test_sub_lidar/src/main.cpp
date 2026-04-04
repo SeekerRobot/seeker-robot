@@ -81,7 +81,7 @@ static void printHelp() {
 static void cmdScan() {
   // Static to avoid placing 8.6 KB on the Arduino main-task stack.
   static Subsystem::LidarScanData scan;
-  scan = Subsystem::LidarSubsystem::getInstance(lidar_setup).getScanData();
+  Subsystem::LidarSubsystem::getInstance(lidar_setup).getScanData(scan);
   if (!scan.valid) {
     Serial.println("ERR: no complete scan yet — wait for first revolution");
     return;
@@ -170,7 +170,7 @@ static void printStreamSummary() {
   auto& lidar = Subsystem::LidarSubsystem::getInstance(lidar_setup);
   // Static to avoid placing 8.6 KB on the Arduino main-task stack.
   static Subsystem::LidarScanData scan;
-  scan = lidar.getScanData();
+  lidar.getScanData(scan);
   if (!scan.valid) {
     Serial.println("[Lidar] waiting for first complete scan...");
     return;

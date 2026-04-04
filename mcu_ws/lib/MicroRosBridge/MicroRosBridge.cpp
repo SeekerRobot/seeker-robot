@@ -97,6 +97,11 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     // Without __init(), header.frame_id.data is nullptr → micro-CDR crash on
     // publish.
     sensor_msgs__msg__LaserScan__init(&lidar_.msg);
+    // Wire frame_id to our pre-allocated buffer (__init allocates 1 byte; we
+    // override before any publish so __fini never sees our pointer).
+    lidar_.msg.header.frame_id.data = lidar_.frame_id_buf;
+    lidar_.msg.header.frame_id.size = 5;  // strlen("laser")
+    lidar_.msg.header.frame_id.capacity = sizeof(lidar_.frame_id_buf);
     // Wire pre-allocated buffers so __fini() never frees them.
     lidar_.msg.ranges.data = lidar_.ranges_buf;
     lidar_.msg.ranges.size = 0;
@@ -109,7 +114,7 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     lidar_.msg.range_min = 0.02f;
     lidar_.msg.range_max = 12.0f;
 
-    rcl_ret_t rc = ctx.createPublisherBestEffort(
+    rcl_ret_t rc = ctx.createPublisherReliable(
         &lidar_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
         setup_.scan_topic);
     if (rc != RCL_RET_OK) {
@@ -170,6 +175,9 @@ void MicroRosBridge::onDestroy() {
 #if BRIDGE_ENABLE_LIDAR
   // Null backing pointers before __fini() to prevent free() of our struct
   // buffer.
+  lidar_.msg.header.frame_id.data = nullptr;
+  lidar_.msg.header.frame_id.size = 0;
+  lidar_.msg.header.frame_id.capacity = 0;
   lidar_.msg.ranges.data = nullptr;
   lidar_.msg.ranges.size = 0;
   lidar_.msg.ranges.capacity = 0;
@@ -253,7 +261,8 @@ void MicroRosBridge::publishAll() {
 
 #if BRIDGE_ENABLE_LIDAR
   if (setup_.lidar && lidar_.elapsed >= setup_.scan_interval_ms) {
-    LidarScanData scan = setup_.lidar->getScanData();
+    static LidarScanData scan;
+    setup_.lidar->getScanData(scan);
     if (scan.valid && scan.scan_count != lidar_.last_scan_count &&
         scan.count > 0) {
       lidar_.last_scan_count = scan.scan_count;
@@ -261,29 +270,37 @@ void MicroRosBridge::publishAll() {
 
       // LD14P applies geometric correction so angles are not perfectly uniform;
       // compute actual bounds in a single pass while converting scan data.
+      // Stride-3 downsample: 720 pts → 240 pts (~1980 B), fits in the
+      // 2048-byte micro-ROS stream buffer (MTU=512 × STREAM_HISTORY=4).
       static constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
+      static constexpr uint16_t kStride = 3;
       uint16_t n =
           (scan.count < kLidarMaxPoints) ? scan.count : kLidarMaxPoints;
+      uint16_t n_out = 0;
       float a_min = scan.angles_deg[0], a_max = scan.angles_deg[0];
-      for (uint16_t i = 0; i < n; i++) {
+      for (uint16_t i = 0; i < n; i += kStride, n_out++) {
         if (scan.angles_deg[i] < a_min) a_min = scan.angles_deg[i];
         if (scan.angles_deg[i] > a_max) a_max = scan.angles_deg[i];
-        lidar_.ranges_buf[i] = scan.distances_mm[i] * 0.001f;  // mm → m
-        lidar_.intensities_buf[i] = scan.qualities[i];
+        lidar_.ranges_buf[n_out] = scan.distances_mm[i] * 0.001f;  // mm → m
+        lidar_.intensities_buf[n_out] = scan.qualities[i];
       }
       lidar_.msg.angle_min = a_min * kDeg2Rad;
       lidar_.msg.angle_max = a_max * kDeg2Rad;
       lidar_.msg.angle_increment =
-          (n > 1) ? ((a_max - a_min) * kDeg2Rad / (n - 1)) : 0.0f;
+          (n_out > 1) ? ((a_max - a_min) * kDeg2Rad / (n_out - 1)) : 0.0f;
 
       float freq = setup_.lidar->getCurrentScanFreqHz();
       if (freq > 0.0f) {
         lidar_.msg.scan_time = 1.0f / freq;
-        lidar_.msg.time_increment = lidar_.msg.scan_time / n;
+        lidar_.msg.time_increment = lidar_.msg.scan_time / n_out;
       }
 
-      lidar_.msg.ranges.size = n;
-      lidar_.msg.intensities.size = n;
+      lidar_.msg.ranges.size = n_out;
+      lidar_.msg.intensities.size = n_out;
+
+      uint64_t now_us = micros();
+      lidar_.msg.header.stamp.sec = now_us / 1000000ULL;
+      lidar_.msg.header.stamp.nanosec = (now_us % 1000000ULL) * 1000ULL;
 
       rcl_ret_t rc = rcl_publish(&lidar_.pub, &lidar_.msg, nullptr);
       if (rc != RCL_RET_OK) {

@@ -101,7 +101,11 @@ class LidarSubsystem : public Subsystem::ThreadedSubsystem {
   const char* getInfo() override { return setup_.getId(); }
 
   /// @brief Thread-safe snapshot of the latest complete scan.
-  LidarScanData getScanData() const;
+  /// @param out  Caller-supplied buffer filled under the data mutex.
+  ///             Use a static or heap-allocated buffer — LidarScanData is
+  ///             ~8.6 KB and will overflow small FreeRTOS stacks if placed
+  ///             on the stack as a return-value temporary.
+  void getScanData(LidarScanData& out) const;
 
   /// @brief Current scan frequency as reported by the LD14P (Hz).
   float getCurrentScanFreqHz();
