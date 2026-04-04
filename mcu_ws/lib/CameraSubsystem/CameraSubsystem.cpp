@@ -23,14 +23,14 @@ void CameraSubsystem::begin() {
   camera_config_t cfg = setup_.config_;
 
   if (psramFound()) {
-    cfg.frame_size   = FRAMESIZE_VGA;
+    cfg.frame_size = FRAMESIZE_VGA;
     cfg.jpeg_quality = 10;
-    cfg.fb_count     = 2;
-    cfg.fb_location  = CAMERA_FB_IN_PSRAM;
+    cfg.fb_count = 2;
+    cfg.fb_location = CAMERA_FB_IN_PSRAM;
   } else {
-    cfg.frame_size   = FRAMESIZE_QQVGA;
-    cfg.fb_count     = 1;
-    cfg.fb_location  = CAMERA_FB_IN_DRAM;
+    cfg.frame_size = FRAMESIZE_QQVGA;
+    cfg.fb_count = 1;
+    cfg.fb_location = CAMERA_FB_IN_DRAM;
   }
 
   esp_err_t err = esp_camera_init(&cfg);
@@ -68,11 +68,11 @@ void CameraSubsystem::reset() {
 
 void CameraSubsystem::startServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port    = setup_.port_;
+  config.server_port = setup_.port_;
 
-  httpd_uri_t stream_uri = {.uri      = "/stream",
-                            .method   = HTTP_GET,
-                            .handler  = streamHandler,
+  httpd_uri_t stream_uri = {.uri = "/stream",
+                            .method = HTTP_GET,
+                            .handler = streamHandler,
                             .user_ctx = nullptr};
 
   if (httpd_start(&stream_httpd_, &config) == ESP_OK) {
@@ -94,9 +94,9 @@ void CameraSubsystem::stopServer() {
 }
 
 esp_err_t CameraSubsystem::streamHandler(httpd_req_t* req) {
-  camera_fb_t* fb  = nullptr;
-  esp_err_t    res = ESP_OK;
-  char         part_buf[64];
+  camera_fb_t* fb = nullptr;
+  esp_err_t res = ESP_OK;
+  char part_buf[64];
 
   res = httpd_resp_set_type(req, kStreamContentType);
   if (res != ESP_OK) return res;

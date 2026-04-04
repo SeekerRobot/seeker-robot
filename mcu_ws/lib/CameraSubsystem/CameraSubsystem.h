@@ -22,9 +22,7 @@ class CameraSetup : public Classes::BaseSetup {
   /// @param config  Camera hardware config (pins, pixel format, etc.)
   /// @param port    HTTP port for the /stream endpoint (default 80).
   CameraSetup(const camera_config_t& config, uint16_t port = 80)
-      : Classes::BaseSetup("CameraSubsystem"),
-        config_(config),
-        port_(port) {}
+      : Classes::BaseSetup("CameraSubsystem"), config_(config), port_(port) {}
 
   const camera_config_t config_;
   const uint16_t port_;
