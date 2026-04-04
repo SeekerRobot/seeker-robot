@@ -6,7 +6,7 @@
 #include "esp_camera.h"
 
 // Pins that perform power/reset operations
-#define CAM_PIN_PWDN  8   // Power down pin
+#define CAM_PIN_PWDN 8   // Power down pin
 #define CAM_PIN_RESET 6  // Reset is performed through software
 
 // Pin that drives the camera's internal clock
@@ -29,8 +29,8 @@
 
 // Clock wires
 #define CAM_PIN_VSYNC 7  // Marks the start of an image
-#define CAM_PIN_HREF  9   // On high while a row is being sent
-#define CAM_PIN_PCLK  17   // On high when a new word should be read
+#define CAM_PIN_HREF 9   // On high while a row is being sent
+#define CAM_PIN_PCLK 17  // On high when a new word should be read
 
 // Camera config data structure
 static camera_config_t camera_config = {

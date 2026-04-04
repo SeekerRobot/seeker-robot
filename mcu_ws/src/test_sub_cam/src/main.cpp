@@ -24,22 +24,22 @@ void setup() {
   delay(500);
 
   // Configure camera
-    // Check PSRAM before init
-    if (psramFound()) {
-        camera_config.frame_size = FRAMESIZE_VGA;
-        camera_config.jpeg_quality = 10;
-        camera_config.fb_count = 2;
-    } else {
-        camera_config.frame_size = FRAMESIZE_QQVGA;
-        camera_config.fb_count = 1;
-    }
+  // Check PSRAM before init
+  if (psramFound()) {
+    camera_config.frame_size = FRAMESIZE_VGA;
+    camera_config.jpeg_quality = 10;
+    camera_config.fb_count = 2;
+  } else {
+    camera_config.frame_size = FRAMESIZE_QQVGA;
+    camera_config.fb_count = 1;
+  }
 
-    // Init
-    esp_err_t err = esp_camera_init(&camera_config);
-    if (err != ESP_OK) {
-        Serial.printf("Camera init failed: 0x%x", err);
-        return;
-    }
+  // Init
+  esp_err_t err = esp_camera_init(&camera_config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed: 0x%x", err);
+    return;
+  }
 
   // Connect to WIFI
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
