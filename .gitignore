@@ -67,3 +67,7 @@ mcu_ws/platformio/network_config.ini
 
 # ai agents
 .claude/*
+
+# KiCad
+doc/pcb/sesamepcb/~sesamepcb.kicad_sch.lck
+doc/pcb/sesamepcb/sesamepcb-backups/*
