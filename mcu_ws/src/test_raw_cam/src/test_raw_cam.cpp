@@ -1,5 +1,5 @@
 /**
- * @file test_sub_cam.cpp
+ * @file test_raw_cam.cpp
  * @brief ESP32CAM test — displays a camera stream on an HTTP web server
  * @author Tal Avital
  * @date 3/31/26
