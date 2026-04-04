@@ -1,3 +1,10 @@
+/**
+ * @file test_sub_mic/src/main.cpp
+ * @author Tal Avital
+ * @date 4/4/2026
+ * @brief ESP32 Sense mic submodule
+ */
+
 // Code from: https://wiki.seeedstudio.com/xiao_esp32s3_sense_mic/
 
 #include <ESP_I2S.h>
