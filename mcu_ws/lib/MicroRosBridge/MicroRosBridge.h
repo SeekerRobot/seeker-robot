@@ -46,14 +46,18 @@
 #ifndef BRIDGE_ENABLE_SERVO
 #define BRIDGE_ENABLE_SERVO 0
 #endif
+#ifndef BRIDGE_ENABLE_LIDAR
+#define BRIDGE_ENABLE_LIDAR 0
+#endif
 #ifndef BRIDGE_ENABLE_DEBUG
 #define BRIDGE_ENABLE_DEBUG 0
 #endif
 
 // Compile-time sanity check — warns if every feature is disabled so a silent
 // no-op bridge isn't mistaken for a working one.
-#if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO && \
-    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_DEBUG
+#if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO &&                        \
+    !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_LIDAR && \
+    !BRIDGE_ENABLE_DEBUG
 #pragma message( \
     "MicroRosBridge: all features disabled — no publishers will be created. Set -DBRIDGE_ENABLE_*=1 in build_flags.")
 #endif
@@ -68,6 +72,10 @@
 #if BRIDGE_ENABLE_BATTERY
 #include <BatterySubsystem.h>
 #include <std_msgs/msg/float32.h>
+#endif
+#if BRIDGE_ENABLE_LIDAR
+#include <LidarSubsystem.h>
+#include <sensor_msgs/msg/laser_scan.h>
 #endif
 #if BRIDGE_ENABLE_DEBUG
 #include <MicroRosDebug.h>
@@ -86,6 +94,9 @@ class GyroSubsystem;
 #if !BRIDGE_ENABLE_BATTERY
 class BatterySubsystem;
 #endif
+#if !BRIDGE_ENABLE_LIDAR
+class LidarSubsystem;
+#endif
 // class ServoSubsystem;
 
 // ---- Compile-time feature switches
@@ -96,6 +107,7 @@ struct BridgeConfig {
   static constexpr bool kEnableGyro = BRIDGE_ENABLE_GYRO;
   static constexpr bool kEnableBattery = BRIDGE_ENABLE_BATTERY;
   static constexpr bool kEnableServo = BRIDGE_ENABLE_SERVO;
+  static constexpr bool kEnableLidar = BRIDGE_ENABLE_LIDAR;
   static constexpr bool kEnableDebug = BRIDGE_ENABLE_DEBUG;
 };
 
@@ -147,6 +159,20 @@ struct ServoPublisherState {
 using ServoPublisherState = EmptyState;
 #endif
 
+#if BRIDGE_ENABLE_LIDAR
+struct LidarPublisherState {
+  rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
+  sensor_msgs__msg__LaserScan msg{};
+  float ranges_buf[kLidarMaxPoints];
+  float intensities_buf[kLidarMaxPoints];
+  char frame_id_buf[8] = "laser";
+  elapsedMillis elapsed{};
+  uint32_t last_scan_count = 0;
+};
+#else
+using LidarPublisherState = EmptyState;
+#endif
+
 #if BRIDGE_ENABLE_DEBUG
 struct DebugPublisherState {
   rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
@@ -181,6 +207,11 @@ struct MicroRosBridgeSetup {
   // const char*     servo_topic       = "mcu/joint_states";
   // uint32_t        servo_interval_ms = 20;
 
+  // Lidar — used only when BridgeConfig::kEnableLidar is true.
+  LidarSubsystem* lidar = nullptr;
+  const char* scan_topic = "mcu/scan";
+  uint32_t scan_interval_ms = 50;  ///< Min ms between publishes (~20 Hz cap).
+
   // Debug log — used only when BridgeConfig::kEnableDebug is true.
   const char* log_topic = "mcu/log";
 };
@@ -211,6 +242,9 @@ class MicroRosBridge : public IMicroRosParticipant {
   std::conditional_t<BridgeConfig::kEnableServo, ServoPublisherState,
                      EmptyState>
       servo_;
+  std::conditional_t<BridgeConfig::kEnableLidar, LidarPublisherState,
+                     EmptyState>
+      lidar_;
   std::conditional_t<BridgeConfig::kEnableDebug, DebugPublisherState,
                      EmptyState>
       debug_;

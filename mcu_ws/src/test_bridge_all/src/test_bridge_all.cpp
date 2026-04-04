@@ -3,7 +3,7 @@
  * @author Aldem Pido
  * @date 4/3/2026
  * @brief Integration test: WiFi micro-ROS + MicroRosBridge with all features
- * enabled (heartbeat, gyro, battery, debug log).
+ * enabled (heartbeat, gyro, battery, lidar, debug log).
  *
  * WiFi transport: ESP32WifiSubsystem brings up the network connection before
  * the micro-ROS manager starts. All Debug::printf output is forwarded to
@@ -16,6 +16,7 @@
  *   -DBRIDGE_ENABLE_HEARTBEAT=1
  *   -DBRIDGE_ENABLE_GYRO=1
  *   -DBRIDGE_ENABLE_BATTERY=1
+ *   -DBRIDGE_ENABLE_LIDAR=1
  *   -DBRIDGE_ENABLE_DEBUG=1
  *
  * Verify on host:
@@ -23,6 +24,7 @@
  *   ros2 topic echo /mcu/heartbeat
  *   ros2 topic hz   /mcu/imu        # ~50 Hz
  *   ros2 topic echo /mcu/battery_voltage
+ *   ros2 topic hz   /mcu/scan       # ~6 Hz
  *   ros2 topic echo /mcu/log
  */
 #include <Arduino.h>
@@ -31,6 +33,7 @@
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
 #include <GyroSubsystem.h>
+#include <LidarSubsystem.h>
 #include <MicroRosBridge.h>
 #include <RobotConfig.h>
 #include <Wire.h>
@@ -54,6 +57,11 @@ static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
+
+// LidarSetup holds a HardwareSerial& — Serial2 is a global object, safe here.
+static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
+                                         /*rx_buf_size=*/512,
+                                         /*scan_freq_hz=*/6.0f);
 
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
                                                      WIFI_PASSWORD, static_ip,
@@ -90,11 +98,21 @@ void setup() {
     Debug::printf(Debug::Level::ERROR, "[Main] Battery init FAILED — halting");
     while (true) vTaskDelay(portMAX_DELAY);
   }
-  batt.beginThreadedPinned(2048, 2, 50, 1);
+  batt.beginThreadedPinned(4096, 2, 50, 1);
+
+  // --- Lidar --- core 0 | priority 4 | 1 ms | 6144 words
+  auto& lidar = Subsystem::LidarSubsystem::getInstance(lidar_setup);
+  if (!lidar.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] Lidar init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  lidar.beginThreadedPinned(6144, 4, 1, 0);
+  Debug::printf(Debug::Level::INFO, "[Main] Lidar started");
 
   static Subsystem::MicroRosBridgeSetup bridge_setup;
   bridge_setup.gyro = &gyro;
   bridge_setup.battery = &batt;
+  bridge_setup.lidar = &lidar;
   static Subsystem::MicroRosBridge bridge(bridge_setup);
 
   manager.registerParticipant(&bridge);
