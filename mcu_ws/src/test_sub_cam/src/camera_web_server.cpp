@@ -1,3 +1,10 @@
+/**
+ * @file test_sub_cam/src/camera_web_server.cpp
+ * @author Tal Avital
+ * @date 3/31/2026
+ * @brief ESP32 Sense Cam web server
+ */
+
 #include <Arduino.h>
 
 #include "camera_web_server.h"
