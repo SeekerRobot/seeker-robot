@@ -39,6 +39,56 @@ constexpr static int gyro_addr = 0x4B;
 constexpr static uint8_t pca_addr = 0x40;
 #endif
 
+// ---------------------------------------------------------------------------
+// PCA9685 servo port mapping
+//
+// The PCB labels servo headers M1–M13. Each label corresponds to a fixed
+// PCA9685 channel. Two channels (7, 14, 15) have no header and are marked x.
+//
+// Use mPort(N) wherever a PCA9685 channel number is required — it converts
+// the silkscreen label to the underlying channel at compile time.
+//
+//   M port  →  PCA9685 channel
+//   ──────     ────────────────
+//   M1      →  6
+//   M2      →  5
+//   M3      →  4
+//   M4      →  3
+//   M5      →  2
+//   M6      →  1
+//   M7      →  0
+//   M8      →  13
+//   M9      →  12
+//   M10     →  11
+//   M11     →  10
+//   M12     →  9
+//   M13     →  8
+//   (x)     →  7, 14, 15  — no header, do not use
+// ---------------------------------------------------------------------------
+
+constexpr uint8_t kMPortToChannel[14] = {
+    255,  // [0]  — no M0
+    6,    // [1]  M1
+    5,    // [2]  M2
+    4,    // [3]  M3
+    3,    // [4]  M4
+    2,    // [5]  M5
+    1,    // [6]  M6
+    0,    // [7]  M7
+    13,   // [8]  M8
+    12,   // [9]  M9
+    11,   // [10] M10
+    10,   // [11] M11
+    9,    // [12] M12
+    8,    // [13] M13
+};
+
+/// @brief Returns the PCA9685 channel for the servo header labelled M<port>.
+///        Valid range: 1–13. Passing 0 or >13 returns 255 (invalid).
+constexpr uint8_t mPort(uint8_t port) {
+  return (port >= 1 && port <= 13) ? kMPortToChannel[port] : 255;
+}
+
 };  // namespace Config
 
 // Camera pin macros follow the standard esp32-camera naming convention so

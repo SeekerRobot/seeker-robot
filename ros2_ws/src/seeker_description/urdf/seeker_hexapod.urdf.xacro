@@ -1,0 +1,384 @@
+<?xml version="1.0"?>
+<!--
+  Seeker Hexapod Robot — URDF/Xacro description.
+
+  Geometry sourced from mcu_ws/lib/RobotConfig/HexapodConfig.h:
+    Body:   120 × 80 × 30 mm
+    L1:     50 mm  (hip joint → knee joint along femur)
+    L2:     80 mm  (knee joint → foot tip)
+    Legs:   FL=60°, FR=−60°, ML=90°, MR=−90°, RL=120°, RR=−120° from body +X
+
+  2-DOF leg model (same as GaitController.cpp):
+    hip_joint   [revolute, Z axis, ±60° / ±1.047 rad]  — yaw, swings femur fwd/back
+    femur_joint [FIXED — femur always horizontal]
+    knee_joint  [revolute, Y axis, 0–90° / 0–1.571 rad] — pitch, raises/lowers tibia
+
+  Joint names must match fake_mcu_node.py and /mcu/joint_states:
+    leg_fl_hip_joint  leg_fl_knee_joint   (index 0)
+    leg_fr_hip_joint  leg_fr_knee_joint   (index 1)
+    leg_ml_hip_joint  leg_ml_knee_joint   (index 2)
+    leg_mr_hip_joint  leg_mr_knee_joint   (index 3)
+    leg_rl_hip_joint  leg_rl_knee_joint   (index 4)
+    leg_rr_hip_joint  leg_rr_knee_joint   (index 5)
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="seeker_hexapod">
+
+  <!-- ================================================================== -->
+  <!-- Materials                                                           -->
+  <!-- ================================================================== -->
+  <material name="dark_grey"><color rgba="0.3 0.3 0.3 1.0"/></material>
+  <material name="orange">   <color rgba="1.0 0.5 0.0 1.0"/></material>
+  <material name="blue">     <color rgba="0.2 0.4 0.8 1.0"/></material>
+  <material name="black">    <color rgba="0.05 0.05 0.05 1.0"/></material>
+
+  <!-- ================================================================== -->
+  <!-- Parameters                                                          -->
+  <!-- ================================================================== -->
+  <xacro:property name="body_x"    value="0.120"/>
+  <xacro:property name="body_y"    value="0.080"/>
+  <xacro:property name="body_z"    value="0.030"/>
+  <xacro:property name="body_mass" value="1.5"/>
+
+  <xacro:property name="coxa_len"  value="0.040"/>
+  <xacro:property name="femur_len" value="0.050"/>
+  <xacro:property name="tibia_len" value="0.080"/>
+  <xacro:property name="leg_r"     value="0.008"/>
+  <xacro:property name="leg_mass"  value="0.040"/>
+
+  <xacro:property name="hip_lo"  value="-1.047"/>
+  <xacro:property name="hip_hi"  value=" 1.047"/>
+  <xacro:property name="knee_lo" value="0.000"/>
+  <xacro:property name="knee_hi" value="1.571"/>
+
+  <xacro:property name="lidar_r" value="0.035"/>
+  <xacro:property name="lidar_h" value="0.040"/>
+  <xacro:property name="lidar_m" value="0.100"/>
+  <xacro:property name="cam_s"   value="0.030"/>
+  <xacro:property name="cam_m"   value="0.050"/>
+
+  <!-- ================================================================== -->
+  <!-- Inertia helpers                                                     -->
+  <!-- ================================================================== -->
+  <xacro:macro name="box_inertia" params="m x y z">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(y*y+z*z)/12}" ixy="0" ixz="0"
+               iyy="${m*(x*x+z*z)/12}" iyz="0"
+               izz="${m*(x*x+y*y)/12}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cyl_inertia" params="m r h">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(3*r*r+h*h)/12}" ixy="0" ixz="0"
+               iyy="${m*(3*r*r+h*h)/12}" iyz="0"
+               izz="${m*r*r/2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ================================================================== -->
+  <!-- Leg macro                                                           -->
+  <!--   name         : fl | fr | ml | mr | rl | rr                      -->
+  <!--   mount_x/y    : hip joint XY position on body (metres)            -->
+  <!--   mount_angle  : outward facing direction (radians from body +X)   -->
+  <!-- ================================================================== -->
+  <xacro:macro name="leg" params="name mount_x mount_y mount_angle">
+
+    <!-- Coxa: short vertical stub from body to hip joint -->
+    <link name="leg_${name}_coxa_link">
+      <visual>
+        <geometry><cylinder radius="${leg_r}" length="${coxa_len}"/></geometry>
+        <origin xyz="0 0 ${-coxa_len/2}" rpy="0 0 0"/>
+        <material name="dark_grey"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${leg_r}" length="${coxa_len}"/></geometry>
+        <origin xyz="0 0 ${-coxa_len/2}" rpy="0 0 0"/>
+      </collision>
+      <xacro:cyl_inertia m="${leg_mass}" r="${leg_r}" h="${coxa_len}"/>
+    </link>
+
+    <!-- hip_joint: revolute around Z — swings the femur forward / backward -->
+    <joint name="leg_${name}_hip_joint" type="revolute">
+      <parent link="base_link"/>
+      <child  link="leg_${name}_coxa_link"/>
+      <origin xyz="${mount_x} ${mount_y} 0" rpy="0 0 ${mount_angle}"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${hip_lo}" upper="${hip_hi}" effort="2.0" velocity="3.14"/>
+      <dynamics damping="0.1" friction="0.0"/>
+    </joint>
+
+    <!-- Femur: horizontal link, always parallel to the ground -->
+    <link name="leg_${name}_femur_link">
+      <visual>
+        <!-- cylinder default axis is Z; rotate 90° around Y → points along X -->
+        <geometry><cylinder radius="${leg_r}" length="${femur_len}"/></geometry>
+        <origin xyz="${femur_len/2} 0 ${-coxa_len}" rpy="0 ${pi/2} 0"/>
+        <material name="orange"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${leg_r}" length="${femur_len}"/></geometry>
+        <origin xyz="${femur_len/2} 0 ${-coxa_len}" rpy="0 ${pi/2} 0"/>
+      </collision>
+      <xacro:cyl_inertia m="${leg_mass}" r="${leg_r}" h="${femur_len}"/>
+    </link>
+
+    <!-- femur_joint: FIXED — femur is always horizontal (locked by design) -->
+    <joint name="leg_${name}_femur_joint" type="fixed">
+      <parent link="leg_${name}_coxa_link"/>
+      <child  link="leg_${name}_femur_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Tibia: lower leg, hangs from the knee and pitches down/up -->
+    <link name="leg_${name}_tibia_link">
+      <visual>
+        <geometry><cylinder radius="${leg_r}" length="${tibia_len}"/></geometry>
+        <origin xyz="0 0 ${-tibia_len/2}" rpy="0 0 0"/>
+        <material name="blue"/>
+      </visual>
+      <collision>
+        <geometry><sphere radius="${leg_r}"/></geometry>
+        <origin xyz="0 0 ${-tibia_len}" rpy="0 0 0"/>
+      </collision>
+      <xacro:cyl_inertia m="${leg_mass}" r="${leg_r}" h="${tibia_len}"/>
+    </link>
+
+    <!-- knee_joint: revolute — pitches tibia outward and downward.
+         Axis = (0, -1, 0) in femur-local frame, which for any mount angle
+         resolves to the world axis (-Z × outward), keeping the tibia in the
+         sagittal plane of the leg (femur direction × vertical). -->
+    <joint name="leg_${name}_knee_joint" type="revolute">
+      <parent link="leg_${name}_femur_link"/>
+      <child  link="leg_${name}_tibia_link"/>
+      <origin xyz="${femur_len} 0 ${-coxa_len}" rpy="0 0 0"/>
+      <axis xyz="0 -1 0"/>
+      <limit lower="${knee_lo}" upper="${knee_hi}" effort="2.0" velocity="3.14"/>
+      <dynamics damping="0.1" friction="0.0"/>
+    </joint>
+
+    <!-- Gazebo joint position controller — hip -->
+    <gazebo>
+      <plugin filename="gz-sim-joint-position-controller-system"
+              name="gz::sim::systems::JointPositionController">
+        <joint_name>leg_${name}_hip_joint</joint_name>
+        <topic>/model/seeker/joint/leg_${name}_hip_joint/0/cmd_pos</topic>
+        <p_gain>80</p_gain>
+        <i_gain>0.1</i_gain>
+        <d_gain>20.0</d_gain>
+      </plugin>
+    </gazebo>
+
+    <!-- Gazebo joint position controller — knee -->
+    <gazebo>
+      <plugin filename="gz-sim-joint-position-controller-system"
+              name="gz::sim::systems::JointPositionController">
+        <joint_name>leg_${name}_knee_joint</joint_name>
+        <topic>/model/seeker/joint/leg_${name}_knee_joint/0/cmd_pos</topic>
+        <p_gain>80</p_gain>
+        <i_gain>0.1</i_gain>
+        <d_gain>2.0</d_gain>
+      </plugin>
+    </gazebo>
+
+    <!-- Foot contact: compliant surface reduces jitter from rigid multi-contact -->
+    <gazebo reference="leg_${name}_tibia_link">
+      <collision>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e3</kp>   <!-- contact stiffness (default 1e15 is too rigid) -->
+              <kd>100</kd>   <!-- contact damping — kd_crit≈26 for kp=1e3; 100 = overdamped -->
+            </ode>
+          </contact>
+        </surface>
+      </collision>
+    </gazebo>
+
+  </xacro:macro>
+
+  <!-- ================================================================== -->
+  <!-- base_footprint — ground projection (required by Nav2)              -->
+  <!--                                                                    -->
+  <!-- Height = coxa_len + tibia_len*cos(NEUTRAL_KNEE)                    -->
+  <!--        = coxa_len + tibia_len*cos(30°) + leg_r = 40 + 69.3 + 8 = 117.3mm -->
+  <!-- This puts base_link at the correct height above the ground when    -->
+  <!-- all legs are at the neutral standing pose (knee = 30°).            -->
+  <!-- Update this value whenever NEUTRAL_KNEE changes in fake_mcu_node.  -->
+  <!-- Formula: coxa_len + tibia_len*cos(NEUTRAL_KNEE)                    -->
+  <!-- ================================================================== -->
+  <link name="base_footprint"/>
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 0.117" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ================================================================== -->
+  <!-- base_link — main chassis                                           -->
+  <!-- ================================================================== -->
+  <link name="base_link">
+    <visual>
+      <geometry><box size="${body_x} ${body_y} ${body_z}"/></geometry>
+      <material name="dark_grey"/>
+    </visual>
+    <collision>
+      <geometry><box size="${body_x} ${body_y} ${body_z}"/></geometry>
+    </collision>
+    <xacro:box_inertia m="${body_mass}" x="${body_x}" y="${body_y}" z="${body_z}"/>
+  </link>
+
+  <!-- ================================================================== -->
+  <!-- Legs (mount positions from HexapodConfig.h: half-len=60mm, half-w=40mm) -->
+  <!-- ================================================================== -->
+  <xacro:leg name="fl" mount_x=" 0.060" mount_y=" 0.040" mount_angle=" 1.047"/>
+  <xacro:leg name="fr" mount_x=" 0.060" mount_y="-0.040" mount_angle="-1.047"/>
+  <xacro:leg name="ml" mount_x=" 0.000" mount_y=" 0.040" mount_angle=" 1.571"/>
+  <xacro:leg name="mr" mount_x=" 0.000" mount_y="-0.040" mount_angle="-1.571"/>
+  <xacro:leg name="rl" mount_x="-0.060" mount_y=" 0.040" mount_angle=" 2.094"/>
+  <xacro:leg name="rr" mount_x="-0.060" mount_y="-0.040" mount_angle="-2.094"/>
+
+  <!-- ================================================================== -->
+  <!-- LiDAR — LD14P 360°, top-mounted                                   -->
+  <!-- ================================================================== -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder radius="${lidar_r}" length="${lidar_h}"/></geometry>
+      <origin xyz="0 0 ${lidar_h/2}" rpy="0 0 0"/>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="${lidar_r}" length="${lidar_h}"/></geometry>
+      <origin xyz="0 0 ${lidar_h/2}" rpy="0 0 0"/>
+    </collision>
+    <xacro:cyl_inertia m="${lidar_m}" r="${lidar_r}" h="${lidar_h}"/>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="lidar_link"/>
+    <origin xyz="0 0 ${body_z/2}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Gazebo LiDAR sensor → /gz/scan, bridged to /mcu/scan -->
+  <gazebo reference="lidar_link">
+    <sensor name="lidar_sensor" type="gpu_lidar">
+      <gz_frame_id>lidar_link</gz_frame_id>
+      <topic>/gz/scan</topic>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>720</samples>
+            <resolution>1</resolution>
+            <min_angle>0</min_angle>
+            <max_angle>6.283185</max_angle>
+          </horizontal>
+          <vertical>
+            <samples>1</samples>
+            <resolution>1</resolution>
+            <min_angle>0</min_angle>
+            <max_angle>0</max_angle>
+          </vertical>
+        </scan>
+        <range>
+          <min>0.10</min>
+          <max>8.00</max>
+          <resolution>0.001</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.005</stddev>
+        </noise>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <!-- ================================================================== -->
+  <!-- Camera — front-mounted                                              -->
+  <!-- ================================================================== -->
+  <link name="camera_link">
+    <visual>
+      <geometry><box size="${cam_s} ${cam_s*1.5} ${cam_s}"/></geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <geometry><box size="${cam_s} ${cam_s*1.5} ${cam_s}"/></geometry>
+    </collision>
+    <xacro:box_inertia m="${cam_m}" x="${cam_s}" y="${cam_s*1.5}" z="${cam_s}"/>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="camera_link"/>
+    <origin xyz="${body_x/2} 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_optical_frame"/>
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child  link="camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+  </joint>
+
+  <gazebo reference="camera_link">
+    <sensor name="camera_sensor" type="camera">
+      <gz_frame_id>camera_optical_frame</gz_frame_id>
+      <topic>/gz/camera/image</topic>
+      <update_rate>15</update_rate>
+      <always_on>true</always_on>
+      <camera>
+        <horizontal_fov>1.396</horizontal_fov>
+        <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+        <clip><near>0.05</near><far>50</far></clip>
+      </camera>
+    </sensor>
+  </gazebo>
+
+  <!-- ================================================================== -->
+  <!-- IMU — on base_link, → /gz/imu, bridged to /mcu/imu               -->
+  <!-- ================================================================== -->
+  <gazebo reference="base_link">
+    <sensor name="imu_sensor" type="imu">
+      <gz_frame_id>base_link</gz_frame_id>
+      <topic>/gz/imu</topic>
+      <update_rate>200</update_rate>
+      <always_on>true</always_on>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+  <!-- ================================================================== -->
+  <!-- Ground-truth odometry plugin                                        -->
+  <!-- gz_odom_bridge.py converts /model/seeker/odometry → TF             -->
+  <!-- ================================================================== -->
+  <gazebo>
+    <plugin filename="gz-sim-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_topic>/model/seeker/odometry</odom_topic>
+      <odom_publish_frequency>50</odom_publish_frequency>
+    </plugin>
+  </gazebo>
+
+</robot>

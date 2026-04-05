@@ -1,0 +1,47 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Displays:
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Description Topic:
+        Value: /robot_description
+      TF Prefix: ""
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan
+      Enabled: true
+      Topic:
+        Value: /lidar/scan
+      Size (m): 0.02
+      Color Transformer: Intensity
+    - Class: rviz_default_plugins/Image
+      Name: Camera Image
+      Enabled: true
+      Topic:
+        Value: /camera/image
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+  Global Options:
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.5
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 0.5
+      Yaw: 0.8
+Window Geometry:
+  Width: 1200
+  Height: 800

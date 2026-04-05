@@ -11,6 +11,15 @@ services:
       - DISPLAY=${DISPLAY_CONFIG}
       - QT_X11_NO_MITSHM=1
       - PLATFORMIO_CORE_DIR=/home/ubuntu/.platformio
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, graphics, compute, utility]
     volumes:
       # --- Source Code (Synced with Host) ---
       - ../ros2_ws/src:/home/ubuntu/ros2_workspaces/src/seeker_ros:delegated

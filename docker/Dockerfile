@@ -139,9 +139,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Cleanup apt caches
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    # Install rqt graph
+    # Install rqt graph and teleop tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-$ROS_DISTRO-rqt-graph && \
+    ros-$ROS_DISTRO-rqt-graph \
+    ros-$ROS_DISTRO-teleop-twist-keyboard \
+    ros-$ROS_DISTRO-teleop-twist-joy && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER $USER_NAME
