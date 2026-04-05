@@ -1,3 +1,10 @@
+/**
+ * @file test_sub_mic/src/main.cpp
+ * @author Tal Avital
+ * @date 4/5/2026
+ * @brief ESP32 Sense Mic test
+ */
+
 #include <Arduino.h>
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
@@ -24,13 +31,12 @@ void setup() {
     while (1); // do nothing
   }
 
-  // Connect to WIFI
-  auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
-  wifi.beginThreadedPinned(4096, 3, 100, 1);
+  // // Connect to WIFI
+  // auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
+  // wifi.beginThreadedPinned(4096, 3, 100, 1);
 
-  // Start camera web server
-  startCameraWebServer();
-
+  // // Start camera web server
+  // startMicWebServer();
 }
 
 void loop() {
