@@ -1,35 +1,43 @@
-/**
- * @file test_sub_mic/src/main.cpp
- * @author Tal Avital
- * @date 4/4/2026
- * @brief ESP32 Sense mic submodule
- */
+#include <Arduino.h>
+#include <CustomDebug.h>
+#include <ESP32WifiSubsystem.h>
 
-// Code from: https://wiki.seeedstudio.com/xiao_esp32s3_sense_mic/
+#include <I2S.h>
 
-#include <ESP_I2S.h>
-I2SClass I2S;
+#include "mic_web_server.h"
+
+static IPAddress static_ip STATIC_IP;
+static IPAddress gateway GATEWAY;
+static IPAddress subnet SUBNET;
+
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("WifiSubsystem", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 void setup() {
-  // Baud rate found from other files
   Serial.begin(921600);
 
-  // Set up clock (42) and data pins (41)
-  I2S.setPinsPdmRx(42, 41);
-
-  // Start I2S at 16 kHz with 16 bits per sample
-  if (!I2S.begin(I2S_MODE_PDM_RX, 16000, I2S_DATA_BIT_WIDTH,
-                 I2S_SLOT_MODE_MONO)) {
+  // start I2S at 16 kHz with 16-bits per sample
+  I2S.setAllPins(-1, 42, 41, -1, -1);
+  if (!I2S.begin(PDM_MONO_MODE, 16000, 16)) {
     Serial.println("Failed to initialize I2S!");
-    while (1);
+    while (1); // do nothing
   }
 
-  void loop() {
-    // Read a sample
-    int sample = I2S.read();
+  // Connect to WIFI
+  auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
+  wifi.beginThreadedPinned(4096, 3, 100, 1);
 
-    if (sample && sample != -1 && sample != 1) {
-      Serial.println(sample);
-    }
+  // Start camera web server
+  startCameraWebServer();
+
+}
+
+void loop() {
+  // read a sample
+  int sample = I2S.read();
+
+  if (sample && sample != -1 && sample != 1) {
+    Serial.println(sample);
   }
 }
