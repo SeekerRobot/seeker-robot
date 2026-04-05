@@ -30,9 +30,11 @@
 // ---------------------------------------------------------------------------
 // WiFi setup (DHCP — clients connect to IP shown on serial)
 // ---------------------------------------------------------------------------
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "wifi", WIFI_SSID, WIFI_PASSWORD, IPAddress(STATIC_IP), IPAddress(GATEWAY),
-    IPAddress(SUBNET));
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
+                                                     WIFI_PASSWORD,
+                                                     IPAddress(STATIC_IP),
+                                                     IPAddress(GATEWAY),
+                                                     IPAddress(SUBNET));
 
 // ---------------------------------------------------------------------------
 // Camera setup
