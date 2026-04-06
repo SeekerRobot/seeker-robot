@@ -76,7 +76,7 @@ void GaitController::update() {
   GaitState state;
   {
     Threads::Scope lock(cmd_mutex_);
-    vel   = cmd_;
+    vel = cmd_;
     state = state_;
   }
 
@@ -91,7 +91,7 @@ void GaitController::update() {
   float sin_yaw = sinf(yaw_rad);
   body_pos_.x += (vel.vx * cos_yaw - vel.vy * sin_yaw) * dt * 1000.f;
   body_pos_.y += (vel.vx * sin_yaw + vel.vy * cos_yaw) * dt * 1000.f;
-  body_yaw_   += vel.wz * kRadToDeg * dt;
+  body_yaw_ += vel.wz * kRadToDeg * dt;
 
   // Solve stance IK for the current body pose — all six legs re-solved here;
   // flight legs will override their stance angles in the loop below.
@@ -117,7 +117,7 @@ void GaitController::update() {
 
     // --- Flight entry ---
     if (flying && !ls.was_flying) {
-      ls.lift_start   = kin_->getFootWorld(i);
+      ls.lift_start = kin_->getFootWorld(i);
       ls.swing_target = computeStepTarget(i, vel);
     }
 
@@ -184,7 +184,7 @@ void GaitController::disable() {
   Threads::Scope lock(cmd_mutex_);
   if (state_ == GaitState::WALKING) {
     state_ = GaitState::STOPPING;
-    cmd_   = {};  // zero velocity so step targets return to neutral
+    cmd_ = {};  // zero velocity so step targets return to neutral
 
     // Freeze stance legs immediately; in-flight legs will freeze on touchdown
     for (uint8_t i = 0; i < kNumLegs; i++) {
@@ -201,7 +201,7 @@ void GaitController::stop() {
   {
     Threads::Scope lock(cmd_mutex_);
     state_ = GaitState::IDLE;
-    cmd_   = {};
+    cmd_ = {};
   }
 
   // Snap all legs to neutral and reset tracking state
@@ -232,48 +232,46 @@ VelocityCommand GaitController::getVelocity() const {
 
 void GaitController::initPhases() {
   for (uint8_t leg : kGroupA) {
-    leg_state_[leg].phase_t    = 0.f;
+    leg_state_[leg].phase_t = 0.f;
     leg_state_[leg].was_flying = false;
-    leg_state_[leg].frozen     = false;
+    leg_state_[leg].frozen = false;
   }
   for (uint8_t leg : kGroupB) {
-    leg_state_[leg].phase_t    = 0.5f;
-    leg_state_[leg].was_flying = true;  // will detect stance entry on first tick
-    leg_state_[leg].frozen     = false;
+    leg_state_[leg].phase_t = 0.5f;
+    leg_state_[leg].was_flying =
+        true;  // will detect stance entry on first tick
+    leg_state_[leg].frozen = false;
   }
 }
 
 void GaitController::pushLegAngles(uint8_t leg,
-                                    const Kinematics::LegAngles& a) {
-  servos_->setAngle(setup_.gait.leg_servo_hip[leg],  a.hip);
+                                   const Kinematics::LegAngles& a) {
+  servos_->setAngle(setup_.gait.leg_servo_hip[leg], a.hip);
   servos_->setAngle(setup_.gait.leg_servo_knee[leg], a.knee);
 }
 
-Kinematics::Vec3 GaitController::computeStepTarget(
-    uint8_t leg, const VelocityCommand& vel) {
+Kinematics::Vec3 GaitController::computeStepTarget(uint8_t leg,
+                                                   const VelocityCommand& vel) {
   // Neutral foot position in body frame → transform to world frame at current
   // body pose so we have a stable reference for the step offset.
   Kinematics::Vec3 neutral_body = kin_->leg(leg).neutralPos();
   float cos_yaw = cosf(body_yaw_ * kDegToRad);
   float sin_yaw = sinf(body_yaw_ * kDegToRad);
 
-  float nx_world = body_pos_.x + cos_yaw * neutral_body.x
-                               - sin_yaw * neutral_body.y;
-  float ny_world = body_pos_.y + sin_yaw * neutral_body.x
-                               + cos_yaw * neutral_body.y;
+  float nx_world =
+      body_pos_.x + cos_yaw * neutral_body.x - sin_yaw * neutral_body.y;
+  float ny_world =
+      body_pos_.y + sin_yaw * neutral_body.x + cos_yaw * neutral_body.y;
 
   // Half-cycle velocity lookahead (m/s → mm; rotated into world frame)
-  float half_t_mm = setup_.gait.cycle_time_s * 0.5f
-                  * setup_.gait.step_scale * 1000.f;
+  float half_t_mm =
+      setup_.gait.cycle_time_s * 0.5f * setup_.gait.step_scale * 1000.f;
   float dx = (vel.vx * cos_yaw - vel.vy * sin_yaw) * half_t_mm;
   float dy = (vel.vx * sin_yaw + vel.vy * cos_yaw) * half_t_mm;
 
   // Foot lands at same z as it lifted from (ground level for this leg)
-  Kinematics::Vec3 candidate = {
-      nx_world + dx,
-      ny_world + dy,
-      kin_->getFootWorld(leg).z
-  };
+  Kinematics::Vec3 candidate = {nx_world + dx, ny_world + dy,
+                                kin_->getFootWorld(leg).z};
 
   // Reachability check — binary search inward if out of bounds
   if (kin_->isReachable(leg, candidate)) return candidate;
@@ -281,13 +279,11 @@ Kinematics::Vec3 GaitController::computeStepTarget(
   Kinematics::Vec3 lo = kin_->getFootWorld(leg);  // known reachable
   Kinematics::Vec3 hi = candidate;
   for (int iter = 0; iter < 8; iter++) {
-    Kinematics::Vec3 mid = {
-        (lo.x + hi.x) * 0.5f,
-        (lo.y + hi.y) * 0.5f,
-        lo.z
-    };
-    if (kin_->isReachable(leg, mid)) lo = mid;
-    else                              hi = mid;
+    Kinematics::Vec3 mid = {(lo.x + hi.x) * 0.5f, (lo.y + hi.y) * 0.5f, lo.z};
+    if (kin_->isReachable(leg, mid))
+      lo = mid;
+    else
+      hi = mid;
   }
   return lo;
 }
@@ -295,11 +291,9 @@ Kinematics::Vec3 GaitController::computeStepTarget(
 Kinematics::Vec3 GaitController::swingArc(uint8_t leg, float s) const {
   const LegGaitState& ls = leg_state_[leg];
   float ss = smoothstep(s);
-  return {
-      ls.lift_start.x + (ls.swing_target.x - ls.lift_start.x) * ss,
-      ls.lift_start.y + (ls.swing_target.y - ls.lift_start.y) * ss,
-      ls.lift_start.z + setup_.gait.step_height_mm * sinf(kPi * s)
-  };
+  return {ls.lift_start.x + (ls.swing_target.x - ls.lift_start.x) * ss,
+          ls.lift_start.y + (ls.swing_target.y - ls.lift_start.y) * ss,
+          ls.lift_start.z + setup_.gait.step_height_mm * sinf(kPi * s)};
 }
 
 bool GaitController::anyFlying() const {

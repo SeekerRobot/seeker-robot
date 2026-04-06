@@ -40,17 +40,17 @@ struct Vec3 {
 };
 
 struct LegAngles {
-  float hip  = 0.0f;  // degrees
+  float hip = 0.0f;   // degrees
   float knee = 0.0f;  // degrees
 };
 
 struct LegConfig {
-  Vec3  mount_pos;        // hip joint position in body frame (mm)
+  Vec3 mount_pos;         // hip joint position in body frame (mm)
   float mount_angle_deg;  // direction leg faces outward (deg, CCW from body +X)
   float L1;               // femur length (mm, hip to knee)
   float L2;               // lower leg length (mm, knee to foot)
 
-  float hip_min_deg;   // hip servo travel limits
+  float hip_min_deg;  // hip servo travel limits
   float hip_max_deg;
   float knee_min_deg;  // knee servo travel limits
   float knee_max_deg;
@@ -137,8 +137,8 @@ class HexapodLeg {
 
  private:
   LegConfig cfg_;
-  float     mount_cos_;  // cached cosf(mount_angle_rad) — used every solve
-  float     mount_sin_;  // cached sinf(mount_angle_rad)
+  float mount_cos_;  // cached cosf(mount_angle_rad) — used every solve
+  float mount_sin_;  // cached sinf(mount_angle_rad)
 
   /// @brief Transforms a foot position from body frame into leg-local frame.
   ///

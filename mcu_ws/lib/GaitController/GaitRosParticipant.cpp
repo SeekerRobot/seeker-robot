@@ -36,8 +36,7 @@ bool GaitRosParticipant::onCreate(Subsystem::MicroRosContext& ctx) {
   }
 
   rcl_ret_t rc = ctx.createSubscriptionBestEffort(
-      &sub_,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
+      &sub_, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
       setup_.cmd_vel_topic);
 
   if (rc != RCL_RET_OK) {
@@ -48,8 +47,8 @@ bool GaitRosParticipant::onCreate(Subsystem::MicroRosContext& ctx) {
 
   rc = ctx.addSubscription(&sub_, &twist_msg_, twistCb);
   if (rc != RCL_RET_OK) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[GaitRos] addSubscription failed (%d)", (int)rc);
+    Debug::printf(Debug::Level::ERROR, "[GaitRos] addSubscription failed (%d)",
+                  (int)rc);
     return false;
   }
 
@@ -60,7 +59,7 @@ bool GaitRosParticipant::onCreate(Subsystem::MicroRosContext& ctx) {
 }
 
 void GaitRosParticipant::onDestroy() {
-  sub_         = rcl_get_zero_initialized_subscription();
+  sub_ = rcl_get_zero_initialized_subscription();
   initialized_ = false;
   Debug::printf(Debug::Level::INFO, "[GaitRos] onDestroy");
 }

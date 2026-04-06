@@ -38,7 +38,7 @@ static constexpr uint8_t kNumLegs = 6;
 /// @brief Per-leg IK results returned by setBodyPose() and standNeutral().
 struct SolveResult {
   LegAngles legs[kNumLegs];  // solved hip + knee angles (degrees) per leg
-  bool      valid[kNumLegs]; // false if IK failed for that leg
+  bool valid[kNumLegs];      // false if IK failed for that leg
 };
 
 class HexapodKinematics {
@@ -110,9 +110,9 @@ class HexapodKinematics {
 
  private:
   HexapodLeg legs_[kNumLegs];
-  Vec3       foot_world_[kNumLegs];  // planted foot positions in world frame
-  Vec3       body_pos_;              // current body origin in world frame (mm)
-  float      body_yaw_;             // current body heading (degrees)
+  Vec3 foot_world_[kNumLegs];  // planted foot positions in world frame
+  Vec3 body_pos_;              // current body origin in world frame (mm)
+  float body_yaw_;             // current body heading (degrees)
 
   /// @brief Transform a world-frame position into the current body frame.
   ///

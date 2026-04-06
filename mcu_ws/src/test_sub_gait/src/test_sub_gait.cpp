@@ -11,7 +11,8 @@
  * this loop only handles serial input.
  *
  * All robot-specific configuration (servo calibration, link lengths, leg
- * geometry, gait tuning) lives in HexapodConfig.h. Edit that file, not this one.
+ * geometry, gait tuning) lives in HexapodConfig.h. Edit that file, not this
+ * one.
  *
  * Expected workflow:
  *   1. Flash and open serial at 921600 baud.
@@ -38,26 +39,26 @@
 // Shared resources
 // ---------------------------------------------------------------------------
 static Subsystem::ServoConfig servo_configs[HexapodConfig::kNumServos];
-static Threads::Mutex         i2c_mutex;
+static Threads::Mutex i2c_mutex;
 
-static Classes::BaseSetup      blink_setup("blink");
+static Classes::BaseSetup blink_setup("blink");
 static Subsystem::BlinkSubsystem blink(blink_setup);
 
 // Pointers set in setup() after singleton / object construction
 static Kinematics::HexapodKinematics* kinematics = nullptr;
-static Gait::GaitController*          gait        = nullptr;
+static Gait::GaitController* gait = nullptr;
 
 // ---------------------------------------------------------------------------
 // Serial parser (mirrors test_sub_servo pattern)
 // ---------------------------------------------------------------------------
-static constexpr size_t  kLineBufSize = 128;
-static constexpr uint8_t kMaxTokens   = 4;
-static char    line_buf[kLineBufSize];
+static constexpr size_t kLineBufSize = 128;
+static constexpr uint8_t kMaxTokens = 4;
+static char line_buf[kLineBufSize];
 static uint8_t line_pos = 0;
-static char*   tokens[kMaxTokens];
+static char* tokens[kMaxTokens];
 static uint8_t num_tokens = 0;
 
-static void printOk(const char* msg)  { Serial.printf("OK:  %s\r\n", msg); }
+static void printOk(const char* msg) { Serial.printf("OK:  %s\r\n", msg); }
 static void printErr(const char* msg) { Serial.printf("ERR: %s\r\n", msg); }
 
 static void tokenize() {
@@ -74,8 +75,8 @@ static void tokenize() {
 
 static bool requireArgs(uint8_t n) {
   if (num_tokens < n) {
-    Serial.printf("ERR: expected %u arg(s), got %u. Type 'help'.\r\n",
-                  n - 1, num_tokens - 1);
+    Serial.printf("ERR: expected %u arg(s), got %u. Type 'help'.\r\n", n - 1,
+                  num_tokens - 1);
     return false;
   }
   return true;
@@ -84,7 +85,10 @@ static bool requireArgs(uint8_t n) {
 static bool parseFloat(const char* tok, float& out) {
   char* end;
   float v = strtof(tok, &end);
-  if (end == tok || *end != '\0') { printErr("invalid number"); return false; }
+  if (end == tok || *end != '\0') {
+    printErr("invalid number");
+    return false;
+  }
   out = v;
   return true;
 }
@@ -108,32 +112,34 @@ static void printHelp() {
 
 static const char* stateName(Gait::GaitState s) {
   switch (s) {
-    case Gait::GaitState::IDLE:     return "IDLE";
-    case Gait::GaitState::WALKING:  return "WALKING";
-    case Gait::GaitState::STOPPING: return "STOPPING";
-    default:                        return "UNKNOWN";
+    case Gait::GaitState::IDLE:
+      return "IDLE";
+    case Gait::GaitState::WALKING:
+      return "WALKING";
+    case Gait::GaitState::STOPPING:
+      return "STOPPING";
+    default:
+      return "UNKNOWN";
   }
 }
 
-static const char* kLegNames[Gait::kNumLegs] = {
-    "FL", "FR", "ML", "MR", "RL", "RR"};
+static const char* kLegNames[Gait::kNumLegs] = {"FL", "FR", "ML",
+                                                "MR", "RL", "RR"};
 
 static void cmdStatus() {
-  Gait::GaitState       s   = gait->getState();
+  Gait::GaitState s = gait->getState();
   Gait::VelocityCommand vel = gait->getVelocity();
 
   Serial.printf("State: %s\r\n", stateName(s));
-  Serial.printf("Cmd:   vx=%+.3f m/s  vy=%+.3f m/s  wz=%+.3f rad/s\r\n",
-                vel.vx, vel.vy, vel.wz);
+  Serial.printf("Cmd:   vx=%+.3f m/s  vy=%+.3f m/s  wz=%+.3f rad/s\r\n", vel.vx,
+                vel.vy, vel.wz);
   Serial.println("Legs:");
   for (uint8_t i = 0; i < Gait::kNumLegs; i++) {
     const Gait::LegGaitState& ls = gait->legState(i);
     bool flying = (ls.phase_t >= 0.5f);
-    Serial.printf(
-        "  [%u] %s  phase=%4.2f  %s%s\r\n",
-        i, kLegNames[i], ls.phase_t,
-        flying  ? "FLYING" : "STANCE",
-        ls.frozen ? " (frozen)" : "");
+    Serial.printf("  [%u] %s  phase=%4.2f  %s%s\r\n", i, kLegNames[i],
+                  ls.phase_t, flying ? "FLYING" : "STANCE",
+                  ls.frozen ? " (frozen)" : "");
   }
 }
 
@@ -179,14 +185,22 @@ static void processCommand() {
   }
 
   const char* cmd = tokens[0];
-  if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) printHelp();
-  else if (strcmp(cmd, "start")   == 0) cmdStart();
-  else if (strcmp(cmd, "stop")    == 0) cmdStop();
-  else if (strcmp(cmd, "halt")    == 0) cmdHalt();
-  else if (strcmp(cmd, "vel")     == 0) cmdVel();
-  else if (strcmp(cmd, "status")  == 0 || strcmp(cmd, "s") == 0) cmdStatus();
-  else if (strcmp(cmd, "neutral") == 0) cmdNeutral();
-  else Serial.printf("ERR: unknown command '%s'. Type 'help'.\r\n", cmd);
+  if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0)
+    printHelp();
+  else if (strcmp(cmd, "start") == 0)
+    cmdStart();
+  else if (strcmp(cmd, "stop") == 0)
+    cmdStop();
+  else if (strcmp(cmd, "halt") == 0)
+    cmdHalt();
+  else if (strcmp(cmd, "vel") == 0)
+    cmdVel();
+  else if (strcmp(cmd, "status") == 0 || strcmp(cmd, "s") == 0)
+    cmdStatus();
+  else if (strcmp(cmd, "neutral") == 0)
+    cmdNeutral();
+  else
+    Serial.printf("ERR: unknown command '%s'. Type 'help'.\r\n", cmd);
 }
 
 static void processSerial() {
@@ -221,9 +235,9 @@ void setup() {
 
   // --- ServoSubsystem ---
   static Subsystem::ServoSetup servo_setup(
-      Wire, Config::pca_addr, Config::servo_en,
-      servo_configs, HexapodConfig::kNumServos,
-      HexapodConfig::kServoBudget, HexapodConfig::kPwmFreqHz);
+      Wire, Config::pca_addr, Config::servo_en, servo_configs,
+      HexapodConfig::kNumServos, HexapodConfig::kServoBudget,
+      HexapodConfig::kPwmFreqHz);
 
   auto& servos = Subsystem::ServoSubsystem::getInstance(servo_setup, i2c_mutex);
   for (uint8_t i = 0; i < HexapodConfig::kNumServos; i++) servos.attach(i);
@@ -239,7 +253,8 @@ void setup() {
   kinematics = &kin;
 
   // --- GaitController ---
-  static Gait::GaitSetup gait_setup(HexapodConfig::kGaitConfig, kinematics, &servos);
+  static Gait::GaitSetup gait_setup(HexapodConfig::kGaitConfig, kinematics,
+                                    &servos);
   static Gait::GaitController gait_ctrl(gait_setup);
   gait = &gait_ctrl;
 

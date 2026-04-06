@@ -34,7 +34,8 @@
  * ## Measuring link lengths
  *   L1: distance from the center of the HIP JOINT SHAFT to the center of the
  *       KNEE JOINT SHAFT (along the femur), in mm.
- *   L2: distance from the center of the KNEE JOINT SHAFT to the FOOT TIP, in mm.
+ *   L2: distance from the center of the KNEE JOINT SHAFT to the FOOT TIP, in
+ * mm.
  *
  * ## Measuring mount geometry
  *   mount_pos: XY coordinates of the hip joint center relative to the body
@@ -60,7 +61,8 @@
  *   Knee calibration:
  *     1. Command knee to 0°. Verify the lower leg is approximately horizontal.
  *     2. Command knee to +90°. Verify the lower leg hangs straight down.
- *     3. If increasing angle moves the leg UP instead of DOWN, set inverted = true.
+ *     3. If increasing angle moves the leg UP instead of DOWN, set inverted =
+ * true.
  *     4. Set neutral_knee_deg so the robot stands at a comfortable height with
  *        all feet flat on the ground.
  *
@@ -117,11 +119,12 @@ constexpr float kBodyHalfWidth = 40.0f;  // MEASURE
 
 /// Hip forward/rear sweep range (kinematic degrees, symmetric about 0°).
 constexpr float kHipMin = -60.0f;
-constexpr float kHipMax =  60.0f;
+constexpr float kHipMax = 60.0f;
 
 /// Knee range: 0° = horizontal (reference), 90° = straight down.
-/// Do not allow negative values — the leg cannot reach above hip height usefully.
-constexpr float kKneeMin =  0.0f;
+/// Do not allow negative values — the leg cannot reach above hip height
+/// usefully.
+constexpr float kKneeMin = 0.0f;
 constexpr float kKneeMax = 90.0f;
 
 /// Knee angle in the neutral standing stance (degrees).
@@ -147,11 +150,11 @@ constexpr float kReachTolerance = 5.0f;
 
 /// Maximum angular velocity per servo (deg/s).
 /// MG90S datasheet: ~600°/s at no load. Use 300–400 for smooth motion.
-constexpr float kHipMaxVel  = 300.0f;
+constexpr float kHipMaxVel = 300.0f;
 constexpr float kKneeMaxVel = 300.0f;
 
 /// Maximum angular acceleration per servo (deg/s²).
-constexpr float kHipMaxAccel  = 600.0f;
+constexpr float kHipMaxAccel = 600.0f;
 constexpr float kKneeMaxAccel = 600.0f;
 
 /// Total angular velocity budget across ALL 12 servos (deg/s).
@@ -170,17 +173,17 @@ constexpr float kPwmFreqHz = 50.0f;
 // Use Config::mPort(N) — N is the number printed on the PCB silkscreen.
 // ============================================================================
 
-constexpr uint8_t kServoFL_Hip  = Config::mPort(7);   // Leg 0 FL hip
+constexpr uint8_t kServoFL_Hip = Config::mPort(7);    // Leg 0 FL hip
 constexpr uint8_t kServoFL_Knee = Config::mPort(6);   // Leg 0 FL knee
-constexpr uint8_t kServoFR_Hip  = Config::mPort(5);   // Leg 1 FR hip
+constexpr uint8_t kServoFR_Hip = Config::mPort(5);    // Leg 1 FR hip
 constexpr uint8_t kServoFR_Knee = Config::mPort(4);   // Leg 1 FR knee
-constexpr uint8_t kServoML_Hip  = Config::mPort(3);   // Leg 2 ML hip
+constexpr uint8_t kServoML_Hip = Config::mPort(3);    // Leg 2 ML hip
 constexpr uint8_t kServoML_Knee = Config::mPort(2);   // Leg 2 ML knee
-constexpr uint8_t kServoMR_Hip  = Config::mPort(1);   // Leg 3 MR hip
+constexpr uint8_t kServoMR_Hip = Config::mPort(1);    // Leg 3 MR hip
 constexpr uint8_t kServoMR_Knee = Config::mPort(13);  // Leg 3 MR knee
-constexpr uint8_t kServoRL_Hip  = Config::mPort(12);  // Leg 4 RL hip
+constexpr uint8_t kServoRL_Hip = Config::mPort(12);   // Leg 4 RL hip
 constexpr uint8_t kServoRL_Knee = Config::mPort(11);  // Leg 4 RL knee
-constexpr uint8_t kServoRR_Hip  = Config::mPort(10);  // Leg 5 RR hip
+constexpr uint8_t kServoRR_Hip = Config::mPort(10);   // Leg 5 RR hip
 constexpr uint8_t kServoRR_Knee = Config::mPort(9);   // Leg 5 RR knee
 
 // ============================================================================
@@ -439,17 +442,18 @@ const Gait::GaitConfig kGaitConfig = {
     /// Must be < L2 * sin(kNeutralKnee) to stay within knee joint limits.
     /// At kNeutralKnee=45°: max ~56.6 mm. Matches simulation's ~66 mm clearance
     /// as closely as the firmware kinematics allow (no coxa modelled).
-    .step_height_mm    = 50.0f,
+    .step_height_mm = 50.0f,
 
     /// Duration of one full tripod cycle — both groups complete stance + swing
-    /// in this time (seconds). Lower = faster walk; too low causes missed steps.
+    /// in this time (seconds). Lower = faster walk; too low causes missed
+    /// steps.
     /// Matches fake_mcu_node CYCLE_TIME = 0.8 s.
-    .cycle_time_s      = 0.8f,
+    .cycle_time_s = 0.8f,
 
     /// Multiplier on (velocity × half-cycle-time) to compute step reach (mm).
     /// 1.0 = step exactly as far as the body travels per half-cycle.
     /// Reduce below 1.0 if legs consistently overshoot the workspace boundary.
-    .step_scale        = 1.0f,
+    .step_scale = 1.0f,
 
     /// Velocity commands below this magnitude (m/s) are treated as zero and
     /// trigger a clean stop rather than zero-velocity walking.
@@ -457,8 +461,8 @@ const Gait::GaitConfig kGaitConfig = {
 
     // Servo INDICES into kServoConfigs[] for each leg's hip and knee.
     // These match the channel order defined in kServoConfigs above.
-    .leg_servo_hip     = { 0,  2,  4,  6,  8, 10 },
-    .leg_servo_knee    = { 1,  3,  5,  7,  9, 11 },
+    .leg_servo_hip = {0, 2, 4, 6, 8, 10},
+    .leg_servo_knee = {1, 3, 5, 7, 9, 11},
 };
 
 /// Total number of servos used (one entry per channel in kServoConfigs).

@@ -60,22 +60,23 @@
 // Network config — injected from network_config.ini via platformio.ini
 // ---------------------------------------------------------------------------
 static IPAddress static_ip STATIC_IP;
-static IPAddress gateway   GATEWAY;
-static IPAddress subnet    SUBNET;
+static IPAddress gateway GATEWAY;
+static IPAddress subnet SUBNET;
 
 // ---------------------------------------------------------------------------
 // Global setup structs (no runtime-resolved pointers — safe as globals)
 // ---------------------------------------------------------------------------
-static Classes::BaseSetup       blink_setup("blink");
+static Classes::BaseSetup blink_setup("blink");
 static Subsystem::BlinkSubsystem blink(blink_setup);
 
 static Threads::Mutex i2c_mutex;
 
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "wifi", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 static Subsystem::MicrorosManagerSetup manager_setup("microros",
-                                                      "bridge_gait_node");
+                                                     "bridge_gait_node");
 static Subsystem::MicrorosManager manager(manager_setup);
 
 // ---------------------------------------------------------------------------
@@ -83,12 +84,18 @@ static Subsystem::MicrorosManager manager(manager_setup);
 // ---------------------------------------------------------------------------
 static const char* wifiStateStr(Subsystem::WifiState s) {
   switch (s) {
-    case Subsystem::WifiState::DISCONNECTED: return "DISCONNECTED";
-    case Subsystem::WifiState::CONNECTING:   return "CONNECTING";
-    case Subsystem::WifiState::CONNECTED:    return "CONNECTED";
-    case Subsystem::WifiState::RECONNECTING: return "RECONNECTING";
-    case Subsystem::WifiState::FAILED:       return "FAILED";
-    default:                                 return "UNKNOWN";
+    case Subsystem::WifiState::DISCONNECTED:
+      return "DISCONNECTED";
+    case Subsystem::WifiState::CONNECTING:
+      return "CONNECTING";
+    case Subsystem::WifiState::CONNECTED:
+      return "CONNECTED";
+    case Subsystem::WifiState::RECONNECTING:
+      return "RECONNECTING";
+    case Subsystem::WifiState::FAILED:
+      return "FAILED";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -120,9 +127,9 @@ void setup() {
 
   // --- ServoSubsystem ---
   static Subsystem::ServoSetup servo_setup(
-      Wire, Config::pca_addr, Config::servo_en,
-      servo_configs, HexapodConfig::kNumServos,
-      HexapodConfig::kServoBudget, HexapodConfig::kPwmFreqHz);
+      Wire, Config::pca_addr, Config::servo_en, servo_configs,
+      HexapodConfig::kNumServos, HexapodConfig::kServoBudget,
+      HexapodConfig::kPwmFreqHz);
 
   auto& servos = Subsystem::ServoSubsystem::getInstance(servo_setup, i2c_mutex);
   for (uint8_t i = 0; i < HexapodConfig::kNumServos; i++) servos.attach(i);

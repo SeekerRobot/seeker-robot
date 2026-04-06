@@ -30,19 +30,18 @@
 #pragma once
 
 #include <GaitController.h>
-#include <microros_manager_robot.h>
-
 #include <geometry_msgs/msg/twist.h>
+#include <microros_manager_robot.h>
 
 namespace Gait {
 
 struct GaitRosParticipantSetup {
-  GaitController* gait           = nullptr;
-  const char*     cmd_vel_topic  = "cmd_vel";
+  GaitController* gait = nullptr;
+  const char* cmd_vel_topic = "cmd_vel";
 
   /// @brief Dead-band below which an incoming Twist is treated as a stop
   ///        command (m/s equivalent).
-  float           vel_dead_band  = 0.001f;
+  float vel_dead_band = 0.001f;
 };
 
 class GaitRosParticipant : public Subsystem::IMicroRosParticipant {
@@ -61,10 +60,10 @@ class GaitRosParticipant : public Subsystem::IMicroRosParticipant {
   // publishAll() intentionally omitted — inherits the default no-op.
 
  private:
-  GaitRosParticipantSetup           setup_;
-  rcl_subscription_t                sub_;
-  geometry_msgs__msg__Twist         twist_msg_;
-  bool                              initialized_ = false;
+  GaitRosParticipantSetup setup_;
+  rcl_subscription_t sub_;
+  geometry_msgs__msg__Twist twist_msg_;
+  bool initialized_ = false;
 
   // Static instance pointer — only one participant may exist at a time.
   // The micro-ROS executor callback is a plain C function pointer with no

@@ -13,7 +13,8 @@
  * ## Phase model
  * Each leg has a normalized phase_t ∈ [0.0, 1.0) that advances each update()
  * tick by dt / (cycle_time_s / 2). Values below 0.5 are stance; 0.5 and above
- * are flight. The two tripod groups are initialised at 0.0 and 0.5 respectively.
+ * are flight. The two tripod groups are initialised at 0.0 and 0.5
+ * respectively.
  *
  * ## Swing arc
  * During flight, the foot follows a parametric arc: horizontal position moves
@@ -60,25 +61,27 @@ enum class GaitState : uint8_t { IDLE, WALKING, STOPPING };
 
 /// @brief Fixed physical and tuning parameters. Set once at construction.
 struct GaitConfig {
-  float step_height_mm;    // z-lift above resting foot height at swing arc peak
-  float cycle_time_s;      // duration of one full tripod cycle (both groups)
-  float step_scale;        // multiplier on velocity × half-cycle → step reach
-  float min_vel_threshold; // m/s — below this magnitude treat command as zero
+  float step_height_mm;  // z-lift above resting foot height at swing arc peak
+  float cycle_time_s;    // duration of one full tripod cycle (both groups)
+  float step_scale;      // multiplier on velocity × half-cycle → step reach
+  float min_vel_threshold;  // m/s — below this magnitude treat command as zero
 
   uint8_t leg_servo_hip[kNumLegs];   // ServoSubsystem index for each hip
   uint8_t leg_servo_knee[kNumLegs];  // ServoSubsystem index for each knee
 };
 
-/// @brief Constructor arguments for GaitController, following BaseSetup pattern.
+/// @brief Constructor arguments for GaitController, following BaseSetup
+/// pattern.
 struct GaitSetup : public Classes::BaseSetup {
-  GaitConfig                     gait;
+  GaitConfig gait;
   Kinematics::HexapodKinematics* kinematics = nullptr;  // non-owning
-  Subsystem::ServoSubsystem*     servos     = nullptr;  // non-owning
+  Subsystem::ServoSubsystem* servos = nullptr;          // non-owning
 
-  explicit GaitSetup(const GaitConfig&          gc,
-                     Kinematics::HexapodKinematics* k,
-                     Subsystem::ServoSubsystem*     s)
-      : Classes::BaseSetup("GaitController"), gait(gc), kinematics(k),
+  explicit GaitSetup(const GaitConfig& gc, Kinematics::HexapodKinematics* k,
+                     Subsystem::ServoSubsystem* s)
+      : Classes::BaseSetup("GaitController"),
+        gait(gc),
+        kinematics(k),
         servos(s) {}
 };
 
@@ -98,9 +101,9 @@ struct VelocityCommand {
 // ---------------------------------------------------------------------------
 
 struct LegGaitState {
-  float phase_t    = 0.f;    // [0.0, 1.0) — stance below 0.5, flight above
-  bool  was_flying = false;  // phase on the previous tick ≥ 0.5
-  bool  frozen     = false;  // true during STOPPING for legs already in stance
+  float phase_t = 0.f;      // [0.0, 1.0) — stance below 0.5, flight above
+  bool was_flying = false;  // phase on the previous tick ≥ 0.5
+  bool frozen = false;      // true during STOPPING for legs already in stance
 
   Kinematics::Vec3 lift_start;    // world-frame foot position when flight began
   Kinematics::Vec3 swing_target;  // world-frame target for this step
@@ -154,7 +157,7 @@ class GaitController : public Subsystem::ThreadedSubsystem {
 
   // --- Queries (thread-safe) ---
 
-  GaitState       getState()    const;
+  GaitState getState() const;
   VelocityCommand getVelocity() const;
 
   /// @brief Read-only access to per-leg gait state (not mutex-protected).
@@ -162,17 +165,17 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   const LegGaitState& legState(uint8_t leg) const { return leg_state_[leg]; }
 
  private:
-  GaitSetup                      setup_;
-  Kinematics::HexapodKinematics* kin_    = nullptr;
-  Subsystem::ServoSubsystem*     servos_ = nullptr;
+  GaitSetup setup_;
+  Kinematics::HexapodKinematics* kin_ = nullptr;
+  Subsystem::ServoSubsystem* servos_ = nullptr;
 
-  GaitState       state_    = GaitState::IDLE;
-  LegGaitState    leg_state_[kNumLegs] = {};
-  Kinematics::Vec3 body_pos_           = {};
-  float           body_yaw_            = 0.f;
-  uint32_t        last_us_             = 0;
+  GaitState state_ = GaitState::IDLE;
+  LegGaitState leg_state_[kNumLegs] = {};
+  Kinematics::Vec3 body_pos_ = {};
+  float body_yaw_ = 0.f;
+  uint32_t last_us_ = 0;
 
-  VelocityCommand      cmd_        = {};
+  VelocityCommand cmd_ = {};
   mutable Threads::Mutex cmd_mutex_;
 
   // Tripod groups — legs 0,3,4 start at phase 0 (stance first);
@@ -189,13 +192,14 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   void pushLegAngles(uint8_t leg, const Kinematics::LegAngles& a);
 
   /// @brief Compute the world-frame step target for a leg beginning its swing.
-  ///        Projects the neutral foot position forward by the velocity lookahead
-  ///        and clamps to the reachable workspace.
+  ///        Projects the neutral foot position forward by the velocity
+  ///        lookahead and clamps to the reachable workspace.
   Kinematics::Vec3 computeStepTarget(uint8_t leg, const VelocityCommand& vel);
 
   /// @brief Parametric swing arc at normalised parameter s ∈ [0, 1].
-  ///        Horizontal: smoothstep interpolation from lift_start to swing_target.
-  ///        Vertical: step_height_mm · sin(π·s) above lift_start.z.
+  ///        Horizontal: smoothstep interpolation from lift_start to
+  ///        swing_target. Vertical: step_height_mm · sin(π·s) above
+  ///        lift_start.z.
   Kinematics::Vec3 swingArc(uint8_t leg, float s) const;
 
   /// @brief True if any leg has not yet been frozen (still in-flight).
@@ -207,7 +211,7 @@ class GaitController : public Subsystem::ThreadedSubsystem {
 
   static constexpr float kDegToRad = 0.017453292519943f;
   static constexpr float kRadToDeg = 57.295779513082f;
-  static constexpr float kPi       = 3.14159265358979f;
+  static constexpr float kPi = 3.14159265358979f;
 };
 
 }  // namespace Gait
