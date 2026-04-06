@@ -11,15 +11,6 @@ services:
       - DISPLAY=${DISPLAY_CONFIG}
       - QT_X11_NO_MITSHM=1
       - PLATFORMIO_CORE_DIR=/home/ubuntu/.platformio
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, graphics, compute, utility]
     volumes:
       # --- Source Code (Synced with Host) ---
       - ../ros2_ws/src:/home/ubuntu/ros2_workspaces/src/seeker_ros:delegated
@@ -46,6 +37,33 @@ services:
     depends_on:
       init-bootstrap:
         condition: service_completed_successfully
+
+  ros2-nvidia:
+    extends:
+      service: ros2
+    environment:
+      - DISPLAY=${DISPLAY_CONFIG}
+      - QT_X11_NO_MITSHM=1
+      - PLATFORMIO_CORE_DIR=/home/ubuntu/.platformio
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, graphics, compute, utility]
+    profiles: ["nvidia"]
+
+  ros2-amd:
+    extends:
+      service: ros2
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+    profiles: ["amd"]
 
   # One-shot init to chown all volumes and seed libs_external once
   init-bootstrap:
