@@ -126,7 +126,16 @@ constexpr float kKneeMax = 90.0f;
 
 /// Knee angle in the neutral standing stance (degrees).
 /// Increase to stand lower; decrease to stand higher. Tune until body is level.
-constexpr float kNeutralKnee = 45.0f;  // TUNE
+///
+/// CONVENTION NOTE: firmware uses 0° = tibia horizontal, 90° = tibia straight
+/// down (maximum depth). This is the OPPOSITE of the URDF/simulation convention
+/// (0° = vertical, 90° = horizontal). The simulation's NEUTRAL_KNEE = 30°
+/// (URDF convention) maps to approximately 60° here if the link geometry were
+/// identical — but the firmware omits the 40 mm coxa stub, so the correct
+/// value must be calibrated on the physical robot.
+///
+/// Maximum safe step_height_mm = L2 * sin(kNeutralKnee). At 45°: ~56.6 mm.
+constexpr float kNeutralKnee = 45.0f;  // TUNE — see convention note above
 
 /// Workspace tolerance: how close to L2 the foot must be to be considered
 /// reachable (mm). Loosen if IK fails near workspace boundary.
@@ -427,11 +436,15 @@ const Kinematics::LegConfig kLegConfigs[Gait::kNumLegs] = {
 const Gait::GaitConfig kGaitConfig = {
     /// Height the foot lifts above its resting position at the peak of the
     /// swing arc (mm). Increase for uneven ground; decrease for speed.
-    .step_height_mm    = 20.0f,
+    /// Must be < L2 * sin(kNeutralKnee) to stay within knee joint limits.
+    /// At kNeutralKnee=45°: max ~56.6 mm. Matches simulation's ~66 mm clearance
+    /// as closely as the firmware kinematics allow (no coxa modelled).
+    .step_height_mm    = 50.0f,
 
     /// Duration of one full tripod cycle — both groups complete stance + swing
     /// in this time (seconds). Lower = faster walk; too low causes missed steps.
-    .cycle_time_s      = 1.0f,
+    /// Matches fake_mcu_node CYCLE_TIME = 0.8 s.
+    .cycle_time_s      = 0.8f,
 
     /// Multiplier on (velocity × half-cycle-time) to compute step reach (mm).
     /// 1.0 = step exactly as far as the body travels per half-cycle.

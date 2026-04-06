@@ -53,7 +53,7 @@ def generate_launch_description():
     robot_state_pub = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
-        parameters=[{"robot_description": robot_description}],
+        parameters=[{"robot_description": robot_description, "use_sim_time": True}],
     )
 
     # 4. ros_gz_bridge — sensor topics, odometry, and cmd_vel from Gazebo/ROS 2

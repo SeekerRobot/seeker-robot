@@ -28,7 +28,7 @@ GaitRosParticipant::GaitRosParticipant(const GaitRosParticipantSetup& setup)
 // IMicroRosParticipant overrides
 // ---------------------------------------------------------------------------
 
-bool GaitRosParticipant::onCreate(MicroRosContext& ctx) {
+bool GaitRosParticipant::onCreate(Subsystem::MicroRosContext& ctx) {
   if (!setup_.gait) {
     Debug::printf(Debug::Level::ERROR,
                   "[GaitRos] onCreate failed — gait pointer is null");

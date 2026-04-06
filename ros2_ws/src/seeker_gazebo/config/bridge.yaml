@@ -32,6 +32,13 @@
   gz_type_name:   gz.msgs.LaserScan
   direction:      GZ_TO_ROS
 
+# LiDAR → /lidar/scan (used by slam_toolbox and Nav2 costmaps)
+- ros_topic_name: /lidar/scan
+  gz_topic_name:  /gz/scan
+  ros_type_name:  sensor_msgs/msg/LaserScan
+  gz_type_name:   gz.msgs.LaserScan
+  direction:      GZ_TO_ROS
+
 # Camera image
 - ros_topic_name: /camera/image
   gz_topic_name:  /gz/camera/image

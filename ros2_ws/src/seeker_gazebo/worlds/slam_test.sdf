@@ -14,12 +14,12 @@
       <ode>
         <solver>
           <type>quick</type>
-          <iters>150</iters>   <!-- more iterations = more stable multi-contact -->
+          <iters>150</iters>
           <sor>1.3</sor>
         </solver>
         <constraints>
-          <cfm>1e-5</cfm>      <!-- constraint force mixing: softens rigid contacts -->
-          <erp>0.2</erp>       <!-- error reduction: how fast penetration is corrected -->
+          <cfm>1e-5</cfm>
+          <erp>0.2</erp>
           <contact_surface_layer>0.001</contact_surface_layer>
         </constraints>
       </ode>

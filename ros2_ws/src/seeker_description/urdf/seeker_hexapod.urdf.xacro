@@ -105,7 +105,7 @@
       <child  link="leg_${name}_coxa_link"/>
       <origin xyz="${mount_x} ${mount_y} 0" rpy="0 0 ${mount_angle}"/>
       <axis xyz="0 0 1"/>
-      <limit lower="${hip_lo}" upper="${hip_hi}" effort="2.0" velocity="3.14"/>
+      <limit lower="${hip_lo}" upper="${hip_hi}" effort="3.0" velocity="3.14"/>
       <dynamics damping="0.1" friction="0.0"/>
     </joint>
 
@@ -154,7 +154,7 @@
       <child  link="leg_${name}_tibia_link"/>
       <origin xyz="${femur_len} 0 ${-coxa_len}" rpy="0 0 0"/>
       <axis xyz="0 -1 0"/>
-      <limit lower="${knee_lo}" upper="${knee_hi}" effort="2.0" velocity="3.14"/>
+      <limit lower="${knee_lo}" upper="${knee_hi}" effort="5.0" velocity="3.14"/>
       <dynamics damping="0.1" friction="0.0"/>
     </joint>
 
@@ -164,9 +164,9 @@
               name="gz::sim::systems::JointPositionController">
         <joint_name>leg_${name}_hip_joint</joint_name>
         <topic>/model/seeker/joint/leg_${name}_hip_joint/0/cmd_pos</topic>
-        <p_gain>80</p_gain>
-        <i_gain>0.1</i_gain>
-        <d_gain>20.0</d_gain>
+        <p_gain>200</p_gain>
+        <i_gain>0.2</i_gain>
+        <d_gain>2.0</d_gain>
       </plugin>
     </gazebo>
 
@@ -176,8 +176,8 @@
               name="gz::sim::systems::JointPositionController">
         <joint_name>leg_${name}_knee_joint</joint_name>
         <topic>/model/seeker/joint/leg_${name}_knee_joint/0/cmd_pos</topic>
-        <p_gain>80</p_gain>
-        <i_gain>0.1</i_gain>
+        <p_gain>200</p_gain>
+        <i_gain>0.2</i_gain>
         <d_gain>2.0</d_gain>
       </plugin>
     </gazebo>
@@ -194,8 +194,8 @@
           </friction>
           <contact>
             <ode>
-              <kp>1e3</kp>   <!-- contact stiffness (default 1e15 is too rigid) -->
-              <kd>100</kd>   <!-- contact damping — kd_crit≈26 for kp=1e3; 100 = overdamped -->
+              <kp>1e4</kp>
+              <kd>40</kd>
             </ode>
           </contact>
         </surface>

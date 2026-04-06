@@ -106,7 +106,7 @@ def generate_launch_description():
         package='seeker_sim',
         executable='fake_mcu_node',
         name='fake_mcu_node',
-        parameters=[{'use_sim_time': False}],   # wall-clock gait timer
+        parameters=[{'use_sim_time': False}],   # wall-clock: starts immediately, no sim-clock race condition
         output='screen',
     )
 

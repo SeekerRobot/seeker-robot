@@ -45,13 +45,13 @@ struct GaitRosParticipantSetup {
   float           vel_dead_band  = 0.001f;
 };
 
-class GaitRosParticipant : public IMicroRosParticipant {
+class GaitRosParticipant : public Subsystem::IMicroRosParticipant {
  public:
   explicit GaitRosParticipant(const GaitRosParticipantSetup& setup);
 
   /// @brief Creates the cmd_vel subscription and adds it to the executor.
   ///        Returns false if the gait pointer is null or subscription fails.
-  bool onCreate(MicroRosContext& ctx) override;
+  bool onCreate(Subsystem::MicroRosContext& ctx) override;
 
   /// @brief Zeroes the subscription handle and clears initialized_.
   ///        Does NOT call rcl_subscription_fini — RCL session already torn

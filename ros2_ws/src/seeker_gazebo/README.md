@@ -90,6 +90,112 @@ If this line appears in the launch output, the gait commands are reaching the jo
 
 ---
 
+## SLAM + Autonomous Ball Search (Simulation)
+
+Runs `slam_toolbox` for mapping, Nav2 for path planning, and the
+`ball_searcher` node for frontier exploration + red-ball detection.
+
+### Prerequisites
+
+#### Apt packages
+
+These must be present in the container. They are in the Dockerfile for new
+image builds; for an existing running container install them once:
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
+    ros-jazzy-navigation2 \
+    ros-jazzy-nav2-bringup \
+    ros-jazzy-slam-toolbox
+```
+
+#### Build
+
+```bash
+cd ~/ros2_workspaces
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install \
+    --packages-select mcu_msgs seeker_description seeker_gazebo seeker_sim seeker_navigation
+source install/setup.bash
+```
+
+Use `--symlink-install` so Python file edits take effect without rebuilding.
+
+### Launch sequence
+
+**Terminal 1 — Gazebo + fake MCU (gait):**
+```bash
+ros2 launch seeker_gazebo sim_teleop.launch.py
+```
+Starts Gazebo, spawns the robot, bridges all sensors, publishes
+`odom → base_footprint` TF, and runs `fake_mcu_node` which converts
+`/cmd_vel` (Twist) into the 12 individual joint position commands Gazebo
+expects. Wait until Gazebo has fully loaded before starting Terminal 2.
+
+**Terminal 2 — SLAM + Nav2 + ball searcher:**
+```bash
+ros2 launch seeker_navigation nav2_ball_search.launch.py
+```
+Starts `slam_toolbox` (async online mapping), then the Nav2 stack
+(controller, planner, behavior, BT navigator, velocity smoother, lifecycle
+manager), and finally `ball_searcher` — each stage gated behind timers to
+avoid lifecycle race conditions:
+
+| Delay | What starts |
+|-------|-------------|
+| t+0 s | slam_toolbox node |
+| t+2 s | Nav2 lifecycle manager |
+| t+8 s | slam_toolbox `configure` → `activate` (with 2 s gap between transitions) |
+| t+15 s | ball_searcher |
+
+### What the robot does
+
+1. Rotates 360° in place to seed the SLAM map and check for the ball
+2. Enters frontier exploration: reads `/map`, picks boundaries between
+   free and unknown space, sends `NavigateToPose` goals to explore them
+3. Falls back to coverage-grid waypoints if no frontiers remain
+4. Cancels exploration and approaches as soon as the red ball is detected
+   in `/camera/image` via HSV thresholding
+
+### RViz
+
+```bash
+rviz2
+```
+
+Recommended displays (set **Fixed Frame** → `map`):
+
+| Display | Topic |
+|---------|-------|
+| Map | `/map` (Durability: Transient Local) |
+| LaserScan | `/lidar/scan` |
+| RobotModel | — |
+| TF | — |
+| Path | `/plan` |
+| Costmap (local) | `/local_costmap/costmap` |
+| Costmap (global) | `/global_costmap/costmap` |
+
+### Useful topics to monitor
+
+```bash
+ros2 topic hz /map                # SLAM map — ~0.2 Hz (updates every 5 s)
+ros2 topic hz /lidar/scan         # LiDAR into slam_toolbox — ~10 Hz
+ros2 lifecycle get /slam_toolbox  # should read "active [3]"
+ros2 topic echo /navigate_to_pose/_action/status
+ros2 topic echo /cmd_vel
+```
+
+### Launch files reference
+
+| File | Purpose |
+|------|---------|
+| `seeker_gazebo/launch/sim_teleop.launch.py` | Gazebo + fake MCU — **start here** |
+| `seeker_navigation/launch/nav2_ball_search.launch.py` | SLAM + Nav2 + ball searcher |
+| `seeker_gazebo/launch/sim_teleop.launch.py` + teleop | Manual driving only (no Nav2) |
+| `seeker_navigation/launch/real_ball_search.launch.py` | Real hardware deploy (`use_sim_time: false`) |
+
+---
+
 ## Switching to Hardware
 
 When the physical robot is ready, swap `fake_mcu_node` for the real MCU:
