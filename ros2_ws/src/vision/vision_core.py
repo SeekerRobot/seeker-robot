@@ -9,6 +9,7 @@ from deepface import DeepFace
 from std_msgs.msg import String
 import math
 import numpy as np
+from mcu_msgs.msg import HexapodCmd
 
 classNames = [
     "person", "bicycle", "car", "motorbike", "aeroplane",
@@ -42,7 +43,8 @@ class ObjectDetectionNode(Node):
 
         self.emotion_publisher = self.create_publisher(String, '/emotion_detail', 10)
 
-        # --- REAL LIFE: image comes from the ESP32 stream URL ---
+        self.pub = self.create_publisher(HexapodCmd, '/mcu/hexapod_cmd', 10)
+
         self.cap = cv2.VideoCapture("http://192.168.8.200/stream")  #! Change to ESP32 stream URL
         self.cap.set(3, 640)
         self.cap.set(4, 480)
@@ -68,24 +70,24 @@ class ObjectDetectionNode(Node):
         # Emotion Detection Starts here
         ##############################################
 
-        #Convert frame to grayscale (Haar Cascade works better with grayscale images)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # #Convert frame to grayscale (Haar Cascade works better with grayscale images)
+        # gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # detect faces in the frame
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        # # detect faces in the frame
+        # faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         
-        # this will draw rectangles around detected faces as shown
-        for (x, y, w, h) in faces:
-            cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
+        # # this will draw rectangles around detected faces as shown
+        # for (x, y, w, h) in faces:
+        #     cv2.rectangle(img, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
-        # Only run DeepFace if at least one face found
-        if len(faces) > 0:
-            try:
-                emotion_analysis = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False)
-                dominant_emotion = emotion_analysis[0]['dominant_emotion']
-                cv2.putText(img, dominant_emotion, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
-            except ValueError:
-                pass
+        # # Only run DeepFace if at least one face found
+        # if len(faces) > 0:
+        #     try:
+        #         emotion_analysis = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False)
+        #         dominant_emotion = emotion_analysis[0]['dominant_emotion']
+        #         cv2.putText(img, dominant_emotion, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
+        #     except ValueError:
+        #         pass
 
         for r in results:
             boxes = r.boxes
@@ -119,7 +121,7 @@ class ObjectDetectionNode(Node):
                 thickness = 2
                 cv2.putText(img, classNames[cls], org, font, fontScale, color, thickness)
 
-        # Publish simple found flag to /object_found
+        # Publish a found flag to /object_found
         found_msg = Bool()
         found_msg.data = found_target
         self.found_publisher.publish(found_msg)
@@ -136,19 +138,24 @@ class ObjectDetectionNode(Node):
             centroid_x = float((x1 + x2) / 2.0)
             img_width  = float(img.shape[1])
             detection_msg.data = [bbox_area, centroid_x, img_width]
+
+            msg = HexapodCmd()
+            msg.mode = HexapodCmd.MODE_DANCE
+            self.pub.publish(msg)
+            
         else:
             detection_msg.data = [0.0, 0.0, float(img.shape[1])]
        
         self.detection_pub.publish(detection_msg)
 
-        # Publish emotion data to /emotion_detail
-        emotion = String()
-        if len(faces) > 0:
-            emotion.data = dominant_emotion
-        else:
-            emotion.data = "No face detected"
+        # # Publish emotion data to /emotion_detail
+        # emotion = String()
+        # if len(faces) > 0:
+        #     emotion.data = dominant_emotion
+        # else:
+        #     emotion.data = "No face detected"
 
-        self.emotion_publisher.publish(emotion)
+        # self.emotion_publisher.publish(emotion)
 
         cv2.imshow('Webcam', img)
         if cv2.waitKey(1) == ord('q'):
