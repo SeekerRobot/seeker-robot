@@ -100,7 +100,7 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     // Wire frame_id to our pre-allocated buffer (__init allocates 1 byte; we
     // override before any publish so __fini never sees our pointer).
     lidar_.msg.header.frame_id.data = lidar_.frame_id_buf;
-    lidar_.msg.header.frame_id.size = 5;  // strlen("laser")
+    lidar_.msg.header.frame_id.size = 10;  // strlen("lidar_link")
     lidar_.msg.header.frame_id.capacity = sizeof(lidar_.frame_id_buf);
     // Wire pre-allocated buffers so __fini() never frees them.
     lidar_.msg.ranges.data = lidar_.ranges_buf;
