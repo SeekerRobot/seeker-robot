@@ -177,7 +177,8 @@ void MicroRosBridge::onDestroy() {
 #endif
 #if BRIDGE_ENABLE_GYRO
   gyro_.pub = rcl_get_zero_initialized_publisher();
-  // Null backing pointer before __fini() to prevent free() of our struct buffer.
+  // Null backing pointer before __fini() to prevent free() of our struct
+  // buffer.
   gyro_.msg.header.frame_id.data = nullptr;
   gyro_.msg.header.frame_id.size = 0;
   gyro_.msg.header.frame_id.capacity = 0;

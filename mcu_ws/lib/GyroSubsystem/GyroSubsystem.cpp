@@ -127,8 +127,8 @@ void GyroSubsystem::setReorientation() {
   //
   // Target output frame: ROS REP 103 (X = forward, Y = left, Z = up).
   //
-  // Redefining the device frame as ROS: East = robot forward, North = robot left.
-  // Physical chip axes in that device frame:
+  // Redefining the device frame as ROS: East = robot forward, North = robot
+  // left. Physical chip axes in that device frame:
   //   X = robot right = South  (opposite of East)
   //   Y = robot forward = East
   //   Z = Up
@@ -139,7 +139,7 @@ void GyroSubsystem::setReorientation() {
   orient.x = 0.0f;
   orient.y = 0.0f;
   orient.z = -0.7071068f;
-  orient.w =  0.7071068f;
+  orient.w = 0.7071068f;
   int rc = sh2_setReorientation(&orient);
   if (rc != SH2_OK) {
     Debug::printf(Debug::Level::ERROR,
@@ -157,8 +157,7 @@ void GyroSubsystem::tareYaw() {
   // pitch/roll, which remain gravity-referenced.
   int rc = sh2_setTareNow(SH2_TARE_Z, SH2_TARE_BASIS_GAMING_ROTATION_VECTOR);
   if (rc != SH2_OK) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Yaw tare failed (%d)", rc);
+    Debug::printf(Debug::Level::ERROR, "[BNO085] Yaw tare failed (%d)", rc);
   } else {
     Debug::printf(Debug::Level::INFO, "[BNO085] Yaw tared to current heading");
   }

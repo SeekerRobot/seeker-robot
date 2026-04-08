@@ -114,8 +114,9 @@ void MicrorosManager::update() {
     case AGENT_AVAILABLE:
       if (create_entities()) {
         // Sync ESP32 clock to ROS agent wall time so message stamps use Unix
-        // epoch. Without this, micros()-based stamps are boot-relative (~seconds)
-        // while the EKF runs on wall time (~1.77B seconds), causing dt overflow.
+        // epoch. Without this, micros()-based stamps are boot-relative
+        // (~seconds) while the EKF runs on wall time (~1.77B seconds), causing
+        // dt overflow.
         rmw_uros_sync_session(1000);
         state_ = AGENT_CONNECTED;
       } else {
