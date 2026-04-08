@@ -44,9 +44,9 @@ class MicSetup : public Classes::BaseSetup {
   /// @param chunk_size I2S DMA read size in bytes per HTTP chunk.
   /// @param ctrl_port  httpd internal control socket port — must be unique
   ///                   across all httpd instances (default 32769).
-  MicSetup(i2s_port_t i2s_port, uint32_t sample_rate, int clk_pin,
-           int data_pin, int gain = 4, uint16_t http_port = 81,
-           size_t chunk_size = 2048, uint16_t ctrl_port = 32769)
+  MicSetup(i2s_port_t i2s_port, uint32_t sample_rate, int clk_pin, int data_pin,
+           int gain = 4, uint16_t http_port = 81, size_t chunk_size = 2048,
+           uint16_t ctrl_port = 32769)
       : Classes::BaseSetup("MicSubsystem"),
         i2s_port_(i2s_port),
         sample_rate_(sample_rate),
