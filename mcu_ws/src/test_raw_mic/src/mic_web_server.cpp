@@ -1,8 +1,8 @@
 /**
- * @file test_sub_mic/src/mic_web_server.cpp
+ * @file test_raw_mic/src/mic_web_server.cpp
  * @author Tal Avital
  * @date 4/5/2026
- * @brief ESP32 Sense Mic web server
+ * @brief ESP32 Sense Mic web server — raw I2S streaming over HTTP.
  */
 
 #include "mic_web_server.h"

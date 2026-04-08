@@ -19,13 +19,20 @@ class CameraSetup : public Classes::BaseSetup {
  public:
   CameraSetup() = delete;
 
-  /// @param config  Camera hardware config (pins, pixel format, etc.)
-  /// @param port    HTTP port for the /stream endpoint (default 80).
-  CameraSetup(const camera_config_t& config, uint16_t port = 80)
-      : Classes::BaseSetup("CameraSubsystem"), config_(config), port_(port) {}
+  /// @param config     Camera hardware config (pins, pixel format, etc.)
+  /// @param port      HTTP port for the /cam endpoint (default 80).
+  /// @param ctrl_port httpd internal control socket port — must be unique
+  ///                  across all httpd instances (default 32768).
+  CameraSetup(const camera_config_t& config, uint16_t port = 80,
+              uint16_t ctrl_port = 32768)
+      : Classes::BaseSetup("CameraSubsystem"),
+        config_(config),
+        port_(port),
+        ctrl_port_(ctrl_port) {}
 
   const camera_config_t config_;
   const uint16_t port_;
+  const uint16_t ctrl_port_;
 };
 
 /**
