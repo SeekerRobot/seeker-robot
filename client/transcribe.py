@@ -12,6 +12,9 @@ BUFFER_THRESHOLD = SAMPLE_RATE * WINDOW_SECONDS
 print("Loading Whisper model...")
 model = WhisperModel("tiny.en", device = "cpu", compute_type = "int8")
 
+text = ''
+ingest = False
+
 def transcribe():
     audio_buffer = np.array([], dtype = np.float32)
     
@@ -35,7 +38,8 @@ def transcribe():
                     
                     for segment in segments:
                         if segment.text.strip():
-                            print(f"[Transcript]: {segment.text.strip()}")
+                            text: str = segment.text.strip()
+                            ingest = True
                             
                     audio_buffer = np.array([], dtype = np.float32)
     

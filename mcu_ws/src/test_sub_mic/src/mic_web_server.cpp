@@ -145,7 +145,7 @@ void startMicWebServer() {
     httpd_uri_t audio_uri  = { .uri = "/audio",  .method = HTTP_GET,
                                 .handler = audio_handler,  .user_ctx = NULL };
 
-    if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+    if (httpd_start(&stream_htt pd, &config) == ESP_OK) {
         httpd_register_uri_handler(stream_httpd, &index_uri);
         httpd_register_uri_handler(stream_httpd, &audio_uri);
         Serial.println("Audio Stream Server started on port 80");
