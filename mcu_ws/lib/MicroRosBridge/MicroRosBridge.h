@@ -165,7 +165,7 @@ struct LidarPublisherState {
   sensor_msgs__msg__LaserScan msg{};
   float ranges_buf[kLidarMaxPoints];
   float intensities_buf[kLidarMaxPoints];
-  char frame_id_buf[8] = "laser";
+  char frame_id_buf[12] = "lidar_link";
   elapsedMillis elapsed{};
   uint32_t last_scan_count = 0;
 };

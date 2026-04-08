@@ -20,6 +20,8 @@ bool CameraSubsystem::init() {
 }
 
 void CameraSubsystem::begin() {
+  startServer();
+
   camera_config_t cfg = setup_.config_;
 
   if (psramFound()) {
@@ -36,13 +38,12 @@ void CameraSubsystem::begin() {
   esp_err_t err = esp_camera_init(&cfg);
   if (err != ESP_OK) {
     Debug::printf(Debug::Level::ERROR, "[Camera] Init failed: 0x%x", err);
+    stopServer();
     return;
   }
   camera_ready_ = true;
   Debug::printf(Debug::Level::INFO, "[Camera] Init OK (PSRAM: %s)",
                 psramFound() ? "yes" : "no");
-
-  startServer();
 }
 
 void CameraSubsystem::update() {
@@ -50,7 +51,7 @@ void CameraSubsystem::update() {
   uint32_t now = millis();
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO, "[Camera] Stream %s on port %u",
+    Debug::printf(Debug::Level::INFO, "[Camera] /cam %s on port %u",
                   isServerRunning() ? "up" : "down", setup_.port_);
   }
 }
@@ -69,17 +70,19 @@ void CameraSubsystem::reset() {
 void CameraSubsystem::startServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = setup_.port_;
+  config.ctrl_port = setup_.ctrl_port_;
+  config.send_wait_timeout = 30;
+  config.max_open_sockets = 2;
 
-  httpd_uri_t stream_uri = {.uri = "/stream",
+  httpd_uri_t stream_uri = {.uri = "/cam",
                             .method = HTTP_GET,
                             .handler = streamHandler,
-                            .user_ctx = nullptr};
+                            .user_ctx = this};
 
   if (httpd_start(&stream_httpd_, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd_, &stream_uri);
     Debug::printf(Debug::Level::INFO,
-                  "[Camera] MJPEG stream at http://<ip>:%u/stream",
-                  setup_.port_);
+                  "[Camera] MJPEG stream at http://<ip>:%u/cam", setup_.port_);
   } else {
     Debug::printf(Debug::Level::ERROR, "[Camera] httpd_start failed");
   }
@@ -94,6 +97,13 @@ void CameraSubsystem::stopServer() {
 }
 
 esp_err_t CameraSubsystem::streamHandler(httpd_req_t* req) {
+  auto* self = static_cast<CameraSubsystem*>(req->user_ctx);
+  if (!self->camera_ready_) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "Camera not ready");
+    return ESP_FAIL;
+  }
+
   camera_fb_t* fb = nullptr;
   esp_err_t res = ESP_OK;
   char part_buf[64];
