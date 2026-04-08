@@ -110,6 +110,13 @@ def generate_launch_description():
         output='screen',
     )
 
+    rviz = Node(
+        package='rviz2',
+        executable='rviz2',
+        arguments=['-d', os.path.join(gz_pkg, 'rviz', 'teleop.rviz')],
+        output='screen',
+    )
+
     drive_hint = LogInfo(
         msg='\n'
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
@@ -130,5 +137,6 @@ def generate_launch_description():
         gz_bridge,
         gz_odom_bridge,
         fake_mcu,
+        rviz,
         drive_hint,
     ])
