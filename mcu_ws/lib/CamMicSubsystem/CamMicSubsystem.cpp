@@ -83,8 +83,7 @@ void CamMicSubsystem::update() {
   uint32_t now = millis();
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO,
-                  "[CamMic] cam=%s(:%u) mic=%s(:%u)",
+    Debug::printf(Debug::Level::INFO, "[CamMic] cam=%s(:%u) mic=%s(:%u)",
                   (camera_ready_ && isCamServerRunning()) ? "up" : "down",
                   setup_.cam_port_,
                   (mic_ready_ && isAudioServerRunning()) ? "up" : "down",
@@ -133,7 +132,7 @@ void CamMicSubsystem::audioStreamTask(void* arg) {
         size_t n = bytes_read / sizeof(int16_t);
         for (size_t i = 0; i < n; i++) {
           int32_t s = static_cast<int32_t>(samples[i]) * self->setup_.gain_;
-          if (s >  32767) s =  32767;
+          if (s > 32767) s = 32767;
           if (s < -32768) s = -32768;
           samples[i] = static_cast<int16_t>(s);
         }
@@ -159,7 +158,8 @@ void CamMicSubsystem::audioStreamTask(void* arg) {
 esp_err_t CamMicSubsystem::camHandler(httpd_req_t* req) {
   auto* self = static_cast<CamMicSubsystem*>(req->user_ctx);
   if (!self->camera_ready_) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Camera not ready");
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "Camera not ready");
     return ESP_FAIL;
   }
 
@@ -184,7 +184,8 @@ esp_err_t CamMicSubsystem::camHandler(httpd_req_t* req) {
       res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len);
     }
     if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, kStreamBoundary, strlen(kStreamBoundary));
+      res =
+          httpd_resp_send_chunk(req, kStreamBoundary, strlen(kStreamBoundary));
     }
     if (fb) {
       esp_camera_fb_return(fb);
@@ -226,8 +227,10 @@ void CamMicSubsystem::startServers() {
     config.send_wait_timeout = 30;
     config.max_open_sockets = 2;
 
-    httpd_uri_t cam_uri = {.uri = "/cam", .method = HTTP_GET,
-                           .handler = camHandler, .user_ctx = this};
+    httpd_uri_t cam_uri = {.uri = "/cam",
+                           .method = HTTP_GET,
+                           .handler = camHandler,
+                           .user_ctx = this};
 
     if (httpd_start(&cam_httpd_, &config) == ESP_OK) {
       httpd_register_uri_handler(cam_httpd_, &cam_uri);
@@ -244,10 +247,13 @@ void CamMicSubsystem::startServers() {
     config.server_port = setup_.audio_port_;
     config.send_wait_timeout = 30;
     config.max_open_sockets = 2;
-    config.ctrl_port = setup_.audio_port_ + 1;  // must differ from cam ctrl port
+    config.ctrl_port =
+        setup_.audio_port_ + 1;  // must differ from cam ctrl port
 
-    httpd_uri_t audio_uri = {.uri = "/audio", .method = HTTP_GET,
-                             .handler = audioHandler, .user_ctx = this};
+    httpd_uri_t audio_uri = {.uri = "/audio",
+                             .method = HTTP_GET,
+                             .handler = audioHandler,
+                             .user_ctx = this};
 
     if (httpd_start(&audio_httpd_, &config) == ESP_OK) {
       httpd_register_uri_handler(audio_httpd_, &audio_uri);

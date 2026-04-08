@@ -56,6 +56,4 @@ void setup() {
   startMicWebServer();
 }
 
-void loop() {
-  delay(1000);
-}
+void loop() { delay(1000); }

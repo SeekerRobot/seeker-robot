@@ -82,8 +82,7 @@ void CameraSubsystem::startServer() {
   if (httpd_start(&stream_httpd_, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd_, &stream_uri);
     Debug::printf(Debug::Level::INFO,
-                  "[Camera] MJPEG stream at http://<ip>:%u/cam",
-                  setup_.port_);
+                  "[Camera] MJPEG stream at http://<ip>:%u/cam", setup_.port_);
   } else {
     Debug::printf(Debug::Level::ERROR, "[Camera] httpd_start failed");
   }
@@ -100,7 +99,8 @@ void CameraSubsystem::stopServer() {
 esp_err_t CameraSubsystem::streamHandler(httpd_req_t* req) {
   auto* self = static_cast<CameraSubsystem*>(req->user_ctx);
   if (!self->camera_ready_) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Camera not ready");
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "Camera not ready");
     return ESP_FAIL;
   }
 

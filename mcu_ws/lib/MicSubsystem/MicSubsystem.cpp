@@ -98,7 +98,7 @@ void MicSubsystem::audioStreamTask(void* arg) {
         size_t n = bytes_read / sizeof(int16_t);
         for (size_t i = 0; i < n; i++) {
           int32_t s = static_cast<int32_t>(samples[i]) * self->setup_.gain_;
-          if (s >  32767) s =  32767;
+          if (s > 32767) s = 32767;
           if (s < -32768) s = -32768;
           samples[i] = static_cast<int16_t>(s);
         }
