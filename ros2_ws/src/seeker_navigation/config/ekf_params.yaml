@@ -31,8 +31,8 @@ ekf_filter_node:
     imu0_relative: false
     imu0_queue_size: 5
     imu0_nodelay: false
-    # Subtract 9.81 m/s^2 from az before fusing linear acceleration
-    imu0_remove_gravitational_acceleration: true
+    # Linear acceleration fusion is disabled above, so gravity removal is not used here
+    imu0_remove_gravitational_acceleration: false
 
     # --- Process noise (tuned for slow hexapod, max ~0.2 m/s) ---
     # Diagonal 15x15 matrix, row-major

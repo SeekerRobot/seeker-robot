@@ -117,8 +117,16 @@ void MicrorosManager::update() {
         // epoch. Without this, micros()-based stamps are boot-relative
         // (~seconds) while the EKF runs on wall time (~1.77B seconds), causing
         // dt overflow.
-        rmw_uros_sync_session(1000);
-        state_ = AGENT_CONNECTED;
+        rmw_ret_t sync_ret = rmw_uros_sync_session(1000);
+        if (sync_ret == RMW_RET_OK) {
+          state_ = AGENT_CONNECTED;
+        } else {
+          Debug::printf(Debug::Level::ERROR,
+                        "[uROS] FAIL: rmw_uros_sync_session (%d)",
+                        static_cast<int>(sync_ret));
+          destroy_entities();
+          state_ = WAITING_AGENT;
+        }
       } else {
         destroy_entities();
         state_ = WAITING_AGENT;

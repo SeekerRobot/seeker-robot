@@ -180,6 +180,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         arguments=['-d', os.path.join(nav_pkg, 'rviz', 'nav2.rviz')],
+        parameters=[{'use_sim_time': True}],
         output='screen',
     )
 

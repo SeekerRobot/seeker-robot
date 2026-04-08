@@ -152,13 +152,13 @@ seeker-robot/
 | Topic | Type | Rate | QoS | Direction | Notes |
 |-------|------|------|-----|-----------|-------|
 | `/mcu/imu` | `sensor_msgs/Imu` | 50 Hz | BEST_EFFORT | ESP32 → ROS | Orientation from game rotation vector, angular vel, linear accel |
-| `/mcu/scan` | `sensor_msgs/LaserScan` | ~6 Hz | BEST_EFFORT | ESP32 → ROS | 720 rays, 8 m range, frame: `laser` |
+| `/mcu/scan` | `sensor_msgs/LaserScan` | ~6 Hz | RELIABLE | ESP32 → ROS | 720 rays, 8 m range, frame: `lidar_link` |
 | `/mcu/battery_voltage` | `std_msgs/Float32` | 1 Hz | BEST_EFFORT | ESP32 → ROS | Calibrated voltage in volts |
 | `/mcu/heartbeat` | `std_msgs/Int32` | 1 Hz | BEST_EFFORT | ESP32 → ROS | Monotonic counter, confirms ESP32 is alive |
 | `/mcu/log` | `std_msgs/String` | event | BEST_EFFORT | ESP32 → ROS | Debug messages from firmware |
 | `/cmd_vel` | `geometry_msgs/Twist` | on demand | BEST_EFFORT | ROS → ESP32 | Walking velocity (vx, vy, wz) |
 | `/mcu/hexapod_cmd` | `mcu_msgs/HexapodCmd` | on demand | BEST_EFFORT | ROS → ESP32 | Gait mode (STAND/WALK/SIT), body height/pitch/roll |
-| `/odom` | `nav_msgs/Odometry` | 50 Hz | — | EKF output | Position integrated from IMU |
+| `/odom` | `nav_msgs/Odometry` | 50 Hz | — | EKF output | EKF-estimated odometry; orientation / roll-pitch TF from IMU |
 | `/map` | `nav_msgs/OccupancyGrid` | ~0.2 Hz | TRANSIENT_LOCAL | SLAM output | 5 cm/cell occupancy grid |
 
 ---

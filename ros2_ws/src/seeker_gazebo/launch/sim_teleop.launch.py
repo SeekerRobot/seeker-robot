@@ -114,6 +114,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         arguments=['-d', os.path.join(gz_pkg, 'rviz', 'teleop.rviz')],
+        parameters=[{'use_sim_time': True}],
         output='screen',
     )
 
