@@ -124,9 +124,11 @@ bool SpeakerSubsystem::fetchAndPlay() {
   if (buf) {
     int remaining = content_length;
     while (remaining > 0) {
-      int to_read =
-          (remaining < (int)setup_.chunk_size_) ? remaining : (int)setup_.chunk_size_;
-      int read = esp_http_client_read(client, reinterpret_cast<char*>(buf), to_read);
+      int to_read = (remaining < (int)setup_.chunk_size_)
+                        ? remaining
+                        : (int)setup_.chunk_size_;
+      int read =
+          esp_http_client_read(client, reinterpret_cast<char*>(buf), to_read);
       if (read <= 0) break;
       remaining -= read;
       size_t written = 0;
