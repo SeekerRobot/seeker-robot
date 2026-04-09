@@ -21,7 +21,7 @@ constexpr static int tx = D6;
 constexpr static int rx = D7;
 constexpr static int spk_bclk = D8;   // I2S1 bit clock (SPI SCK)
 constexpr static int spk_lrclk = D9;  // I2S1 word select (SPI MISO)
-constexpr static int spk_dout = D10;   // I2S1 data out (SPI MOSI)
+constexpr static int spk_dout = D10;  // I2S1 data out (SPI MOSI)
 constexpr static int gyro_addr = 0x4A;
 constexpr static uint8_t pca_addr = 0x40;
 // Onboard PDM microphone (MSM261D3526H1CPM)

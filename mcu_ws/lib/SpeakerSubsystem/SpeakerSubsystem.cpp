@@ -158,8 +158,8 @@ esp_err_t SpeakerSubsystem::speakHandler(httpd_req_t* req) {
 void SpeakerSubsystem::startServer() {
   req_ready_ = xSemaphoreCreateBinary();
 
-  xTaskCreatePinnedToCore(audioPlayTask, "spk_play", 4096, this, 5,
-                          &play_task_, 1);
+  xTaskCreatePinnedToCore(audioPlayTask, "spk_play", 4096, this, 5, &play_task_,
+                          1);
 
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = setup_.http_port_;
