@@ -1,6 +1,8 @@
-"""ROS 2 node: /audio_transcription → Fish Audio TTS → ESP32 speaker."""
+"""ROS 2 node: /audio_transcription → Fish Audio TTS → HTTP server for ESP32."""
 
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import rclpy
 from rclpy.node import Node
@@ -19,7 +21,7 @@ class TtsNode(Node):
         self.declare_parameter("fish_api_key", "")
         self.declare_parameter("fish_reference_id", "")
         self.declare_parameter("fish_model", "s2-pro")
-        self.declare_parameter("speaker_url", "http://192.168.1.100:82/speak")
+        self.declare_parameter("serve_port", 8383)
         self.declare_parameter("sample_rate", 16000)
 
         self._api_key = (
@@ -30,12 +32,15 @@ class TtsNode(Node):
             self.get_parameter("fish_reference_id")
             .get_parameter_value()
             .string_value
+            or os.environ.get("FISH_REFERENCE_ID", "")
         )
         self._model = (
             self.get_parameter("fish_model").get_parameter_value().string_value
         )
-        self._speaker_url = (
-            self.get_parameter("speaker_url").get_parameter_value().string_value
+        self._serve_port = (
+            self.get_parameter("serve_port")
+            .get_parameter_value()
+            .integer_value
         )
         self._sample_rate = (
             self.get_parameter("sample_rate")
@@ -45,19 +50,28 @@ class TtsNode(Node):
 
         if not self._api_key:
             self.get_logger().error(
-                "No Fish Audio API key. Set param fish_api_key or env FISH_API_KEY"
+                "No Fish Audio API key. Set FISH_API_KEY env var or fish_api_key param"
             )
-
         if requests is None:
             self.get_logger().error("python3-requests not installed")
+
+        # Audio buffer: ESP32 long-polls GET /audio_out, blocks until data is
+        # available, then receives the PCM and disconnects.
+        self._audio_ready = threading.Event()
+        self._audio_lock = threading.Lock()
+        self._audio_data: bytes = b""
+
+        self._start_http_server()
 
         self._sub = self.create_subscription(
             String, "/audio_transcription", self._on_transcription, 10
         )
         self.get_logger().info(
             f"TTS node ready — listening on /audio_transcription, "
-            f"speaker at {self._speaker_url}"
+            f"serving audio on :{self._serve_port}/audio_out"
         )
+
+    # ---- ROS subscription callback -------------------------------------------
 
     def _on_transcription(self, msg: String):
         text = msg.data.strip()
@@ -70,10 +84,13 @@ class TtsNode(Node):
         if pcm is None:
             return
 
-        self._send_to_speaker(pcm)
+        with self._audio_lock:
+            self._audio_data = pcm
+        self._audio_ready.set()
+
+    # ---- Fish Audio TTS ------------------------------------------------------
 
     def _fish_tts(self, text: str) -> bytes | None:
-        """Call Fish Audio TTS and return raw 16-bit PCM bytes."""
         if requests is None or not self._api_key:
             return None
 
@@ -114,19 +131,41 @@ class TtsNode(Node):
         )
         return pcm
 
-    def _send_to_speaker(self, pcm: bytes):
-        """POST raw PCM to the ESP32 speaker HTTP endpoint."""
-        try:
-            resp = requests.post(
-                self._speaker_url,
-                data=pcm,
-                headers={"Content-Type": "application/octet-stream"},
-                timeout=30 + len(pcm) / (self._sample_rate * 2),
-            )
-            resp.raise_for_status()
-            self.get_logger().info("Audio sent to speaker")
-        except requests.RequestException as e:
-            self.get_logger().error(f"Speaker POST failed: {e}")
+    # ---- HTTP server for ESP32 -----------------------------------------------
+
+    def _start_http_server(self):
+        node = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path != "/audio_out":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+
+                # Long-poll: block until audio is available (up to 30s).
+                if not node._audio_ready.wait(timeout=30.0):
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+
+                with node._audio_lock:
+                    data = node._audio_data
+                    node._audio_data = b""
+                node._audio_ready.clear()
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, format, *args):
+                node.get_logger().debug(format % args)
+
+        server = HTTPServer(("0.0.0.0", self._serve_port), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
 
 
 def main(args=None):

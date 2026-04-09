@@ -4,7 +4,6 @@
 #include "SpeakerSubsystem.h"
 
 #include <MicSubsystem.h>
-#include <lwip/sockets.h>
 
 namespace Subsystem {
 
@@ -14,8 +13,35 @@ bool SpeakerSubsystem::init() {
 }
 
 void SpeakerSubsystem::begin() {
-  startServer();
+  if (!initI2s()) return;
+  Debug::printf(Debug::Level::INFO,
+                "[Speaker] Ready — polling http://%s:%u/audio_out",
+                setup_.host_ip_.toString().c_str(), setup_.host_port_);
+}
 
+void SpeakerSubsystem::update() {
+  if (!i2s_ready_) return;
+
+  uint32_t now = millis();
+  if (now - last_log_ms_ >= kLogIntervalMs) {
+    last_log_ms_ = now;
+    Debug::printf(Debug::Level::INFO, "[Speaker] Polling %s:%u",
+                  setup_.host_ip_.toString().c_str(), setup_.host_port_);
+  }
+
+  fetchAndPlay();
+}
+
+void SpeakerSubsystem::pause() { deinitI2s(); }
+
+void SpeakerSubsystem::reset() {
+  deinitI2s();
+  begin();
+}
+
+// ---- I2S lifecycle ----------------------------------------------------------
+
+bool SpeakerSubsystem::initI2s() {
   i2s_config_t i2s_cfg = {
       .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
       .sample_rate = setup_.sample_rate_,
@@ -37,8 +63,7 @@ void SpeakerSubsystem::begin() {
   if (i2s_driver_install(setup_.i2s_port_, &i2s_cfg, 0, NULL) != ESP_OK ||
       i2s_set_pin(setup_.i2s_port_, &pin_cfg) != ESP_OK) {
     Debug::printf(Debug::Level::ERROR, "[Speaker] I2S init failed");
-    stopServer();
-    return;
+    return false;
   }
   i2s_zero_dma_buffer(setup_.i2s_port_);
   i2s_ready_ = true;
@@ -46,156 +71,82 @@ void SpeakerSubsystem::begin() {
                 "[Speaker] I2S init OK (%u Hz, BCLK=%d, LRCLK=%d, DOUT=%d)",
                 setup_.sample_rate_, setup_.bclk_pin_, setup_.lrclk_pin_,
                 setup_.dout_pin_);
+  return true;
 }
 
-void SpeakerSubsystem::update() {
-  if (!i2s_ready_) return;
-  uint32_t now = millis();
-  if (now - last_log_ms_ >= kLogIntervalMs) {
-    last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO, "[Speaker] /speak %s on port %u",
-                  isServerRunning() ? "up" : "down", setup_.http_port_);
-  }
-}
-
-void SpeakerSubsystem::pause() { stopServer(); }
-
-void SpeakerSubsystem::reset() {
-  stopServer();
+void SpeakerSubsystem::deinitI2s() {
   if (i2s_ready_) {
     i2s_driver_uninstall(setup_.i2s_port_);
     i2s_ready_ = false;
   }
-  begin();
 }
 
-// ---- Audio play task --------------------------------------------------------
+// ---- HTTP fetch + playback --------------------------------------------------
 
-void SpeakerSubsystem::audioPlayTask(void* arg) {
-  auto* self = static_cast<SpeakerSubsystem*>(arg);
-  const size_t chunk = self->setup_.chunk_size_;
-  uint8_t* buf = static_cast<uint8_t*>(malloc(chunk));
-  if (!buf) {
-    Debug::printf(Debug::Level::ERROR, "[Speaker] play task malloc failed");
-    vTaskDelete(NULL);
-    return;
+bool SpeakerSubsystem::fetchAndPlay() {
+  char url[64];
+  snprintf(url, sizeof(url), "http://%s:%u/audio_out",
+           setup_.host_ip_.toString().c_str(), setup_.host_port_);
+
+  esp_http_client_config_t cfg = {};
+  cfg.url = url;
+  cfg.timeout_ms = kHttpTimeoutMs;
+  cfg.keep_alive_enable = false;
+
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  if (!client) return false;
+
+  esp_err_t err = esp_http_client_open(client, 0);
+  if (err != ESP_OK) {
+    esp_http_client_cleanup(client);
+    return false;
   }
 
-  while (true) {
-    // Block until an HTTP client POSTs audio data.
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  int content_length = esp_http_client_fetch_headers(client);
+  int status = esp_http_client_get_status_code(client);
 
-    httpd_req_t* req = self->active_req_;
-    Debug::printf(Debug::Level::INFO, "[Speaker] Playback started");
+  if (status != 200 || content_length <= 0) {
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return false;
+  }
 
-    // Mute mic while playing.
-    if (self->setup_.mic_) {
-      self->setup_.mic_->pause();
-      Debug::printf(Debug::Level::INFO, "[Speaker] Mic paused");
-    }
+  Debug::printf(Debug::Level::INFO, "[Speaker] Playback started (%d bytes)",
+                content_length);
 
-    int remaining = req->content_len;
+  // Mute mic while playing.
+  if (setup_.mic_) {
+    setup_.mic_->pause();
+    Debug::printf(Debug::Level::INFO, "[Speaker] Mic paused");
+  }
+
+  uint8_t* buf = static_cast<uint8_t*>(malloc(setup_.chunk_size_));
+  if (buf) {
+    int remaining = content_length;
     while (remaining > 0) {
-      int to_read = (remaining < (int)chunk) ? remaining : (int)chunk;
-      int ret = httpd_req_recv(req, reinterpret_cast<char*>(buf), to_read);
-      if (ret <= 0) {
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
-        break;
-      }
-      remaining -= ret;
-      size_t bytes_written = 0;
-      i2s_write(self->setup_.i2s_port_, buf, ret, &bytes_written,
-                portMAX_DELAY);
+      int to_read =
+          (remaining < (int)setup_.chunk_size_) ? remaining : (int)setup_.chunk_size_;
+      int read = esp_http_client_read(client, reinterpret_cast<char*>(buf), to_read);
+      if (read <= 0) break;
+      remaining -= read;
+      size_t written = 0;
+      i2s_write(setup_.i2s_port_, buf, read, &written, portMAX_DELAY);
     }
-
-    // Drain DMA buffers so the tail of the audio is heard.
-    i2s_zero_dma_buffer(self->setup_.i2s_port_);
-
-    Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
-
-    // Resume mic.
-    if (self->setup_.mic_) {
-      self->setup_.mic_->reset();
-      Debug::printf(Debug::Level::INFO, "[Speaker] Mic resumed");
-    }
-
-    self->active_req_ = nullptr;
-    xSemaphoreGive(self->req_ready_);
+    free(buf);
   }
 
-  free(buf);
-  vTaskDelete(NULL);
-}
+  i2s_zero_dma_buffer(setup_.i2s_port_);
+  Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
 
-// ---- HTTP handler -----------------------------------------------------------
-
-esp_err_t SpeakerSubsystem::speakHandler(httpd_req_t* req) {
-  auto* self = static_cast<SpeakerSubsystem*>(req->user_ctx);
-  if (!self->i2s_ready_) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
-                        "Speaker not ready");
-    return ESP_FAIL;
-  }
-  if (self->active_req_ != nullptr) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Playback busy");
-    return ESP_FAIL;
+  // Resume mic.
+  if (setup_.mic_) {
+    setup_.mic_->reset();
+    Debug::printf(Debug::Level::INFO, "[Speaker] Mic resumed");
   }
 
-  int fd = httpd_req_to_sockfd(req);
-  int nodelay = 1;
-  setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
-
-  self->active_req_ = req;
-  xTaskNotifyGive(self->play_task_);
-  xSemaphoreTake(self->req_ready_, portMAX_DELAY);
-
-  httpd_resp_sendstr(req, "OK");
-  return ESP_OK;
-}
-
-// ---- Server lifecycle -------------------------------------------------------
-
-void SpeakerSubsystem::startServer() {
-  req_ready_ = xSemaphoreCreateBinary();
-
-  xTaskCreatePinnedToCore(audioPlayTask, "spk_play", 4096, this, 5, &play_task_,
-                          1);
-
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = setup_.http_port_;
-  config.ctrl_port = setup_.ctrl_port_;
-  config.send_wait_timeout = 30;
-  config.max_open_sockets = 2;
-
-  httpd_uri_t speak_uri = {.uri = "/speak",
-                           .method = HTTP_POST,
-                           .handler = speakHandler,
-                           .user_ctx = this};
-
-  if (httpd_start(&httpd_, &config) == ESP_OK) {
-    httpd_register_uri_handler(httpd_, &speak_uri);
-    Debug::printf(Debug::Level::INFO,
-                  "[Speaker] Accepting audio at http://<ip>:%u/speak",
-                  setup_.http_port_);
-  } else {
-    Debug::printf(Debug::Level::ERROR, "[Speaker] httpd_start failed");
-  }
-}
-
-void SpeakerSubsystem::stopServer() {
-  if (httpd_) {
-    httpd_stop(httpd_);
-    httpd_ = nullptr;
-    Debug::printf(Debug::Level::INFO, "[Speaker] Server stopped");
-  }
-  if (play_task_) {
-    vTaskDelete(play_task_);
-    play_task_ = nullptr;
-  }
-  if (req_ready_) {
-    vSemaphoreDelete(req_ready_);
-    req_ready_ = nullptr;
-  }
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  return true;
 }
 
 }  // namespace Subsystem

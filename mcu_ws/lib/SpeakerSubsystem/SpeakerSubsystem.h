@@ -1,30 +1,33 @@
 /**
  * @file SpeakerSubsystem.h
- * @brief I2S speaker subsystem with HTTP audio streaming (reverse of
- * MicSubsystem).
+ * @brief I2S speaker subsystem that fetches audio from the ROS 2 host.
  *
- * Receives raw 16-bit PCM audio via HTTP POST /speak and plays it through an
- * I2S DAC/amplifier (e.g. MAX98357A). Optionally mutes the MicSubsystem while
- * audio is playing to prevent feedback.
+ * Connects to an HTTP endpoint on the micro-ROS agent (host PC) to receive
+ * raw 16-bit PCM audio, then plays it through I2S to an external amplifier
+ * (e.g. MAX98357A). Optionally mutes the MicSubsystem while audio is playing.
+ *
+ * The ESP32 acts as an HTTP client — it already knows the host IP via the
+ * AGENT_IP build macro from network_config.ini, so no extra configuration is
+ * needed.
  *
  * Usage:
  * @code
  * static Subsystem::SpeakerSetup spk_setup(
  *     I2S_NUM_1, 16000,
  *     Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
- *     82, 2048, 32770, &mic);
+ *     IPAddress(AGENT_IP), 8383, 2048, &mic);
  * auto& spk = Subsystem::SpeakerSubsystem::getInstance(spk_setup);
- * spk.beginThreadedPinned(4096, 2, 5000, 1);
+ * spk.beginThreadedPinned(4096, 2, 100, 1);
  * @endcode
  */
 #pragma once
 
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
+#include <WiFi.h>
 #include <driver/i2s.h>
-#include <esp_http_server.h>
+#include <esp_http_client.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
 namespace Subsystem {
 
@@ -39,14 +42,13 @@ class SpeakerSetup : public Classes::BaseSetup {
   /// @param bclk_pin    I2S bit clock GPIO.
   /// @param lrclk_pin   I2S word-select (LRCLK) GPIO.
   /// @param dout_pin    I2S data-out GPIO.
-  /// @param http_port   HTTP server port for the /speak endpoint.
-  /// @param chunk_size  Bytes read per HTTP recv / I2S write cycle.
-  /// @param ctrl_port   httpd internal control socket port — must be unique
-  ///                    across all httpd instances.
+  /// @param host_ip     IP address of the ROS 2 host (use AGENT_IP macro).
+  /// @param host_port   Port the TTS server listens on.
+  /// @param chunk_size  Bytes per HTTP read / I2S write cycle.
   /// @param mic         Optional MicSubsystem to pause during playback.
   SpeakerSetup(i2s_port_t i2s_port, uint32_t sample_rate, int bclk_pin,
-               int lrclk_pin, int dout_pin, uint16_t http_port = 82,
-               size_t chunk_size = 2048, uint16_t ctrl_port = 32770,
+               int lrclk_pin, int dout_pin, IPAddress host_ip,
+               uint16_t host_port = 8383, size_t chunk_size = 2048,
                MicSubsystem* mic = nullptr)
       : Classes::BaseSetup("SpeakerSubsystem"),
         i2s_port_(i2s_port),
@@ -54,9 +56,9 @@ class SpeakerSetup : public Classes::BaseSetup {
         bclk_pin_(bclk_pin),
         lrclk_pin_(lrclk_pin),
         dout_pin_(dout_pin),
-        http_port_(http_port),
+        host_ip_(host_ip),
+        host_port_(host_port),
         chunk_size_(chunk_size),
-        ctrl_port_(ctrl_port),
         mic_(mic) {}
 
   const i2s_port_t i2s_port_;
@@ -64,9 +66,9 @@ class SpeakerSetup : public Classes::BaseSetup {
   const int bclk_pin_;
   const int lrclk_pin_;
   const int dout_pin_;
-  const uint16_t http_port_;
+  const IPAddress host_ip_;
+  const uint16_t host_port_;
   const size_t chunk_size_;
-  const uint16_t ctrl_port_;
   MicSubsystem* const mic_;
 };
 
@@ -88,27 +90,21 @@ class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
   const char* getInfo() override { return setup_.getId(); }
 
   bool isI2sReady() const { return i2s_ready_; }
-  bool isServerRunning() const { return httpd_ != nullptr; }
 
  private:
   explicit SpeakerSubsystem(const SpeakerSetup& setup)
       : ThreadedSubsystem(setup), setup_(setup) {}
 
-  void startServer();
-  void stopServer();
-
-  static void audioPlayTask(void* arg);
-  static esp_err_t speakHandler(httpd_req_t* req);
+  bool initI2s();
+  void deinitI2s();
+  bool fetchAndPlay();
 
   const SpeakerSetup setup_;
-  httpd_handle_t httpd_ = nullptr;
-  httpd_req_t* active_req_ = nullptr;
-  TaskHandle_t play_task_ = nullptr;
-  SemaphoreHandle_t req_ready_ = nullptr;
   bool i2s_ready_ = false;
   uint32_t last_log_ms_ = 0;
 
   static constexpr uint32_t kLogIntervalMs = 5000;
+  static constexpr int kHttpTimeoutMs = 30000;
 };
 
 }  // namespace Subsystem
