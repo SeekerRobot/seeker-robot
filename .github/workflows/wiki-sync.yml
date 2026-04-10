@@ -1,0 +1,70 @@
+name: Sync wiki
+
+# Mirrors docs/wiki/ into the GitHub Wiki repo whenever it changes on main.
+#
+# Requirements:
+#   - Repository secret WIKI_TOKEN must be set to a fine-grained PAT with
+#     "Contents: Read and write" on this repo. GITHUB_TOKEN alone cannot
+#     push to wiki repos.
+#   - Wiki must be enabled for the repo and initialised at least once
+#     (create a Home page from the GitHub UI, or push a Home.md manually
+#     the first time).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/wiki/**'
+      - '.github/workflows/wiki-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Clone wiki repo
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WIKI_TOKEN}" ]; then
+            echo "::error::WIKI_TOKEN secret is not set. Create a fine-grained PAT with Contents: Read and write on this repo and add it as WIKI_TOKEN."
+            exit 1
+          fi
+          git clone "https://x-access-token:${WIKI_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki
+
+      - name: Mirror docs/wiki into wiki repo
+        run: |
+          set -euo pipefail
+          # Wipe tracked files in the wiki checkout (keep .git) and re-copy.
+          find wiki -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -a docs/wiki/. wiki/
+
+      - name: Commit and push
+        working-directory: wiki
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No wiki changes to publish."
+            exit 0
+          fi
+          git commit -m "docs: sync wiki from ${GITHUB_SHA::7}"
+          # Wiki default branch may be master or main depending on age.
+          if git ls-remote --heads origin master | grep -q master; then
+            git push origin HEAD:master
+          else
+            git push origin HEAD:main
+          fi
