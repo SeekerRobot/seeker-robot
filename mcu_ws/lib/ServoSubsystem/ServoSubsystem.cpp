@@ -152,6 +152,13 @@ void ServoSubsystem::detach(uint8_t index) {
 
 bool ServoSubsystem::arm() {
   for (uint8_t i = 0; i < setup_.num_servos_; i++) {
+    if (state_[i].detached_by_disarm) {
+      state_[i].detached_by_disarm = false;
+      attach(i);
+    }
+  }
+
+  for (uint8_t i = 0; i < setup_.num_servos_; i++) {
     if (state_[i].attached && !state_[i].initialized) {
       Debug::printf(
           Debug::Level::ERROR,
@@ -178,6 +185,12 @@ bool ServoSubsystem::arm() {
 }
 
 void ServoSubsystem::disarm() {
+  for (uint8_t i = 0; i < setup_.num_servos_; i++) {
+    if (state_[i].attached) {
+      detach(i);
+      state_[i].detached_by_disarm = true;
+    }
+  }
   Threads::Scope lock(i2c_mutex_);
   pwm_.disableOutputs();
   armed_ = false;
