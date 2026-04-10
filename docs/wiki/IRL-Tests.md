@@ -1,6 +1,6 @@
 # IRL Tests
 
-This page is the hardware bring-up playbook. It assumes you already have a working dev container (see **[Setup](Setup)**), a built ROS 2 workspace, a configured `network_config.ini`, and at least one ESP32-S3 Sense board wired to the Sesame V2 PCB.
+This page is the hardware bring-up playbook. It assumes you already have a working dev container (see **[Setup](Setup.md)**), a built ROS 2 workspace, a configured `network_config.ini`, and at least one ESP32-S3 Sense board wired to the Sesame V2 PCB.
 
 ---
 
@@ -142,7 +142,7 @@ pio run -e esp32s3sense -t upload
 ros2 launch seeker_navigation real_ball_search.launch.py
 ```
 
-See the timeline in **[ROS2 Packages → seeker_navigation](ROS2-Packages#seeker_navigation)**. It takes ~25 s before `ball_searcher` actually starts issuing navigation goals.
+See the timeline in **[ROS2 Packages → seeker_navigation](ROS2-Packages.md#seeker_navigation)**. It takes ~25 s before `ball_searcher` actually starts issuing navigation goals.
 
 ---
 
@@ -213,7 +213,7 @@ rviz2
 
 ## Per-subsystem isolation tests
 
-When something misbehaves on the full stack, bisect with the `test_sub_*` sketches. See **[MCU Sketches](MCU-Sketches)** for commands.
+When something misbehaves on the full stack, bisect with the `test_sub_*` sketches. See **[MCU Sketches](MCU-Sketches.md)** for commands.
 
 | Symptom | Isolation sketch |
 |---|---|

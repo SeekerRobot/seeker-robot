@@ -10,14 +10,14 @@ The robot maps its environment with a 360° LiDAR and a BNO085 IMU, navigates wi
 
 | Page | What it covers |
 |---|---|
-| **[Setup](Setup)** | Host prerequisites (Docker, X server per OS, `usbipd-win`), cloning the repo, filling in `docker/.env` and `network_config.ini`, first build, smoke tests, troubleshooting. |
-| **[Architecture](Architecture)** | How ROS 2, the micro-ROS agent and the ESP32 firmware fit together. Docker volume / bind-mount layout, FreeRTOS task pinning, the `MicroRosBridge` compile-time plugin pattern, how `mcu_msgs` flows between the two workspaces. |
-| **[ROS2 Packages](ROS2-Packages)** | Per-package reference for everything under `ros2_ws/src/`: purpose, key nodes, launch files, and how to build each one. |
-| **[Simulation](Simulation)** | End-to-end recipes for every Gazebo simulation mode (teleop, SLAM-raw, SLAM+EKF, full ball-search autonomy), expected topics/TF, and debugging tips. |
-| **[MCU Firmware](MCU-Firmware)** | Board environments, transports (WiFi/serial/OTA), shared libraries, generic build/flash/monitor commands, USB passthrough per OS, running the micro-ROS agent. |
-| **[MCU Sketches](MCU-Sketches)** | Per-sketch reference for every project under `mcu_ws/src/`: purpose, build command, expected output, and debugging tips. |
-| **[IRL Tests](IRL-Tests)** | Real-hardware bring-up checklist, full integration launches, gait test, navigation test, per-subsystem isolation tests, common debugging commands. |
-| **[Contributing](Contributing)** | Commit message format, CI checks, naming conventions, how to add a sketch or ROS 2 package, the `BRIDGE_ENABLE_*` checklist, PR checklist. |
+| **[Setup](Setup.md)** | Host prerequisites (Docker, X server per OS, `usbipd-win`), cloning the repo, filling in `docker/.env` and `network_config.ini`, first build, smoke tests, troubleshooting. |
+| **[Architecture](Architecture.md)** | How ROS 2, the micro-ROS agent and the ESP32 firmware fit together. Docker volume / bind-mount layout, FreeRTOS task pinning, the `MicroRosBridge` compile-time plugin pattern, how `mcu_msgs` flows between the two workspaces. |
+| **[ROS2 Packages](ROS2-Packages.md)** | Per-package reference for everything under `ros2_ws/src/`: purpose, key nodes, launch files, and how to build each one. |
+| **[Simulation](Simulation.md)** | End-to-end recipes for every Gazebo simulation mode (teleop, SLAM-raw, SLAM+EKF, full ball-search autonomy), expected topics/TF, and debugging tips. |
+| **[MCU Firmware](MCU-Firmware.md)** | Board environments, transports (WiFi/serial/OTA), shared libraries, generic build/flash/monitor commands, USB passthrough per OS, running the micro-ROS agent. |
+| **[MCU Sketches](MCU-Sketches.md)** | Per-sketch reference for every project under `mcu_ws/src/`: purpose, build command, expected output, and debugging tips. |
+| **[IRL Tests](IRL-Tests.md)** | Real-hardware bring-up checklist, full integration launches, gait test, navigation test, per-subsystem isolation tests, common debugging commands. |
+| **[Contributing](Contributing.md)** | Commit message format, CI checks, naming conventions, how to add a sketch or ROS 2 package, the `BRIDGE_ENABLE_*` checklist, PR checklist. |
 
 ---
 
@@ -44,7 +44,7 @@ ros2 launch seeker_gazebo sim_teleop.launch.py
 # in another terminal: ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
-See **[Setup](Setup)** for the full walkthrough and **[Simulation](Simulation)** for every launch mode.
+See **[Setup](Setup.md)** for the full walkthrough and **[Simulation](Simulation.md)** for every launch mode.
 
 ---
 
@@ -86,4 +86,4 @@ seeker-robot/
 | `/cmd_vel` | `geometry_msgs/Twist` | on demand | ROS → ESP32 |
 | `/mcu/hexapod_cmd` | `mcu_msgs/HexapodCmd` | on demand | ROS → ESP32 |
 
-See **[Architecture](Architecture)** for the full topic graph and TF tree.
+See **[Architecture](Architecture.md)** for the full topic graph and TF tree.

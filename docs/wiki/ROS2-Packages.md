@@ -31,7 +31,7 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 
 - `ExampleSrv.srv` — scaffolding example.
 
-Any change here **must** be rebuilt in both workspaces — see [Architecture → mcu_msgs flow](Architecture#how-mcu_msgs-flows-between-workspaces).
+Any change here **must** be rebuilt in both workspaces — see [Architecture → mcu_msgs flow](Architecture.md#how-mcu_msgs-flows-between-workspaces).
 
 ```bash
 colcon build --packages-select mcu_msgs
@@ -85,7 +85,7 @@ All Gazebo Harmonic simulation launches, plus the small helpers that bridge Gaze
 - `rviz/teleop.rviz` — minimal teleop view.
 - `rviz/slam.rviz` — SLAM / mapping view.
 
-**Launch files** (see **[Simulation](Simulation)** for what each one actually does):
+**Launch files** (see **[Simulation](Simulation.md)** for what each one actually does):
 
 | Launch | Stack it brings up | RViz fixed frame |
 |---|---|---|
@@ -207,7 +207,7 @@ colcon build --packages-select seeker_tts
 ros2 launch seeker_tts tts.launch.py
 ```
 
-The ESP32-side consumer is the `test_sub_speaker` sketch — see **[MCU Sketches](MCU-Sketches)**.
+The ESP32-side consumer is the `test_sub_speaker` sketch — see **[MCU Sketches](MCU-Sketches.md)**.
 
 ---
 

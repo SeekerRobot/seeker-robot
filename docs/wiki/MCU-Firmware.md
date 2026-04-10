@@ -2,7 +2,7 @@
 
 The ESP32 firmware lives in `mcu_ws/`, a multi-project PlatformIO workspace. Every sketch under `mcu_ws/src/` is an independent PlatformIO project that inherits board environments, library dependencies, and build flags from the shared `mcu_ws/platformio/platformio.ini`. The `mcu_ws/` tree is bind-mounted into the dev container at `~/mcu_workspaces/seeker_mcu/`, so editing firmware from the host and building inside the container just works.
 
-See **[Architecture](Architecture)** for how this firmware talks to ROS 2 via micro-ROS.
+See **[Architecture](Architecture.md)** for how this firmware talks to ROS 2 via micro-ROS.
 
 ---
 
@@ -55,7 +55,7 @@ Every subfolder is a PlatformIO library shared across all sketches via `lib_extr
 | `MicroRosDebug` | Debug print helpers for the micro-ROS transport state. |
 | `CustomDebug` | Multi-transport debug log (`DEBUG_TRANSPORT_SERIAL`, `DEBUG_TRANSPORT_BLUETOOTH`, `DEBUG_TRANSPORT_MICROROS`) gated by `DEBUG_LEVEL`. |
 
-See **[Architecture → MicroRosBridge](Architecture#the-microrosbridge-compile-time-plugin-pattern)** for the plugin pattern.
+See **[Architecture → MicroRosBridge](Architecture.md#the-microrosbridge-compile-time-plugin-pattern)** for the plugin pattern.
 
 ---
 
@@ -164,12 +164,12 @@ Start the agent **before** flashing — the firmware boots and starts pinging im
    lib_deps = ${common.lib_base}
    ```
 
-5. Follow the naming convention described in **[Contributing → Naming](Contributing#naming-conventions)**.
+5. Follow the naming convention described in **[Contributing → Naming](Contributing.md#naming-conventions)**.
 
 ---
 
 ## See also
 
-- **[MCU Sketches](MCU-Sketches)** — what every sketch under `mcu_ws/src/` actually does.
-- **[IRL Tests](IRL-Tests)** — hardware bring-up playbook.
-- **[Architecture](Architecture)** — FreeRTOS task pinning, `MicroRosBridge`, reconnection state machine.
+- **[MCU Sketches](MCU-Sketches.md)** — what every sketch under `mcu_ws/src/` actually does.
+- **[IRL Tests](IRL-Tests.md)** — hardware bring-up playbook.
+- **[Architecture](Architecture.md)** — FreeRTOS task pinning, `MicroRosBridge`, reconnection state machine.

@@ -188,7 +188,7 @@ ros2 launch seeker_gazebo sim_teleop.launch.py
 # in another shell: ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
-See **[Simulation](Simulation)** for all the launch modes.
+See **[Simulation](Simulation.md)** for all the launch modes.
 
 ---
 
@@ -226,4 +226,4 @@ See **[Simulation](Simulation)** for all the launch modes.
 | Serial upload fails on Linux with `Permission denied` on `/dev/ttyUSB0` | Re-enter the container (`docker compose exec ros2 bash`) — the container runs privileged and with `/dev` bind-mounted, so the permission comes from the host. On the host, add your user to the `dialout` group. |
 | Serial upload impossible on Windows | Run `usbipd attach --wsl --busid <BUS_ID>` as shown in §1, or flash over WiFi with the `*_ota` envs. |
 
-See **[MCU Firmware](MCU-Firmware)** for more PlatformIO details and **[IRL Tests](IRL-Tests)** for hardware bring-up procedures.
+See **[MCU Firmware](MCU-Firmware.md)** for more PlatformIO details and **[IRL Tests](IRL-Tests.md)** for hardware bring-up procedures.

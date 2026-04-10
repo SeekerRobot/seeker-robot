@@ -232,7 +232,7 @@ Both sides end up with identical wire-format type support, which is what lets a 
 
 ## Where to go next
 
-- **[ROS2 Packages](ROS2-Packages)** — per-package reference for the ROS 2 side.
-- **[MCU Firmware](MCU-Firmware)** — build/flash/debug workflow for the firmware side.
-- **[Simulation](Simulation)** — run the whole stack without hardware.
-- **[IRL Tests](IRL-Tests)** — hardware bring-up playbook.
+- **[ROS2 Packages](ROS2-Packages.md)** — per-package reference for the ROS 2 side.
+- **[MCU Firmware](MCU-Firmware.md)** — build/flash/debug workflow for the firmware side.
+- **[Simulation](Simulation.md)** — run the whole stack without hardware.
+- **[IRL Tests](IRL-Tests.md)** — hardware bring-up playbook.

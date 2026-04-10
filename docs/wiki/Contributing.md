@@ -132,7 +132,7 @@ Serial-only sketches must **exclude** `libs_external/esp32` from `lib_extra_dirs
    ```
 
 4. Build: `pio run -e <env>` from the new sketch directory.
-5. Add a section to **[MCU Sketches](MCU-Sketches)** describing what it does.
+5. Add a section to **[MCU Sketches](MCU-Sketches.md)** describing what it does.
 
 ---
 
@@ -152,13 +152,13 @@ Serial-only sketches must **exclude** `libs_external/esp32` from `lib_extra_dirs
 
 4. Put launch files under `launch/`, config under `config/`, and install both from `setup.py` (Python) or `CMakeLists.txt` (C++).
 5. Build: `colcon build --packages-select <pkg_name>`.
-6. Add a section to **[ROS2 Packages](ROS2-Packages)**.
+6. Add a section to **[ROS2 Packages](ROS2-Packages.md)**.
 
 ---
 
 ## Adding a publisher to `MicroRosBridge`
 
-Checklist for the compile-time plugin pattern (see also **[Architecture](Architecture#the-microrosbridge-compile-time-plugin-pattern)**):
+Checklist for the compile-time plugin pattern (see also **[Architecture](Architecture.md#the-microrosbridge-compile-time-plugin-pattern)**):
 
 - [ ] `#ifndef BRIDGE_ENABLE_FOO / #define BRIDGE_ENABLE_FOO 0` added in `MicroRosBridge.h`.
 - [ ] Subsystem header `#include`d under `#if BRIDGE_ENABLE_FOO`.
@@ -170,7 +170,7 @@ Checklist for the compile-time plugin pattern (see also **[Architecture](Archite
 - [ ] `#if BRIDGE_ENABLE_FOO` block in `MicroRosBridge::onDestroy()` — zero-inits the publisher handle and frees the message buffer.
 - [ ] `#if BRIDGE_ENABLE_FOO` block in `MicroRosBridge::publishAll()` — reads the subsystem getter (thread-safe!), fills the message, calls `rcl_publish()`. Non-blocking only.
 - [ ] Sketch's `platformio.ini` opts in with `-DBRIDGE_ENABLE_FOO=1` in `build_flags`.
-- [ ] New topic added to **[Architecture](Architecture)** and **[MCU Firmware](MCU-Firmware)** references.
+- [ ] New topic added to **[Architecture](Architecture.md)** and **[MCU Firmware](MCU-Firmware.md)** references.
 
 ---
 

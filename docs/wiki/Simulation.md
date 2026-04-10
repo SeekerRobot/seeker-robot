@@ -191,6 +191,6 @@ When you're ready to replace `fake_mcu_node` with a real ESP32:
 
 1. Flash `test_bridge_all` (all publishers) or `test_bridge_gait` (just gait + `/cmd_vel`).
 2. Start the micro-ROS agent in a new terminal: `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`.
-3. Launch one of the `real_*` launches in `seeker_navigation` (see **[ROS2 Packages → seeker_navigation](ROS2-Packages#seeker_navigation)** and **[IRL Tests](IRL-Tests)**).
+3. Launch one of the `real_*` launches in `seeker_navigation` (see **[ROS2 Packages → seeker_navigation](ROS2-Packages.md#seeker_navigation)** and **[IRL Tests](IRL-Tests.md)**).
 
 `robot_state_publisher` in every simulation launch already remaps `joint_states → /mcu/joint_states`, so it picks up servo angles from the real MCU micro-ROS bridge automatically.
