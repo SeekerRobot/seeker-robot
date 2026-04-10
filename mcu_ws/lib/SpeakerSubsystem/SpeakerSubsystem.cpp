@@ -127,7 +127,7 @@ bool SpeakerSubsystem::fetchAndPlay() {
     int read = esp_http_client_read(client, reinterpret_cast<char*>(buf),
                                     setup_.chunk_size_);
     if (read < 0) break;   // error
-    if (read == 0) break;   // server closed connection
+    if (read == 0) break;  // server closed connection
 
     // Mute mic on first data of a new utterance.
     if (!playing) {
