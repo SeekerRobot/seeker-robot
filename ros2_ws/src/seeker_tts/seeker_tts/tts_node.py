@@ -1,4 +1,4 @@
-"""ROS 2 node: /audio_transcription → Fish Audio TTS → HTTP server for ESP32."""
+"""ROS 2 node: /audio_tts_input → Fish Audio TTS → HTTP server for ESP32."""
 
 import os
 import threading
@@ -64,10 +64,10 @@ class TtsNode(Node):
         self._start_http_server()
 
         self._sub = self.create_subscription(
-            String, "/audio_transcription", self._on_transcription, 10
+            String, "/audio_tts_input", self._on_transcription, 10
         )
         self.get_logger().info(
-            f"TTS node ready — listening on /audio_transcription, "
+            f"TTS node ready — listening on /audio_tts_input, "
             f"serving audio on :{self._serve_port}/audio_out"
         )
 
