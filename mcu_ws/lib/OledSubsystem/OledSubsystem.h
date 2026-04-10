@@ -71,6 +71,13 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
   ///        If the key is not found, the display is unchanged.
   void setFrame(const char* key);
 
+  /// @brief Set the background frame from a raw 1024-byte framebuffer in RAM
+  ///        (SSD1306 native format). Takes precedence over setFrame() until
+  ///        setFrame() or clear() is called. Text overlays still composite on
+  ///        top. Use for live display data (e.g. from ROS2 /mcu/lcd).
+  /// @param data Pointer to kBufferSize (1024) bytes of framebuffer data.
+  void setFramebuffer(const uint8_t* data);
+
   /// @brief Get the current frame key (nullptr if no frame set).
   const char* getCurrentFrame() const;
 
@@ -125,9 +132,11 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
   mutable Threads::Mutex data_mutex_;
 
   uint8_t framebuffer_[kBufferSize] = {};
+  uint8_t raw_framebuffer_[kBufferSize] = {};  ///< Staging for setFramebuffer()
 
   const char* current_frame_key_ = nullptr;
   const uint8_t* current_frame_data_ = nullptr;  // PROGMEM pointer
+  bool use_raw_framebuffer_ = false;  ///< True when setFramebuffer() active
   TextOverlay overlays_[kMaxOverlays] = {};
   bool dirty_ = true;
 
