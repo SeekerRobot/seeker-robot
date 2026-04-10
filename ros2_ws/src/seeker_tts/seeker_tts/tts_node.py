@@ -120,11 +120,7 @@ class TtsNode(Node):
             self.get_logger().error(f"Fish Audio request failed: {e}")
             return None
 
-        chunks = []
-        for chunk in resp.iter_content(chunk_size=4096):
-            chunks.append(chunk)
-
-        pcm = b"".join(chunks)
+        pcm = b"".join(resp.iter_content(chunk_size=4096))
         duration_s = len(pcm) / (self._sample_rate * 2)
         self.get_logger().info(
             f"Got {len(pcm)} bytes PCM ({duration_s:.1f}s audio)"
@@ -157,7 +153,7 @@ class TtsNode(Node):
                         with node._audio_lock:
                             data = node._audio_data
                             node._audio_data = b""
-                        node._audio_ready.clear()
+                            node._audio_ready.clear()
                         if data:
                             self.wfile.write(
                                 f"{len(data):x}\r\n".encode() + data + b"\r\n"
