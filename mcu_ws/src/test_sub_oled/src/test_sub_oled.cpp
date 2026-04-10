@@ -115,7 +115,8 @@ static void cmdText() {
   for (uint8_t i = 4; i < num_tokens && pos < sizeof(text_buf) - 1; i++) {
     if (i > 4 && pos < sizeof(text_buf) - 1) text_buf[pos++] = ' ';
     size_t len = strlen(tokens[i]);
-    size_t copy = (pos + len < sizeof(text_buf)) ? len : sizeof(text_buf) - 1 - pos;
+    size_t copy =
+        (pos + len < sizeof(text_buf)) ? len : sizeof(text_buf) - 1 - pos;
     memcpy(text_buf + pos, tokens[i], copy);
     pos += copy;
   }
