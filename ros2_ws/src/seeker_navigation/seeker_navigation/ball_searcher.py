@@ -17,7 +17,7 @@ approaching until the ball fills enough of the frame to be considered
 
 State machine:
   WAITING_FOR_NAV2 -> INITIAL_ROTATION -> FRONTIER_NAV -> COVERAGE_NAV
-                                                      \-> APPROACH_BALL -> BALL_REACHED
+                                                      +-> APPROACH_BALL -> BALL_REACHED
 
 Topics:
   Subscribed:  /camera/image  (sensor_msgs/Image)
@@ -773,10 +773,13 @@ def main():
     node = BallSearcher()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         pass
     finally:
-        node._publish_cmd(0.0, 0.0)
+        try:
+            node._publish_cmd(0.0, 0.0)
+        except Exception:
+            pass
         node.destroy_node()
         rclpy.shutdown()
 

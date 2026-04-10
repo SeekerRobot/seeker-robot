@@ -1,39 +1,124 @@
-# ros_gz_bridge parameter bridge configuration.
-# Bridges Gazebo Harmonic sensor topics to ROS 2 topics for SLAM testing.
+# ros_gz_bridge configuration for the Seeker hexapod simulation.
 #
-# Usage:
-#   ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=<path>
+# Bridges Gazebo Harmonic topics ↔ ROS 2 topics.
+# Sensor topics appear on /mcu/* to match real MCU topic names so the
+# rest of the ROS 2 stack is hardware-agnostic.
 ---
-# Simulation clock — required for all nodes running with use_sim_time: true
+# Simulation clock — required by all nodes with use_sim_time: true
 - ros_topic_name: /clock
-  gz_topic_name: /clock
-  ros_type_name: rosgraph_msgs/msg/Clock
-  gz_type_name: gz.msgs.Clock
-  direction: GZ_TO_ROS
+  gz_topic_name:  /clock
+  ros_type_name:  rosgraph_msgs/msg/Clock
+  gz_type_name:   gz.msgs.Clock
+  direction:      GZ_TO_ROS
 
-- ros_topic_name: /lidar/scan
-  gz_topic_name: /lidar/scan
-  ros_type_name: sensor_msgs/msg/LaserScan
-  gz_type_name: gz.msgs.LaserScan
-  direction: GZ_TO_ROS
-
-- ros_topic_name: /camera/image
-  gz_topic_name: /camera/image
-  ros_type_name: sensor_msgs/msg/Image
-  gz_type_name: gz.msgs.Image
-  direction: GZ_TO_ROS
-
-# Ground-truth odometry from Gazebo OdometryPublisher plugin.
-# Includes proper sim-time timestamps for slam_toolbox TF lookups.
+# Odometry — ground truth from Gazebo OdometryPublisher plugin
 - ros_topic_name: /odom
-  gz_topic_name: /model/seeker_hexapod/odometry
-  ros_type_name: nav_msgs/msg/Odometry
-  gz_type_name: gz.msgs.Odometry
-  direction: GZ_TO_ROS
+  gz_topic_name:  /model/seeker/odometry
+  ros_type_name:  nav_msgs/msg/Odometry
+  gz_type_name:   gz.msgs.Odometry
+  direction:      GZ_TO_ROS
 
-# cmd_vel from ROS 2 → Gazebo VelocityControl plugin so the robot can move
-- ros_topic_name: /cmd_vel
-  gz_topic_name: /model/seeker_hexapod/cmd_vel
-  ros_type_name: geometry_msgs/msg/Twist
-  gz_type_name: gz.msgs.Twist
-  direction: ROS_TO_GZ
+# IMU → /mcu/imu (matches real MCU topic)
+- ros_topic_name: /mcu/imu
+  gz_topic_name:  /gz/imu
+  ros_type_name:  sensor_msgs/msg/Imu
+  gz_type_name:   gz.msgs.IMU
+  direction:      GZ_TO_ROS
+
+# LiDAR → /mcu/scan (matches real MCU topic)
+- ros_topic_name: /mcu/scan
+  gz_topic_name:  /gz/scan
+  ros_type_name:  sensor_msgs/msg/LaserScan
+  gz_type_name:   gz.msgs.LaserScan
+  direction:      GZ_TO_ROS
+
+# LiDAR → /lidar/scan (used by slam_toolbox and Nav2 costmaps)
+- ros_topic_name: /lidar/scan
+  gz_topic_name:  /gz/scan
+  ros_type_name:  sensor_msgs/msg/LaserScan
+  gz_type_name:   gz.msgs.LaserScan
+  direction:      GZ_TO_ROS
+
+# Camera image
+- ros_topic_name: /camera/image
+  gz_topic_name:  /gz/camera/image
+  ros_type_name:  sensor_msgs/msg/Image
+  gz_type_name:   gz.msgs.Image
+  direction:      GZ_TO_ROS
+
+# ── Joint position commands (ROS Float64 → Gazebo JointPositionController) ──
+# ROS 2 topic names cannot contain tokens starting with a digit, so the ROS
+# side uses /seeker/joint/<name>/cmd_pos while the Gazebo side retains the
+# standard /model/seeker/joint/<name>/0/cmd_pos naming.
+
+- ros_topic_name: /seeker/joint/leg_fl_hip/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_fl_hip_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_fl_knee/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_fl_knee_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_fr_hip/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_fr_hip_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_fr_knee/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_fr_knee_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_ml_hip/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_ml_hip_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_ml_knee/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_ml_knee_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_mr_hip/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_mr_hip_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_mr_knee/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_mr_knee_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_rl_hip/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_rl_hip_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_rl_knee/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_rl_knee_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_rr_hip/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_rr_hip_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ
+
+- ros_topic_name: /seeker/joint/leg_rr_knee/cmd_pos
+  gz_topic_name:  /model/seeker/joint/leg_rr_knee_joint/0/cmd_pos
+  ros_type_name:  std_msgs/msg/Float64
+  gz_type_name:   gz.msgs.Double
+  direction:      ROS_TO_GZ

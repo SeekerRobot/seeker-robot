@@ -1,0 +1,14 @@
+# Service to control the arm subsystem
+# Request: desired states and target position
+
+# Target position state to move to
+uint8 POSITION_RETRACTED=0
+uint8 POSITION_EXTENDED=1
+uint8 POSITION_CUSTOM=2
+uint8 target_position_state
+
+---
+# Response: whether the command was accepted
+
+bool accepted
+string message

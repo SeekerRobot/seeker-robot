@@ -139,9 +139,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Cleanup apt caches
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    # Install rqt graph
+    # Install rqt graph, teleop tools, and Nav2 navigation stack
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-$ROS_DISTRO-rqt-graph && \
+    ros-$ROS_DISTRO-rqt-graph \
+    ros-$ROS_DISTRO-teleop-twist-keyboard \
+    ros-$ROS_DISTRO-teleop-twist-joy \
+    ros-$ROS_DISTRO-navigation2 \
+    ros-$ROS_DISTRO-nav2-bringup \
+    ros-$ROS_DISTRO-slam-toolbox && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
     # Install Nav2 navigation stack and slam_toolbox

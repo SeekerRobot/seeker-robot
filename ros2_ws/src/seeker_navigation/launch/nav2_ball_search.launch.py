@@ -1,24 +1,57 @@
-"""Launch Nav2 + frontier-based ball searcher for the Seeker hexapod.
+"""Launch slam_toolbox + Nav2 + ball searcher for the Seeker hexapod.
 
-Run after: ros2 launch seeker_gazebo gazebo.launch.py
-This brings up only the Nav2 nodes we need (no collision_monitor,
-route_server, docking_server, etc.) plus the ball_searcher.
+Run AFTER: ros2 launch seeker_gazebo sim_teleop.launch.py
+That launch provides: Gazebo, fake_mcu_node (tripod gait), ros_gz_bridge,
+gz_odom_bridge, and robot_state_publisher.
+
+This launch adds:
+  - slam_toolbox  (online async SLAM → /map + map→odom TF)
+  - Nav2 stack    (controller, planner, behavior, bt_navigator, velocity_smoother)
+  - ball_searcher (frontier exploration + approach)
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import TimerAction
+from launch.actions import ExecuteProcess, TimerAction
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
     nav_pkg = get_package_share_directory("seeker_navigation")
-    nav2_params = os.path.join(nav_pkg, "config", "nav2_params.yaml")
+    gz_pkg  = get_package_share_directory("seeker_gazebo")
 
-    # -- Nav2 nodes (only what we need) --
+    nav2_params       = os.path.join(nav_pkg, "config", "nav2_params.yaml")
+    slam_params_file  = os.path.join(gz_pkg,  "config", "slam_toolbox_params.yaml")
 
+    # ── slam_toolbox (lifecycle node) ────────────────────────────────────────
+    slam = Node(
+        package="slam_toolbox",
+        executable="async_slam_toolbox_node",
+        name="slam_toolbox",
+        parameters=[slam_params_file, {"use_sim_time": True}],
+        output="screen",
+    )
+
+    # Configure → activate slam_toolbox after it has had time to register its
+    # lifecycle services.  A sleep between the two transitions prevents the
+    # "No transition matching activate found for current state unconfigured"
+    # race condition seen when they are fired back-to-back.
+    slam_activate = TimerAction(
+        period=8.0,
+        actions=[
+            ExecuteProcess(
+                cmd=["bash", "-c",
+                     "ros2 lifecycle set /slam_toolbox configure "
+                     "&& sleep 2 "
+                     "&& ros2 lifecycle set /slam_toolbox activate"],
+                output="screen",
+            )
+        ],
+    )
+
+    # ── Nav2 nodes ────────────────────────────────────────────────────────────
     controller_server = Node(
         package="nav2_controller",
         executable="controller_server",
@@ -59,17 +92,24 @@ def generate_launch_description():
         output="screen",
     )
 
-    lifecycle_manager = Node(
-        package="nav2_lifecycle_manager",
-        executable="lifecycle_manager",
-        name="lifecycle_manager_navigation",
-        parameters=[nav2_params],
-        output="screen",
+    # Delay lifecycle_manager so all Nav2 nodes have registered their lifecycle
+    # services before it attempts the configure transition.
+    lifecycle_manager = TimerAction(
+        period=2.0,
+        actions=[
+            Node(
+                package="nav2_lifecycle_manager",
+                executable="lifecycle_manager",
+                name="lifecycle_manager_navigation",
+                parameters=[nav2_params],
+                output="screen",
+            )
+        ],
     )
 
-    # Ball searcher with delay to let Nav2 lifecycle nodes fully activate
+    # Ball searcher — wait for Nav2 to be fully active before starting.
     ball_searcher = TimerAction(
-        period=10.0,
+        period=15.0,
         actions=[
             Node(
                 package="seeker_navigation",
@@ -82,6 +122,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        slam,
+        slam_activate,
         controller_server,
         planner_server,
         behavior_server,
