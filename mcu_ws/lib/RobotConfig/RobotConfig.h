@@ -24,6 +24,7 @@ constexpr static int rx = D7;
 // D10 - MOSI NC
 constexpr static int gyro_addr = 0x4A;
 constexpr static uint8_t pca_addr = 0x40;
+constexpr static uint8_t oled_addr = 0x3C;
 // Onboard PDM microphone (MSM261D3526H1CPM)
 constexpr static int pdm_clk = 42;   // PDM clock  (I2S ws_io_num)
 constexpr static int pdm_data = 41;  // PDM data   (I2S data_in_num)
@@ -40,6 +41,7 @@ constexpr static int tx = 17;    // UART2 TX
 constexpr static int rx = 16;    // UART2 RX
 constexpr static int gyro_addr = 0x4B;
 constexpr static uint8_t pca_addr = 0x40;
+constexpr static uint8_t oled_addr = 0x3C;
 #endif
 
 // ---------------------------------------------------------------------------
