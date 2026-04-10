@@ -107,9 +107,7 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
 
  private:
   explicit OledSubsystem(const OledSetup& setup)
-      : ThreadedSubsystem(setup),
-        setup_(setup),
-        i2c_mutex_(setup.i2c_mutex_) {}
+      : ThreadedSubsystem(setup), setup_(setup), i2c_mutex_(setup.i2c_mutex_) {}
 
   // ---- Internal types -----------------------------------------------------
 
