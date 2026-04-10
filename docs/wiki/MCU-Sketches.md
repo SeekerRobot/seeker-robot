@@ -145,9 +145,9 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 ### `test_sub_speaker`
 
 - **Board env:** `esp32s3sense` / **Transport:** WiFi
-- **Purpose:** Complement to `seeker_tts`: long-polls the ROS host (`AGENT_IP`) for PCM audio and plays it over I²S via `SpeakerSubsystem`.
-- **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host with a valid `FISH_API_KEY`.
-- **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:<speaker_port>/audio` from another machine to test the TTS endpoint independently. (4) Watch the serial log for HTTP status codes — `404` means `tts_node` hasn't generated audio yet. (5) Mute first! Speaker volume defaults to max.
+- **Purpose:** Complement to `seeker_tts`: long-polls `http://<AGENT_IP>:8383/audio_out` for PCM audio and plays it over I²S via `SpeakerSubsystem`.
+- **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host with a valid `FISH_API_KEY`, then `ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once` to generate audio.
+- **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:8383/audio_out` from another machine to test the endpoint independently — it should stay open and deliver a chunked stream whenever new text is published. (4) 404 from the endpoint means the path is wrong — the `tts_node` only serves `/audio_out`. (5) Mute first! Speaker volume defaults to max.
 
 ### `test_sub_ble_debug`
 

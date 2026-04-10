@@ -51,12 +51,14 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 **Verify topics** (run in the *same* shell that launched the sim — Docker DDS multicast can be flaky across `docker exec` shells):
 
 ```bash
-ros2 topic hz /mcu/joint_states   # ~100 Hz
-ros2 topic hz /mcu/imu            # ~200 Hz
-ros2 topic hz /mcu/scan           # ~10 Hz
+ros2 topic hz /mcu/joint_states   # ~100 Hz  (from fake_mcu_node)
+ros2 topic hz /mcu/imu            # ~200 Hz  (bridged from Gazebo IMU plugin via ros_gz_bridge)
+ros2 topic hz /mcu/scan           # ~10 Hz   (bridged from Gazebo laser plugin)
 ros2 topic echo /cmd_vel          # prints Twist while teleop key is held
 ros2 run tf2_tools view_frames    # emit a PDF of the full TF tree
 ```
+
+Only `/mcu/joint_states` comes from `fake_mcu_node` directly; `/mcu/imu`, `/mcu/scan`, `/odom`, and `/camera/image` are bridged from Gazebo plugins via `ros_gz_bridge` using `seeker_gazebo/config/bridge.yaml`.
 
 **RViz fixed frame:** `odom`
 
@@ -115,14 +117,16 @@ ros2 launch seeker_gazebo sim_ball_search.launch.py
 The launch is gated behind timers to avoid lifecycle race conditions — it takes ~25–30 s before `ball_searcher` actually starts issuing goals. Watch the launch log for the timeline:
 
 ```
-t=0s   robot_state_publisher
+t=0s   Gazebo + fake_mcu + robot_state_publisher + gz_bridge
 t=2s   EKF
-t=4s   SLAM Toolbox
+t=5s   SLAM Toolbox
 t=10s  slam_toolbox configure → activate
 t=13s  Nav2 nodes
 t=15s  Nav2 lifecycle manager
 t=25s  ball_searcher
 ```
+
+(Real hardware uses the same structure but fires SLAM at **t=4s** — see **[ROS2 Packages → seeker_navigation](ROS2-Packages.md#seeker_navigation)**.)
 
 **Verify the stack is healthy:**
 
@@ -157,9 +161,14 @@ Edit the constants at the top of `ros2_ws/src/seeker_sim/seeker_sim/fake_mcu_nod
 
 | Constant | Default | Effect |
 |---|---|---|
-| `STEP_HEIGHT` | 0.020 m | How high each foot lifts during swing |
-| `CYCLE_TIME` | 1.0 s | Full tripod cycle duration |
-| `STEP_SCALE` | 1.0 | Step reach multiplier vs commanded velocity |
+| `CYCLE_TIME` | 0.8 s | Full tripod cycle duration |
+| `STRIDE_HIP` | 45° | Maximum hip sweep amplitude per side |
+| `NEUTRAL_KNEE` | 30° | Standing knee angle (sets body height) |
+| `LIFT_KNEE` | 88° | Peak knee angle during swing (foot clearance) |
+| `VX_MAX` | 0.4 m/s | Commanded speed that maps to full `STRIDE_HIP` |
+| `WZ_MAX` | 1.2 rad/s | Yaw rate that maps to half `STRIDE_HIP` of turn amplitude |
+
+Body height is also adjustable at runtime via `linear.z` on `/cmd_vel` (the `t` / `b` keys in `teleop_twist_keyboard`), which walks `NEUTRAL_KNEE` between `NEUTRAL_KNEE_MIN` (5°) and `NEUTRAL_KNEE_MAX` (`LIFT_KNEE` − 10°).
 
 Rebuild:
 

@@ -162,18 +162,22 @@ Stand-in for the ESP32 MCU when running in Gazebo. Gets pulled in automatically 
 
 **Nodes:**
 
-- `fake_mcu_node` (`seeker_sim/fake_mcu_node.py`) — subscribes to `/cmd_vel` (`geometry_msgs/Twist`), runs a Python tripod gait (no inverse kinematics), publishes:
-  - `/mcu/joint_states` at ~100 Hz (12 joints across 6 legs)
-  - `/mcu/imu` at ~200 Hz
-  - Per-joint `std_msgs/Float64` commands to Gazebo's joint position controllers.
+- `fake_mcu_node` (`seeker_sim/fake_mcu_node.py`) — subscribes to `/cmd_vel` (`geometry_msgs/Twist`), runs a joint-space tripod gait (no inverse kinematics — locomotion comes from sweeping the hip). At ~100 Hz it publishes:
+  - `/mcu/joint_states` — 12-joint `sensor_msgs/JointState` (hip + knee × 6 legs)
+  - Per-joint `std_msgs/Float64` position commands to the 12 `/seeker/joint/leg_*_{hip,knee}/cmd_pos` topics that the `ros_gz_bridge` forwards to Gazebo's `JointPositionController`.
+
+It does **not** publish `/mcu/imu` or `/mcu/scan` — those are bridged from Gazebo sensor plugins in `seeker_gazebo/config/bridge.yaml`. Body height is adjustable at runtime via `linear.z` (the `t` / `b` keys in `teleop_twist_keyboard`), which walks `NEUTRAL_KNEE` within safe limits.
 
 Tuning constants at the top of the file:
 
 | Constant | Default | Effect |
 |---|---|---|
-| `STEP_HEIGHT` | 0.020 m | Foot lift height during swing |
-| `CYCLE_TIME` | 1.0 s | Full tripod cycle duration |
-| `STEP_SCALE` | 1.0 | Step-reach multiplier vs commanded velocity |
+| `CYCLE_TIME` | 0.8 s | Full tripod cycle duration |
+| `STRIDE_HIP` | 45° | Max hip sweep amplitude per side |
+| `NEUTRAL_KNEE` | 30° | Standing knee angle (body height) |
+| `LIFT_KNEE` | 88° | Peak knee angle during swing (foot clearance) |
+| `VX_MAX` | 0.4 m/s | Speed that maps to full `STRIDE_HIP` |
+| `WZ_MAX` | 1.2 rad/s | Yaw rate that maps to half `STRIDE_HIP` turn amplitude |
 
 ```bash
 colcon build --packages-select seeker_sim
@@ -187,15 +191,25 @@ You should not normally run this node standalone — use a `seeker_gazebo` launc
 
 **Build type:** `ament_python`
 
-Text-to-speech bridge. Reads transcribed text off a ROS topic, calls the Fish Audio TTS API, and re-serves the resulting PCM audio over an HTTP endpoint that the ESP32 `SpeakerSubsystem` long-polls.
+Text-to-speech bridge. Reads transcribed text off a ROS topic, calls the Fish Audio TTS API, and re-serves the resulting PCM audio over a persistent chunked HTTP stream that the ESP32 `SpeakerSubsystem` long-polls.
 
 **Nodes:**
 
-- `tts_node` (`seeker_tts/tts_node.py`) — subscribes to `/audio_transcription` (`std_msgs/String`), calls Fish Audio, caches the response, and serves it on an HTTP endpoint (see launch parameters).
+- `tts_node` (`seeker_tts/tts_node.py`) — subscribes to `/audio_tts_input` (`std_msgs/String`), POSTs the text to `https://api.fish.audio/v1/tts` with `format=pcm`, and pushes the returned PCM bytes out of an HTTP server on `http://<host>:<serve_port>/audio_out`. The connection stays open across TTS events; each new transcription writes another chunk.
+
+**Parameters** (declared in the node, overridable via the launch file):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `fish_api_key` | `""` | Falls back to the `FISH_API_KEY` env var. |
+| `fish_reference_id` | `""` | Falls back to the `FISH_REFERENCE_ID` env var. |
+| `fish_model` | `"s2-pro"` | Fish Audio model name. |
+| `serve_port` | `8383` | HTTP port for the `/audio_out` endpoint. |
+| `sample_rate` | `16000` | Passed to the Fish Audio request. |
 
 **Launch:**
 
-- `launch/tts.launch.py` — starts `tts_node` with `speaker_url`, `sample_rate`, and `fish_model` parameters.
+- `launch/tts.launch.py` — starts `tts_node` with `sample_rate` and `fish_model` overrides.
 
 **Environment variables** (set in `docker/.env`):
 
