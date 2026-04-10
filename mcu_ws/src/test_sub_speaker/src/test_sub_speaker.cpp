@@ -25,17 +25,19 @@ static IPAddress static_ip STATIC_IP;
 static IPAddress gateway GATEWAY;
 static IPAddress subnet SUBNET;
 
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "WifiSubsystem", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("WifiSubsystem", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 // ---------------------------------------------------------------------------
 // Speaker — fetches PCM from http://<AGENT_IP>:8383/audio_out
 // ---------------------------------------------------------------------------
 static IPAddress agent_ip(AGENT_IP);
 
-static Subsystem::SpeakerSetup speaker_setup(
-    I2S_NUM_1, 16000, Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
-    agent_ip, 8383, 2048, nullptr);
+static Subsystem::SpeakerSetup speaker_setup(I2S_NUM_1, 16000, Config::spk_bclk,
+                                             Config::spk_lrclk,
+                                             Config::spk_dout, agent_ip, 8383,
+                                             2048, nullptr);
 
 // ---------------------------------------------------------------------------
 // Heartbeat blink
@@ -69,8 +71,8 @@ static void cmdInfo() {
 
   Serial.printf("WiFi: %s", wifi.isConnected() ? "CONNECTED" : "DISCONNECTED");
   if (wifi.isConnected()) {
-    Serial.printf("  IP=%s  RSSI=%d dBm",
-                  wifi.getLocalIP().toString().c_str(), wifi.getRSSI());
+    Serial.printf("  IP=%s  RSSI=%d dBm", wifi.getLocalIP().toString().c_str(),
+                  wifi.getRSSI());
   }
   Serial.println();
   Serial.printf("Speaker: I2S %s  host=%s:%u\r\n",
