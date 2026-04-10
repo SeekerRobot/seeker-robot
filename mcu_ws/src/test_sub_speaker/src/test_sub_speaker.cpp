@@ -6,7 +6,8 @@
  * Pair with the seeker_tts ROS 2 node on the host:
  *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
  *   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
- *   ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once
+ *   ros2 topic pub /audio_play_file std_msgs/String "data:
+ * '/path/to/sound.wav'" --once
  *
  * Commands (serial monitor at 921600 baud):
  *   info      Print subsystem status
