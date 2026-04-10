@@ -1,0 +1,33 @@
+# Jekyll config for the GitHub Pages site built from docs/wiki/.
+#
+# - `jekyll-theme-cayman` is the default simple theme on GitHub Pages.
+# - `jekyll-relative-links` rewrites `[Name](Name.md)` style markdown links
+#   into the matching `.html` URLs at build time, so the same sources work
+#   both on github.com and on the deployed Pages site.
+# - `jekyll-optional-front-matter` lets us keep wiki pages as plain markdown
+#   without adding YAML front matter to every file.
+# - `jekyll-seo-tag` adds basic meta tags (title/description/og:) to each page.
+
+title: Seeker Robot
+description: Hexapod robot with ROS 2, micro-ROS, and ESP32 firmware.
+
+theme: jekyll-theme-cayman
+
+plugins:
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-seo-tag
+
+relative_links:
+  enabled: true
+  collections: true
+
+optional_front_matter:
+  remove_originals: true
+
+# Don't try to process these as pages.
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
