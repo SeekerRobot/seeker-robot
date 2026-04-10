@@ -1,26 +1,28 @@
-"""Real hardware: full autonomy — EKF + SLAM + Nav2 + ball searcher.
+"""Real hardware: robot_state_publisher + EKF + SLAM Toolbox (IMU tilt compensation).
 
-The robot uses the BNO085 IMU for tilt-compensated SLAM, then performs
-frontier exploration with Nav2 until it finds and approaches the red ball.
+The EKF fuses /mcu/imu (BNO085 game rotation vector) to produce
+odom→base_footprint with correct roll/pitch. SLAM Toolbox traces the full TF chain
+(map→odom→base_footprint→base_link→laser) to un-tilt scan rays in the map frame.
+
+This is the recommended mode for real hardware deployment. The tilt compensation
+prevents walls from appearing warped when the robot body rolls/pitches while walking.
 
 Prerequisites (run before this launch):
   ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
   # Wait for [create_session] log line (ESP32 connected), then launch this.
 
 Usage:
-  ros2 launch seeker_navigation real_ball_search.launch.py
+  ros2 launch seeker_navigation real_slam_ekf.launch.py
 
 Timeline:
   t=0s  robot_state_publisher
   t=2s  EKF starts (fuses /mcu/imu → odom->base_footprint with roll/pitch)
-  t=4s  SLAM Toolbox starts
+  t=4s  SLAM Toolbox starts (needs EKF TF live first)
   t=10s SLAM configured + activated
-  t=13s Nav2 stack (controller, planner, behavior, bt_navigator, smoother)
-  t=15s Nav2 lifecycle manager activates all nodes
-  t=25s ball_searcher starts frontier exploration
 
-If Nav2 goal rejections appear after t=25s, SLAM may not be fully active yet.
-Check: ros2 lifecycle get /slam_toolbox
+Verify tilt compensation:
+  ros2 run tf2_ros tf2_echo odom base_footprint
+  # Tilt the robot — roll/pitch values should change in real time
 """
 
 import os
@@ -42,7 +44,6 @@ def generate_launch_description():
 
     slam_params = os.path.join(nav_pkg, 'config', 'slam_toolbox_params_real.yaml')
     ekf_params  = os.path.join(nav_pkg, 'config', 'ekf_params.yaml')
-    nav2_params = os.path.join(nav_pkg, 'config', 'nav2_params_real.yaml')
 
     # ── t=0: robot_state_publisher ────────────────────────────────────────────
     robot_state_pub = Node(
@@ -53,6 +54,7 @@ def generate_launch_description():
     )
 
     # ── t=2s: EKF ─────────────────────────────────────────────────────────────
+    # use_sim_time injected here; ekf_params.yaml intentionally has no field for it
     ekf_node = TimerAction(
         period=2.0,
         actions=[
@@ -94,72 +96,24 @@ def generate_launch_description():
         ],
     )
 
-    # ── t=13s: Nav2 nodes ─────────────────────────────────────────────────────
-    nav2_nodes = TimerAction(
-        period=13.0,
-        actions=[
-            Node(package='nav2_controller',       executable='controller_server',
-                 name='controller_server',         parameters=[nav2_params], output='screen'),
-            Node(package='nav2_planner',           executable='planner_server',
-                 name='planner_server',            parameters=[nav2_params], output='screen'),
-            Node(package='nav2_behaviors',         executable='behavior_server',
-                 name='behavior_server',           parameters=[nav2_params], output='screen'),
-            Node(package='nav2_bt_navigator',      executable='bt_navigator',
-                 name='bt_navigator',              parameters=[nav2_params], output='screen'),
-            Node(package='nav2_velocity_smoother', executable='velocity_smoother',
-                 name='velocity_smoother',         parameters=[nav2_params], output='screen'),
-        ],
-    )
-
-    # Lifecycle manager delayed 2s after Nav2 nodes to let them register services
-    lifecycle_manager = TimerAction(
-        period=15.0,
-        actions=[
-            Node(
-                package='nav2_lifecycle_manager',
-                executable='lifecycle_manager',
-                name='lifecycle_manager_navigation',
-                parameters=[nav2_params],
-                output='screen',
-            )
-        ],
-    )
-
-    # ── t=25s: ball_searcher ──────────────────────────────────────────────────
-    ball_searcher = TimerAction(
-        period=25.0,
-        actions=[
-            Node(
-                package='seeker_navigation',
-                executable='ball_searcher',
-                name='ball_searcher',
-                parameters=[{'use_sim_time': False}],
-                output='screen',
-            )
-        ],
-    )
-
     # ── RViz ──────────────────────────────────────────────────────────────────
     rviz = Node(
         package='rviz2',
         executable='rviz2',
-        arguments=['-d', os.path.join(nav_pkg, 'rviz', 'nav2.rviz')],
+        arguments=['-d', os.path.join(nav_pkg, 'rviz', 'slam.rviz')],
         output='screen',
     )
 
     hint = LogInfo(
         msg='\n'
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
-            '  Real hardware full autonomy starting.\n'
-            '  Prerequisites: micro-ROS agent must be running.\n'
-            '  t=0s  robot_state_publisher\n'
-            '  t=2s  EKF (IMU tilt compensation)\n'
-            '  t=4s  SLAM Toolbox\n'
-            '  t=10s SLAM activated\n'
-            '  t=13s Nav2 stack\n'
-            '  t=15s Nav2 lifecycle manager\n'
-            '  t=25s ball_searcher (frontier exploration)\n'
-            '  RViz Fixed Frame: map\n'
+            '  Real hardware SLAM + EKF (IMU tilt compensation) starting.\n'
+            '  EKF fuses /mcu/imu (BNO085) → odom->base_footprint.\n'
+            '  SLAM uses TF chain to project tilted scans correctly.\n'
+            '  Map appears in RViz after ~12s.\n'
+            '  Verify tilt compensation:\n'
+            '    ros2 run tf2_ros tf2_echo odom base_footprint\n'
+            '    (tilt the robot — roll/pitch should change)\n'
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
     )
 
@@ -168,9 +122,6 @@ def generate_launch_description():
         ekf_node,
         slam_toolbox,
         slam_activate,
-        nav2_nodes,
-        lifecycle_manager,
-        ball_searcher,
         rviz,
         hint,
     ])

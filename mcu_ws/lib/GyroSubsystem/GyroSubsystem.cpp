@@ -25,6 +25,7 @@ bool GyroSubsystem::init() {
                   bno08x_.prodIds.entry[n].swBuildNumber);
   }
   reset();
+  setReorientation();
   setReports();
   pinMode(setup_.int_pin_, INPUT_PULLUP);
   attachInterruptArg(digitalPinToInterrupt(setup_.int_pin_), intISR, this,
@@ -117,6 +118,49 @@ void GyroSubsystem::logImuData() {
                 imu_data_.gyroscope.z);
   Debug::printf(Debug::Level::VERBOSE, "[BNO085] Stability: %u",
                 imu_data_.stabilityClassifier.classification);
+}
+
+void GyroSubsystem::setReorientation() {
+  Threads::Scope lock(i2c_mutex_);
+  // Chip mounting (default BNO085 orientation): physical X = robot right,
+  // physical Y = robot forward, physical Z = up.
+  //
+  // Target output frame: ROS REP 103 (X = forward, Y = left, Z = up).
+  //
+  // Redefining the device frame as ROS: East = robot forward, North = robot
+  // left. Physical chip axes in that device frame:
+  //   X = robot right = South  (opposite of East)
+  //   Y = robot forward = East
+  //   Z = Up
+  //
+  // From datasheet Figure 4-3, row X=South, Y=East, Z=Up:
+  //   Qw = sqrt(2)/2, Qx = 0, Qy = 0, Qz = -sqrt(2)/2  (-90 deg around Z)
+  sh2_Quaternion_t orient;
+  orient.x = 0.0f;
+  orient.y = 0.0f;
+  orient.z = -0.7071068f;
+  orient.w = 0.7071068f;
+  int rc = sh2_setReorientation(&orient);
+  if (rc != SH2_OK) {
+    Debug::printf(Debug::Level::ERROR,
+                  "[BNO085] Failed to set reorientation (%d)", rc);
+  } else {
+    Debug::printf(Debug::Level::INFO,
+                  "[BNO085] Reorientation set: -90 deg around Z -> ROS REP 103 "
+                  "(X=fwd, Y=left, Z=up)");
+  }
+}
+
+void GyroSubsystem::tareYaw() {
+  Threads::Scope lock(i2c_mutex_);
+  // Tare Z axis only — zeros yaw to the current heading without affecting
+  // pitch/roll, which remain gravity-referenced.
+  int rc = sh2_setTareNow(SH2_TARE_Z, SH2_TARE_BASIS_GAMING_ROTATION_VECTOR);
+  if (rc != SH2_OK) {
+    Debug::printf(Debug::Level::ERROR, "[BNO085] Yaw tare failed (%d)", rc);
+  } else {
+    Debug::printf(Debug::Level::INFO, "[BNO085] Yaw tared to current heading");
+  }
 }
 
 void GyroSubsystem::setReports() {

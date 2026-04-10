@@ -18,17 +18,8 @@ Visualization Manager:
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: true
-    - Class: rviz_default_plugins/Map
-      Name: SLAM Map
-      Enabled: true
-      Topic:
-        Value: /map
-        Reliability Policy: Reliable
-        Durability Policy: Transient Local
-      Alpha: 0.7
-      Color Scheme: map
     - Class: rviz_default_plugins/LaserScan
-      Name: LaserScan (sim)
+      Name: LaserScan
       Enabled: true
       Topic:
         Value: /lidar/scan
@@ -36,29 +27,20 @@ Visualization Manager:
       Size (m): 0.03
       Color Transformer: FlatColor
       Color: 255; 0; 0
-    - Class: rviz_default_plugins/LaserScan
-      Name: LaserScan (mcu)
-      Enabled: false
-      Topic:
-        Value: /mcu/scan
-        Reliability Policy: Best Effort
-      Size (m): 0.03
-      Color Transformer: FlatColor
-      Color: 0; 0; 255
     - Class: rviz_default_plugins/Image
       Name: Camera Image
       Enabled: true
       Topic:
         Value: /camera/image
   Global Options:
-    Fixed Frame: odom
+    Fixed Frame: base_link
     Frame Rate: 30
   Views:
     Current:
-      Class: rviz_default_plugins/TopDownOrtho
-      Scale: 100
-      X: 0
-      Y: 0
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.5
+      Pitch: 0.5
+      Yaw: 0.8
 Window Geometry:
   Width: 1200
   Height: 800
