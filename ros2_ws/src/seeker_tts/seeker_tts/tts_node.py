@@ -138,27 +138,33 @@ class TtsNode(Node):
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                if self.path != "/audio_out":
-                    self.send_response(404)
-                    self.end_headers()
-                    return
+                if self.path == "/audio_out":
+                    return self._handle_stream()
+                self.send_response(404)
+                self.end_headers()
 
-                # Long-poll: block until audio is available (up to 30s).
-                if not node._audio_ready.wait(timeout=30.0):
-                    self.send_response(204)
-                    self.end_headers()
-                    return
-
-                with node._audio_lock:
-                    data = node._audio_data
-                    node._audio_data = b""
-                node._audio_ready.clear()
-
+            def _handle_stream(self):
+                """Persistent stream — stays open across multiple TTS events."""
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Transfer-Encoding", "chunked")
                 self.end_headers()
-                self.wfile.write(data)
+
+                node.get_logger().info("Audio stream client connected")
+                try:
+                    while True:
+                        node._audio_ready.wait()
+                        with node._audio_lock:
+                            data = node._audio_data
+                            node._audio_data = b""
+                        node._audio_ready.clear()
+                        if data:
+                            self.wfile.write(
+                                f"{len(data):x}\r\n".encode() + data + b"\r\n"
+                            )
+                            self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    node.get_logger().info("Audio stream client disconnected")
 
             def log_message(self, format, *args):
                 node.get_logger().debug(format % args)

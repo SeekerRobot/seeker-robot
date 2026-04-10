@@ -91,7 +91,7 @@ bool SpeakerSubsystem::fetchAndPlay() {
   esp_http_client_config_t cfg = {};
   cfg.url = url;
   cfg.timeout_ms = kHttpTimeoutMs;
-  cfg.keep_alive_enable = false;
+  cfg.keep_alive_enable = true;
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (!client) return false;
@@ -102,53 +102,61 @@ bool SpeakerSubsystem::fetchAndPlay() {
     return false;
   }
 
-  int content_length = esp_http_client_fetch_headers(client);
+  esp_http_client_fetch_headers(client);
   int status = esp_http_client_get_status_code(client);
 
-  if (status != 200 || content_length <= 0) {
+  if (status != 200) {
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return false;
   }
 
-  Debug::printf(Debug::Level::INFO, "[Speaker] Playback started (%d bytes)",
-                content_length);
-
-  // Mute mic while playing.
-  if (setup_.mic_) {
-    setup_.mic_->pause();
-    Debug::printf(Debug::Level::INFO, "[Speaker] Mic paused");
-  }
+  Debug::printf(Debug::Level::INFO, "[Speaker] Connected to audio stream");
 
   uint8_t* buf = static_cast<uint8_t*>(malloc(setup_.chunk_size_));
-  if (buf) {
-    int remaining = content_length;
-    while (remaining > 0) {
-      int to_read = (remaining < (int)setup_.chunk_size_)
-                        ? remaining
-                        : (int)setup_.chunk_size_;
-      int read =
-          esp_http_client_read(client, reinterpret_cast<char*>(buf), to_read);
-      if (read <= 0) break;
-      remaining -= read;
-      size_t written = 0;
-      i2s_write(setup_.i2s_port_, buf, read, &written, portMAX_DELAY);
-    }
-    free(buf);
+  if (!buf) {
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return false;
   }
 
-  i2s_zero_dma_buffer(setup_.i2s_port_);
-  Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
+  // Persistent stream — read chunked data until the connection drops.
+  // Each chunk from the TTS server is one complete TTS utterance.
+  bool playing = false;
+  while (true) {
+    int read = esp_http_client_read(client, reinterpret_cast<char*>(buf),
+                                    setup_.chunk_size_);
+    if (read < 0) break;   // error
+    if (read == 0) break;   // server closed connection
 
-  // Resume mic.
-  if (setup_.mic_) {
-    setup_.mic_->reset();
-    Debug::printf(Debug::Level::INFO, "[Speaker] Mic resumed");
+    // Mute mic on first data of a new utterance.
+    if (!playing) {
+      playing = true;
+      if (setup_.mic_) {
+        setup_.mic_->pause();
+        Debug::printf(Debug::Level::INFO, "[Speaker] Mic paused");
+      }
+      Debug::printf(Debug::Level::INFO, "[Speaker] Playback started");
+    }
+
+    size_t written = 0;
+    i2s_write(setup_.i2s_port_, buf, read, &written, portMAX_DELAY);
+  }
+
+  free(buf);
+
+  if (playing) {
+    i2s_zero_dma_buffer(setup_.i2s_port_);
+    Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
+    if (setup_.mic_) {
+      setup_.mic_->reset();
+      Debug::printf(Debug::Level::INFO, "[Speaker] Mic resumed");
+    }
   }
 
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
-  return true;
+  return playing;
 }
 
 }  // namespace Subsystem
