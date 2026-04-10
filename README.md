@@ -103,6 +103,7 @@ seeker-robot/
 │       ├── seeker_gazebo/      # Gazebo Harmonic simulation
 │       ├── seeker_navigation/  # Nav2, SLAM, EKF configs, mission planner
 │       ├── seeker_sim/         # Simulated MCU node (fake_mcu_node)
+│       ├── seeker_tts/         # Text-to-speech node (Fish Audio API)
 │       └── test_package/       # Minimal test package
 ├── mcu_ws/               # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared board/library config (inherited by all sketches)
@@ -126,6 +127,7 @@ seeker-robot/
 | `seeker_gazebo` | Gazebo Harmonic simulation, sensor bridges, simulation launch files |
 | `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` mission planner, real robot launch |
 | `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
+| `seeker_tts` | Text-to-speech node (Fish Audio API integration) |
 | `test_package` | Minimal ROS 2 node for build/workflow verification |
 
 ---
@@ -136,14 +138,25 @@ seeker-robot/
 |--------|---------|
 | `test_bridge_all` | All sensor publishers enabled (heartbeat, IMU, battery, LiDAR, debug). Use for SLAM/navigation testing. |
 | `test_bridge_gait` | Gait + micro-ROS. Subscribes to `/cmd_vel` for walking. No sensor publishing. |
+| `test_all` | Integration test for all subsystems together |
+| `test_threaded_blink` | ThreadedSubsystem / FreeRTOS task smoke test |
+| `test_fast_led_raw` | FastLED SK6812 RGB LED test |
+| `test_raw_cam` | Raw camera I2C/PSRAM test (no subsystem abstraction) |
+| `test_raw_mic` | PDM microphone raw data test |
 | `test_sub_gyro_nondma` | BNO085 IMU in isolation (serial only, no micro-ROS) |
 | `test_sub_lidar` | LD14P LiDAR in isolation |
 | `test_sub_servo` | PCA9685 servo motion profiling in isolation |
 | `test_sub_battery` | Battery ADC calibration check |
 | `test_sub_gait` | Gait kinematics smoke test (no ROS, no hardware) |
-| `test_sub_cam` | Camera stream test |
+| `test_sub_cam` | Camera stream test (OV2640 MJPEG) |
+| `test_sub_cam_mic` | Camera + microphone integration test |
+| `test_sub_heartbeat` | micro-ROS heartbeat publisher test |
+| `test_sub_led` | SK6812 LED subsystem test |
+| `test_sub_mic` | I2S PDM microphone test |
+| `test_sub_speaker` | I2S speaker output test |
 | `test_sub_wifi` | WiFi connectivity test |
 | `test_sub_ble_debug` | BLE debug output test |
+| `main` | Placeholder for full system integration (currently empty) |
 
 ---
 
