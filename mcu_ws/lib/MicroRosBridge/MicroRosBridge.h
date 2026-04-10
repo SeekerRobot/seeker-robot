@@ -58,7 +58,7 @@
 
 // Compile-time sanity check — warns if every feature is disabled so a silent
 // no-op bridge isn't mistaken for a working one.
-#if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO &&                       \
+#if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO &&                        \
     !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_LIDAR && \
     !BRIDGE_ENABLE_DEBUG && !BRIDGE_ENABLE_OLED
 #pragma message( \

@@ -171,11 +171,10 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     // Depth kQueueDepth items of OledFrameItem (1024 bytes each).
     // Total RAM: ~10 KB. Callback drops new frames on full.
     if (!oled_.queue) {
-      oled_.queue = xQueueCreate(OledSubscriberState::kQueueDepth,
-                                 sizeof(OledFrameItem));
+      oled_.queue =
+          xQueueCreate(OledSubscriberState::kQueueDepth, sizeof(OledFrameItem));
       if (!oled_.queue) {
-        Debug::printf(Debug::Level::ERROR,
-                      "[Bridge] OLED queue alloc failed");
+        Debug::printf(Debug::Level::ERROR, "[Bridge] OLED queue alloc failed");
         ok = false;
       }
     }
