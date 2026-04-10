@@ -2,12 +2,12 @@ name: Commitlint
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   commitlint:
     runs-on: ubuntu-latest
+    environment: docs-approval
     steps:
       - uses: actions/checkout@v4
         with:
