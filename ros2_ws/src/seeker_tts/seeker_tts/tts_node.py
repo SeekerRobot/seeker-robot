@@ -1,5 +1,6 @@
 """ROS 2 node: TTS + WAV file playback → HTTP audio stream for ESP32."""
 
+import math
 import os
 import queue
 import struct
@@ -7,6 +8,7 @@ import threading
 import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -15,6 +17,54 @@ try:
     import requests
 except ImportError:
     requests = None
+
+try:
+    from scipy.signal import lfilter as _scipy_lfilter
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
+
+def _apply_lowshelf(pcm: bytes, sample_rate: int, freq_hz: float, gain_db: float) -> bytes:
+    """Biquad low-shelf EQ (Audio EQ Cookbook, S=1).
+
+    Attenuates (gain_db < 0) or boosts (gain_db > 0) frequencies below
+    freq_hz. No-op when gain_db is within 0.1 dB of 0.
+    """
+    if abs(gain_db) < 0.1:
+        return pcm
+
+    A      = 10.0 ** (gain_db / 40.0)
+    w0     = 2.0 * math.pi * freq_hz / sample_rate
+    cos_w0 = math.cos(w0)
+    alpha  = math.sin(w0) / math.sqrt(2.0)   # shelf slope S = 1
+    sq_A   = math.sqrt(A)
+
+    b0 =    A * ((A+1) - (A-1)*cos_w0 + 2*sq_A*alpha)
+    b1 =  2*A * ((A-1) - (A+1)*cos_w0)
+    b2 =    A * ((A+1) - (A-1)*cos_w0 - 2*sq_A*alpha)
+    a0 =        (A+1) + (A-1)*cos_w0 + 2*sq_A*alpha
+    a1 =   -2 * ((A-1) + (A+1)*cos_w0)
+    a2 =        (A+1) + (A-1)*cos_w0 - 2*sq_A*alpha
+
+    b = np.array([b0/a0, b1/a0, b2/a0])
+    a = np.array([1.0,   a1/a0, a2/a0])
+
+    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float64)
+
+    if _HAS_SCIPY:
+        filtered = _scipy_lfilter(b, a, samples)
+    else:
+        # Direct-form II transposed — sequential but allocation-free.
+        filtered = np.empty_like(samples)
+        z1 = z2 = 0.0
+        for i, x in enumerate(samples):
+            y      = b[0]*x + z1
+            z1     = b[1]*x - a[1]*y + z2
+            z2     = b[2]*x - a[2]*y
+            filtered[i] = y
+
+    return np.clip(filtered, -32768, 32767).astype("<i2").tobytes()
 
 
 class TtsNode(Node):
@@ -26,6 +76,8 @@ class TtsNode(Node):
         self.declare_parameter("fish_model", "s2-pro")
         self.declare_parameter("serve_port", 8383)
         self.declare_parameter("sample_rate", 16000)
+        self.declare_parameter("eq_bass_hz", 300.0)
+        self.declare_parameter("eq_bass_db", 0.0)
 
         self._api_key = (
             self.get_parameter("fish_api_key").get_parameter_value().string_value
@@ -49,6 +101,12 @@ class TtsNode(Node):
             self.get_parameter("sample_rate")
             .get_parameter_value()
             .integer_value
+        )
+        self._eq_bass_hz = (
+            self.get_parameter("eq_bass_hz").get_parameter_value().double_value
+        )
+        self._eq_bass_db = (
+            self.get_parameter("eq_bass_db").get_parameter_value().double_value
         )
 
         if not self._api_key:
@@ -90,6 +148,7 @@ class TtsNode(Node):
         if pcm is None:
             return
 
+        pcm = _apply_lowshelf(pcm, self._sample_rate, self._eq_bass_hz, self._eq_bass_db)
         # Blocking put — waits until previous audio is consumed.
         self._audio_queue.put(pcm)
 
@@ -106,6 +165,7 @@ class TtsNode(Node):
         if pcm is None:
             return
 
+        pcm = _apply_lowshelf(pcm, self._sample_rate, self._eq_bass_hz, self._eq_bass_db)
         try:
             self._audio_queue.put_nowait(pcm)
         except queue.Full:
@@ -250,23 +310,32 @@ class TtsNode(Node):
                 self.end_headers()
 
             def _handle_stream(self):
-                """Persistent stream — stays open across multiple audio events."""
+                """One clip per connection. Returns 204 when idle so the
+                ESP32 reconnects immediately and tries again. This avoids
+                I2S DMA underrun from the persistent-stream design where the
+                DMA looped the last buffer while waiting for the next clip."""
+                try:
+                    data = node._audio_queue.get(timeout=25)
+                except queue.Empty:
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+
+                duration_s = len(data) / (node._sample_rate * 2)
+                node.get_logger().info(
+                    f"Sending {len(data)} bytes PCM ({duration_s:.1f}s) to client"
+                )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
-
-                node.get_logger().info("Audio stream client connected")
                 try:
-                    while True:
-                        data = node._audio_queue.get()
-                        if data:
-                            self.wfile.write(
-                                f"{len(data):x}\r\n".encode() + data + b"\r\n"
-                            )
-                            self.wfile.flush()
+                    self.wfile.write(data)
+                    self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
-                    node.get_logger().info("Audio stream client disconnected")
+                    node.get_logger().warn(
+                        "Client disconnected mid-playback; clip lost"
+                    )
 
             def log_message(self, format, *args):
                 node.get_logger().debug(format % args)

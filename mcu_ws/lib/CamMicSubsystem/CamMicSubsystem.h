@@ -124,7 +124,7 @@ class CamMicSubsystem : public Subsystem::ThreadedSubsystem {
   bool mic_ready_ = false;
   uint32_t last_log_ms_ = 0;
 
-  static constexpr uint32_t kLogIntervalMs = 5000;
+  static constexpr uint32_t kLogIntervalMs = 1000;
 };
 
 }  // namespace Subsystem

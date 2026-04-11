@@ -24,9 +24,11 @@ bool OledSubsystem::init() {
 }
 
 void OledSubsystem::update() {
-  // 1. Snapshot state under data lock. For the raw framebuffer path, copy the
-  //    source bytes directly into framebuffer_ under the lock so writers can't
-  //    tear the buffer mid-copy. Single memcpy avoids a second stack buffer.
+  // 1. Snapshot state under data lock.
+  //    NanoCanvas constructor calls clear() and zeroes any buffer passed to it,
+  //    so we cannot copy raw_framebuffer_ into framebuffer_ here — it would be
+  //    wiped on canvas construction. Instead, snapshot it into raw_snap_ and
+  //    memcpy after canvas construction (mirroring the PROGMEM path).
   bool dirty;
   bool contrast_dirty;
   bool invert_dirty;
@@ -35,6 +37,7 @@ void OledSubsystem::update() {
   bool use_raw;
   const uint8_t* frame_data = nullptr;
   TextOverlay overlays_snap[kMaxOverlays];
+  uint8_t raw_snap[kBufferSize];
 
   {
     Threads::Scope lock(data_mutex_);
@@ -47,9 +50,8 @@ void OledSubsystem::update() {
     frame_data = current_frame_data_;
     memcpy(overlays_snap, overlays_, sizeof(overlays_));
 
-    // While still under lock, copy raw framebuffer source if active.
     if (dirty && use_raw) {
-      memcpy(framebuffer_, raw_framebuffer_, kBufferSize);
+      memcpy(raw_snap, raw_framebuffer_, kBufferSize);
     }
 
     dirty_ = false;
@@ -63,19 +65,22 @@ void OledSubsystem::update() {
   // 3. Render to framebuffer (CPU only — no I2C, no mutex needed).
   //    framebuffer_ is only touched by this task after init, so no lock needed.
   if (dirty) {
-    NanoCanvas canvas(kWidth, kHeight, framebuffer_);
+    NanoCanvas canvas(kWidth, kHeight, framebuffer_);  // zeroes framebuffer_
 
     if (!use_raw) {
       if (frame_data) {
-        // Copy PROGMEM frame directly into framebuffer
+        // Copy PROGMEM frame directly into framebuffer (after canvas zeroed it)
         memcpy_P(framebuffer_, frame_data, kBufferSize);
-      } else {
-        canvas.clear();
       }
+      // else: canvas already zeroed it — blank screen
+    } else {
+      // Copy raw snapshot into framebuffer_ now that canvas construction is
+      // done
+      memcpy(framebuffer_, raw_snap, kBufferSize);
     }
-    // (raw path already copied into framebuffer_ under the lock above)
 
-    // Draw text overlays on top
+    // Draw text overlays on top (after raw/PROGMEM copy so they composite
+    // correctly)
     for (uint8_t i = 0; i < kMaxOverlays; i++) {
       if (overlays_snap[i].active && overlays_snap[i].text[0] != '\0') {
         canvas.printFixed(overlays_snap[i].x, overlays_snap[i].y,
@@ -106,15 +111,106 @@ void OledSubsystem::update() {
   }
 }
 
+void OledSubsystem::begin() {
+  if (setup_.lcd_port_ > 0) {
+    xTaskCreatePinnedToCore(lcdFetchTask, "oled_fetch", 4096, this, 3,
+                            &fetch_task_, 1);
+    Debug::printf(Debug::Level::INFO,
+                  "[OLED] LCD fetch task started — http://%s:%u/lcd_out",
+                  setup_.host_ip_.toString().c_str(), setup_.lcd_port_);
+  }
+}
+
+void OledSubsystem::pause() {
+  if (fetch_task_) {
+    vTaskDelete(fetch_task_);
+    fetch_task_ = nullptr;
+  }
+}
+
 void OledSubsystem::reset() {
-  Threads::Scope lock(data_mutex_);
-  current_frame_key_ = nullptr;
-  current_frame_data_ = nullptr;
-  use_raw_framebuffer_ = false;
-  memset(overlays_, 0, sizeof(overlays_));
-  memset(framebuffer_, 0, sizeof(framebuffer_));
-  memset(raw_framebuffer_, 0, sizeof(raw_framebuffer_));
-  dirty_ = true;
+  pause();
+  {
+    Threads::Scope lock(data_mutex_);
+    current_frame_key_ = nullptr;
+    current_frame_data_ = nullptr;
+    use_raw_framebuffer_ = false;
+    memset(overlays_, 0, sizeof(overlays_));
+    memset(framebuffer_, 0, sizeof(framebuffer_));
+    memset(raw_framebuffer_, 0, sizeof(raw_framebuffer_));
+    dirty_ = true;
+  }
+  begin();
+}
+
+// ---------------------------------------------------------------------------
+// LCD HTTP client (host → ESP32)
+// ---------------------------------------------------------------------------
+
+void OledSubsystem::lcdFetchTask(void* arg) {
+  auto* self = static_cast<OledSubsystem*>(arg);
+  while (true) {
+    uint32_t now = millis();
+
+    if (now - self->last_log_ms_ >= 1000) {
+      self->last_log_ms_ = now;
+      Debug::printf(
+          Debug::Level::VERBOSE, "[OLED] Polling http://%s:%u/lcd_out",
+          self->setup_.host_ip_.toString().c_str(), self->setup_.lcd_port_);
+    }
+
+    if (now - self->last_fail_ms_ < kRetryIntervalMs) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      continue;
+    }
+    self->fetchFrames();
+    self->last_fail_ms_ = millis();
+  }
+}
+
+void OledSubsystem::fetchFrames() {
+  char url[64];
+  snprintf(url, sizeof(url), "http://%s:%u/lcd_out",
+           setup_.host_ip_.toString().c_str(), setup_.lcd_port_);
+
+  esp_http_client_config_t cfg = {};
+  cfg.url = url;
+  cfg.timeout_ms = kHttpTimeoutMs;
+
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  if (!client) return false;
+
+  if (esp_http_client_open(client, 0) != ESP_OK) {
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  esp_http_client_fetch_headers(client);
+  int status = esp_http_client_get_status_code(client);
+  if (status != 200) {
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  Debug::printf(Debug::Level::INFO, "[OLED] LCD stream connected");
+
+  uint8_t buf[kBufferSize];
+  int got = 0;
+  while (true) {
+    int r = esp_http_client_read(client, reinterpret_cast<char*>(buf) + got,
+                                 kBufferSize - got);
+    if (r <= 0) break;
+    got += r;
+    if (got >= static_cast<int>(kBufferSize)) {
+      setFramebuffer(buf);
+      got = 0;
+    }
+  }
+
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  Debug::printf(Debug::Level::INFO, "[OLED] LCD stream disconnected");
 }
 
 // ---------------------------------------------------------------------------

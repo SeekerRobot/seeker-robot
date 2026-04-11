@@ -52,15 +52,12 @@
 #ifndef BRIDGE_ENABLE_DEBUG
 #define BRIDGE_ENABLE_DEBUG 0
 #endif
-#ifndef BRIDGE_ENABLE_OLED
-#define BRIDGE_ENABLE_OLED 0
-#endif
 
 // Compile-time sanity check — warns if every feature is disabled so a silent
 // no-op bridge isn't mistaken for a working one.
 #if !BRIDGE_ENABLE_HEARTBEAT && !BRIDGE_ENABLE_GYRO &&                        \
     !BRIDGE_ENABLE_BATTERY && !BRIDGE_ENABLE_SERVO && !BRIDGE_ENABLE_LIDAR && \
-    !BRIDGE_ENABLE_DEBUG && !BRIDGE_ENABLE_OLED
+    !BRIDGE_ENABLE_DEBUG
 #pragma message( \
     "MicroRosBridge: all features disabled — no publishers will be created. Set -DBRIDGE_ENABLE_*=1 in build_flags.")
 #endif
@@ -84,12 +81,6 @@
 #include <MicroRosDebug.h>
 #include <std_msgs/msg/string.h>
 #endif
-#if BRIDGE_ENABLE_OLED
-#include <OledSubsystem.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <mcu_msgs/msg/oled_frame.h>
-#endif
 // #if BRIDGE_ENABLE_SERVO
 // #include <ServoSubsystem.h>
 // #include <sensor_msgs/msg/joint_state.h>
@@ -106,9 +97,6 @@ class BatterySubsystem;
 #if !BRIDGE_ENABLE_LIDAR
 class LidarSubsystem;
 #endif
-#if !BRIDGE_ENABLE_OLED
-class OledSubsystem;
-#endif
 // class ServoSubsystem;
 
 // ---- Compile-time feature switches
@@ -121,7 +109,6 @@ struct BridgeConfig {
   static constexpr bool kEnableServo = BRIDGE_ENABLE_SERVO;
   static constexpr bool kEnableLidar = BRIDGE_ENABLE_LIDAR;
   static constexpr bool kEnableDebug = BRIDGE_ENABLE_DEBUG;
-  static constexpr bool kEnableOled = BRIDGE_ENABLE_OLED;
 };
 
 // ---- Zero-cost placeholder for disabled features
@@ -198,30 +185,6 @@ struct DebugPublisherState {
 using DebugPublisherState = EmptyState;
 #endif
 
-#if BRIDGE_ENABLE_OLED
-/// Fixed-size framebuffer item stored by value in the FreeRTOS queue.
-struct OledFrameItem {
-  uint8_t data[1024];  // SSD1306 128x64 framebuffer
-};
-
-struct OledSubscriberState {
-  rcl_subscription_t sub = rcl_get_zero_initialized_subscription();
-  mcu_msgs__msg__OledFrame msg{};
-  // Pre-allocated rx buffer wired to msg.framebuffer.data so micro-CDR
-  // deserializes in place without malloc.
-  uint8_t rx_buf[1024] = {};
-  // FreeRTOS queue handle for frame handoff: subscriber callback -> publishAll.
-  // Depth kQueueDepth items of OledFrameItem. Drops new frames on overflow.
-  QueueHandle_t queue = nullptr;
-  // Minimum interval between display pushes. Hard 10 Hz cap.
-  elapsedMillis elapsed{};
-  static constexpr uint8_t kQueueDepth = 10;
-  static constexpr uint32_t kMinIntervalMs = 100;  // 10 Hz hard limit
-};
-#else
-using OledSubscriberState = EmptyState;
-#endif
-
 // ---- Setup struct
 // ------------------------------------------------------------
 
@@ -252,12 +215,6 @@ struct MicroRosBridgeSetup {
 
   // Debug log — used only when BridgeConfig::kEnableDebug is true.
   const char* log_topic = "mcu/log";
-
-  // OLED display — used only when BridgeConfig::kEnableOled is true.
-  // The bridge subscribes to lcd_topic and forwards framebuffers to the
-  // OledSubsystem at a hard 10 Hz cap via an internal FreeRTOS queue.
-  OledSubsystem* oled = nullptr;
-  const char* lcd_topic = "mcu/lcd";
 };
 
 // ---- Bridge
@@ -292,15 +249,6 @@ class MicroRosBridge : public IMicroRosParticipant {
   std::conditional_t<BridgeConfig::kEnableDebug, DebugPublisherState,
                      EmptyState>
       debug_;
-  std::conditional_t<BridgeConfig::kEnableOled, OledSubscriberState, EmptyState>
-      oled_;
-
-#if BRIDGE_ENABLE_OLED
-  // Static instance pointer for the rclc subscriber callback (plain C function
-  // pointer, no context parameter). Only one MicroRosBridge may exist.
-  static MicroRosBridge* s_instance_;
-  static void oledFrameCb(const void* msg_in);
-#endif
 };
 
 }  // namespace Subsystem
