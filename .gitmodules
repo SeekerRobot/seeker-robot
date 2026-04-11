@@ -26,3 +26,7 @@
 [submodule "mcu_ws/lib/Adafruit_BusIO"]
 	path = mcu_ws/lib/Adafruit_BusIO
 	url = https://github.com/adafruit/Adafruit_BusIO.git
+[submodule "mcu_ws/lib/Adafruit_Sensor"]
+	path = mcu_ws/lib/Adafruit_Sensor
+	url = https://github.com/SeekerRobot/Adafruit_Sensor.git
+	branch = fix
