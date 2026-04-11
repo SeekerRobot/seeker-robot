@@ -50,7 +50,7 @@ bool SpeakerSubsystem::initI2s() {
       .communication_format = I2S_COMM_FORMAT_STAND_I2S,
       .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
       .dma_buf_count = kDmaBufCount,
-      .dma_buf_len   = kDmaBufLen,
+      .dma_buf_len = kDmaBufLen,
       .use_apll = false,
   };
   i2s_pin_config_t pin_cfg = {

@@ -74,11 +74,13 @@ void OledSubsystem::update() {
       }
       // else: canvas already zeroed it — blank screen
     } else {
-      // Copy raw snapshot into framebuffer_ now that canvas construction is done
+      // Copy raw snapshot into framebuffer_ now that canvas construction is
+      // done
       memcpy(framebuffer_, raw_snap, kBufferSize);
     }
 
-    // Draw text overlays on top (after raw/PROGMEM copy so they composite correctly)
+    // Draw text overlays on top (after raw/PROGMEM copy so they composite
+    // correctly)
     for (uint8_t i = 0; i < kMaxOverlays; i++) {
       if (overlays_snap[i].active && overlays_snap[i].text[0] != '\0') {
         canvas.printFixed(overlays_snap[i].x, overlays_snap[i].y,

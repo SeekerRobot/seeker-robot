@@ -104,10 +104,10 @@ class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
   uint32_t last_log_ms_ = 0;
 
   static constexpr uint32_t kLogIntervalMs = 5000;
-  static constexpr int      kHttpTimeoutMs = 30000;
+  static constexpr int kHttpTimeoutMs = 30000;
   // DMA geometry — must match initI2s().
   static constexpr uint32_t kDmaBufCount = 8;
-  static constexpr uint32_t kDmaBufLen   = 512;  // samples per buffer
+  static constexpr uint32_t kDmaBufLen = 512;  // samples per buffer
 };
 
 }  // namespace Subsystem
