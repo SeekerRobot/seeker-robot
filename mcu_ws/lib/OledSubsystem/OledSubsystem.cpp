@@ -24,9 +24,11 @@ bool OledSubsystem::init() {
 }
 
 void OledSubsystem::update() {
-  // 1. Snapshot state under data lock. For the raw framebuffer path, copy the
-  //    source bytes directly into framebuffer_ under the lock so writers can't
-  //    tear the buffer mid-copy. Single memcpy avoids a second stack buffer.
+  // 1. Snapshot state under data lock.
+  //    NanoCanvas constructor calls clear() and zeroes any buffer passed to it,
+  //    so we cannot copy raw_framebuffer_ into framebuffer_ here — it would be
+  //    wiped on canvas construction. Instead, snapshot it into raw_snap_ and
+  //    memcpy after canvas construction (mirroring the PROGMEM path).
   bool dirty;
   bool contrast_dirty;
   bool invert_dirty;
@@ -35,6 +37,7 @@ void OledSubsystem::update() {
   bool use_raw;
   const uint8_t* frame_data = nullptr;
   TextOverlay overlays_snap[kMaxOverlays];
+  uint8_t raw_snap[kBufferSize];
 
   {
     Threads::Scope lock(data_mutex_);
@@ -47,9 +50,8 @@ void OledSubsystem::update() {
     frame_data = current_frame_data_;
     memcpy(overlays_snap, overlays_, sizeof(overlays_));
 
-    // While still under lock, copy raw framebuffer source if active.
     if (dirty && use_raw) {
-      memcpy(framebuffer_, raw_framebuffer_, kBufferSize);
+      memcpy(raw_snap, raw_framebuffer_, kBufferSize);
     }
 
     dirty_ = false;
@@ -63,19 +65,20 @@ void OledSubsystem::update() {
   // 3. Render to framebuffer (CPU only — no I2C, no mutex needed).
   //    framebuffer_ is only touched by this task after init, so no lock needed.
   if (dirty) {
-    NanoCanvas canvas(kWidth, kHeight, framebuffer_);
+    NanoCanvas canvas(kWidth, kHeight, framebuffer_);  // zeroes framebuffer_
 
     if (!use_raw) {
       if (frame_data) {
-        // Copy PROGMEM frame directly into framebuffer
+        // Copy PROGMEM frame directly into framebuffer (after canvas zeroed it)
         memcpy_P(framebuffer_, frame_data, kBufferSize);
-      } else {
-        canvas.clear();
       }
+      // else: canvas already zeroed it — blank screen
+    } else {
+      // Copy raw snapshot into framebuffer_ now that canvas construction is done
+      memcpy(framebuffer_, raw_snap, kBufferSize);
     }
-    // (raw path already copied into framebuffer_ under the lock above)
 
-    // Draw text overlays on top
+    // Draw text overlays on top (after raw/PROGMEM copy so they composite correctly)
     for (uint8_t i = 0; i < kMaxOverlays; i++) {
       if (overlays_snap[i].active && overlays_snap[i].text[0] != '\0') {
         canvas.printFixed(overlays_snap[i].x, overlays_snap[i].y,

@@ -44,9 +44,8 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_GYRO
   if (!setup_.gyro) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[Bridge] BRIDGE_ENABLE_GYRO=1 but gyro pointer is null");
-    ok = false;
+    Debug::printf(Debug::Level::WARN,
+                  "[Bridge] BRIDGE_ENABLE_GYRO=1 but gyro pointer is null — skipping");
   } else {
     // __init allocates the frame_id string buffer; plain {} leaves data=nullptr
     // which micro-CDR dereferences during serialisation → crash.
@@ -85,10 +84,8 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_BATTERY
   if (!setup_.battery) {
-    Debug::printf(
-        Debug::Level::ERROR,
-        "[Bridge] BRIDGE_ENABLE_BATTERY=1 but battery pointer is null");
-    ok = false;
+    Debug::printf(Debug::Level::WARN,
+                  "[Bridge] BRIDGE_ENABLE_BATTERY=1 but battery pointer is null — skipping");
   } else {
     battery_.msg.data = 0.0f;
     rcl_ret_t rc = ctx.createPublisherBestEffort(
@@ -112,9 +109,8 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_LIDAR
   if (!setup_.lidar) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[Bridge] BRIDGE_ENABLE_LIDAR=1 but lidar pointer is null");
-    ok = false;
+    Debug::printf(Debug::Level::WARN,
+                  "[Bridge] BRIDGE_ENABLE_LIDAR=1 but lidar pointer is null — skipping");
   } else {
     // Without __init(), header.frame_id.data is nullptr → micro-CDR crash on
     // publish.
@@ -431,11 +427,24 @@ void MicroRosBridge::publishAll() {
 // Must be non-blocking: copies the frame into a FreeRTOS queue and returns.
 // Drops the frame if the queue is full (no wait).
 void MicroRosBridge::oledFrameCb(const void* msg_in) {
-  if (!s_instance_ || !s_instance_->initialized_) return;
-  if (!s_instance_->oled_.queue) return;
+  Debug::printf(Debug::Level::DEBUG, "[Bridge] oledFrameCb fired");
+  if (!s_instance_ || !s_instance_->initialized_) {
+    Debug::printf(Debug::Level::WARN, "[Bridge] oledFrameCb: not initialized");
+    return;
+  }
+  if (!s_instance_->oled_.queue) {
+    Debug::printf(Debug::Level::WARN, "[Bridge] oledFrameCb: no queue");
+    return;
+  }
 
   const auto* msg = static_cast<const mcu_msgs__msg__OledFrame*>(msg_in);
-  if (!msg || !msg->framebuffer.data) return;
+  if (!msg || !msg->framebuffer.data) {
+    Debug::printf(Debug::Level::WARN, "[Bridge] oledFrameCb: null msg");
+    return;
+  }
+
+  Debug::printf(Debug::Level::DEBUG, "[Bridge] OLED frame size=%u",
+                (unsigned)msg->framebuffer.size);
 
   // Only accept exactly-sized frames. Drop anything else to avoid partial
   // display corruption.

@@ -10,6 +10,11 @@
                 "-DRMW_UXRCE_MAX_HISTORY=4",
                 "-DRMW_UXRCE_TRANSPORT=custom"
             ]
+        },
+        "microxrcedds_client": {
+            "cmake-args": [
+                "-DUCLIENT_CUSTOM_TRANSPORT_MTU=4096"
+            ]
         }
     }
 }
