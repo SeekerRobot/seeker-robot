@@ -3,11 +3,11 @@
  * @author Tal Avital
  * @date 4/7/2026
  * @brief Full integration test: micro-ROS bridge + MJPEG camera stream + PDM
- *        audio stream, all running concurrently on the Seeed XIAO ESP32-S3
- *        Sense.
+ *        audio stream + I2S speaker, all running concurrently on the Seeed
+ *        XIAO ESP32-S3 Sense.
  *
  *   GET http://<static_ip>:80/cam    — MJPEG video stream
- *   GET http://<static_ip>:81/audio  — raw 16-bit PCM, 16kHz, mono
+ *   GET http://<static_ip>:81/audio  — raw 16-bit PCM, 16kHz, mono (mic)
  *
  * Verify on host:
  *   ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
@@ -16,6 +16,11 @@
  *   ros2 topic echo /mcu/battery_voltage
  *   ros2 topic hz   /mcu/scan       # ~6 Hz
  *   ros2 topic echo /mcu/log
+ *
+ * Speaker / TTS (seeker_tts node on host, port 8383):
+ *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
+ *   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
+ *   ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once
  */
 
 #include <Arduino.h>
@@ -28,6 +33,7 @@
 #include <LidarSubsystem.h>
 #include <MicSubsystem.h>
 #include <MicroRosBridge.h>
+#include <SpeakerSubsystem.h>
 #include <RobotConfig.h>
 #include <Wire.h>
 #include <camera_pins.h>
@@ -37,6 +43,7 @@
 static IPAddress static_ip STATIC_IP;
 static IPAddress gateway GATEWAY;
 static IPAddress subnet SUBNET;
+static IPAddress agent_ip(AGENT_IP);
 
 static constexpr Subsystem::BatteryCalibration kBattCalibration(
     /*raw_lo=*/1862, /*volt_lo=*/3.0f,
@@ -112,6 +119,20 @@ void setup() {
   // Core 1 where camera_task (from esp_camera_init) runs.
   auto& mic = Subsystem::MicSubsystem::getInstance(mic_setup);
   mic.beginThreadedPinned(4096, 2, 5000, 0);
+
+  // Speaker fetches PCM from seeker_tts on the host (AGENT_IP:8383).
+  // Mic is wired in so it pauses during playback. Uses I2S_NUM_1 (mic uses
+  // I2S_NUM_0), pinned to Core 1.
+  static Subsystem::SpeakerSetup speaker_setup(
+      I2S_NUM_1, 16000,
+      Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
+      agent_ip, 8383, 2048, &mic);
+  auto& spk = Subsystem::SpeakerSubsystem::getInstance(speaker_setup);
+  if (!spk.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] Speaker init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  spk.beginThreadedPinned(8192, 2, 100, 1);
 
   static Subsystem::MicroRosBridgeSetup bridge_setup;
   bridge_setup.gyro = &gyro;

@@ -3,7 +3,7 @@
  * @author Aldem Pido
  * @date 4/3/2026
  * @brief Integration test: WiFi micro-ROS + MicroRosBridge with all features
- * enabled (heartbeat, gyro, battery, lidar, debug log, OLED).
+ * enabled (heartbeat, gyro, battery, lidar, debug log, OLED) + I2S speaker.
  *
  * WiFi transport: ESP32WifiSubsystem brings up the network connection before
  * the micro-ROS manager starts. All Debug::printf output is forwarded to
@@ -30,6 +30,11 @@
  *   # Push a test framebuffer (1024 bytes of 0xFF = all pixels on):
  *   ros2 topic pub -1 /mcu/lcd mcu_msgs/msg/OledFrame \
  *       "{framebuffer: [$(python3 -c 'print(",".join(["255"]*1024))')]}"
+ *
+ * Speaker / TTS (seeker_tts node on host, port 8383):
+ *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
+ *   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
+ *   ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once
  */
 #include <Arduino.h>
 #include <BatterySubsystem.h>
@@ -41,6 +46,7 @@
 #include <MicroRosBridge.h>
 #include <OledSubsystem.h>
 #include <RobotConfig.h>
+#include <SpeakerSubsystem.h>
 #include <Wire.h>
 #include <hal_thread.h>
 #include <microros_manager_robot.h>
@@ -48,6 +54,7 @@
 static IPAddress static_ip STATIC_IP;
 static IPAddress gateway GATEWAY;
 static IPAddress subnet SUBNET;
+static IPAddress agent_ip(AGENT_IP);
 
 static constexpr Subsystem::BatteryCalibration kBattCalibration(
     /*raw_lo=*/1862, /*volt_lo=*/3.0f,
@@ -114,6 +121,21 @@ void setup() {
   }
   lidar.beginThreadedPinned(6144, 4, 1, 0);
   Debug::printf(Debug::Level::INFO, "[Main] Lidar started");
+
+  // --- Speaker — fetches PCM from seeker_tts on host (AGENT_IP:8383) ---
+  // Uses I2S_NUM_1, pinned to Core 1. No mic present here; update() retries
+  // gracefully until WiFi is up and the TTS server is running.
+  static Subsystem::SpeakerSetup speaker_setup(
+      I2S_NUM_1, 16000,
+      Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
+      agent_ip, 8383, 2048, nullptr);
+  auto& spk = Subsystem::SpeakerSubsystem::getInstance(speaker_setup);
+  if (!spk.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] Speaker init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  spk.beginThreadedPinned(8192, 2, 100, 1);
+  Debug::printf(Debug::Level::INFO, "[Main] Speaker started");
 
   // --- OLED display --- core 1 | priority 2 | 100 ms (10 Hz)
   auto& oled = Subsystem::OledSubsystem::getInstance(oled_setup);
