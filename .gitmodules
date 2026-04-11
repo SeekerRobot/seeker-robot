@@ -23,9 +23,9 @@
 [submodule "mcu_ws/lib/Adafruit_BNO08x"]
 	path = mcu_ws/lib/Adafruit_BNO08x
 	url = https://github.com/adafruit/Adafruit_BNO08x.git
-[submodule "mcu_ws/mcu_ws/lib/Adafruit_BusIO"]
-	path = mcu_ws/mcu_ws/lib/Adafruit_BusIO
+[submodule "mcu_ws/lib/Adafruit_BusIO"]
+	path = mcu_ws/lib/Adafruit_BusIO
 	url = https://github.com/adafruit/Adafruit_BusIO.git
-[submodule "mcu_ws/mcu_ws/lib/Adafruit_Sensor"]
-	path = mcu_ws/mcu_ws/lib/Adafruit_Sensor
+[submodule "mcu_ws/lib/Adafruit_Sensor"]
+	path = mcu_ws/lib/Adafruit_Sensor
 	url = https://github.com/adafruit/Adafruit_Sensor.git
