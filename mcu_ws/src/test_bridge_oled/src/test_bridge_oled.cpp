@@ -73,7 +73,8 @@ void setup() {
   oled.setFrame("boot");
   oled.setOverlay(0, 4, 40, "bridge_oled");
   oled.setOverlay(1, 4, 52, "connecting...");
-  Debug::printf(Debug::Level::INFO, "[Main] OLED started (HTTP client -> %s:8384)",
+  Debug::printf(Debug::Level::INFO,
+                "[Main] OLED started (HTTP client -> %s:8384)",
                 agent_ip.toString().c_str());
 }
 

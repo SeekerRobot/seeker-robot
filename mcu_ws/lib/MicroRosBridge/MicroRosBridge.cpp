@@ -341,7 +341,6 @@ void MicroRosBridge::publishAll() {
     rcl_publish(&debug_.pub, &debug_.msg, nullptr);
   }
 #endif  // BRIDGE_ENABLE_DEBUG
-
 }
 
 }  // namespace Subsystem
