@@ -147,7 +147,7 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
 
   // ---- LCD HTTP client -------------------------------------------------------
   static void lcdFetchTask(void* arg);
-  bool fetchFrames();
+  void fetchFrames();
 
   // ---- State --------------------------------------------------------------
 

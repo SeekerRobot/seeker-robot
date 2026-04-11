@@ -17,11 +17,11 @@ Parameters
 
 import math
 import queue
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import rclpy
 from rclpy.node import Node
+
+from seeker_display.lcd_http_server import start_lcd_server
 
 WIDTH = 128
 HEIGHT = 64
@@ -48,7 +48,7 @@ class OledSineNode(Node):
         # 10 Hz matches the OLED update rate
         self._timer = self.create_timer(0.1, self._tick)
 
-        self._start_lcd_server()
+        start_lcd_server(self._lcd_serve_port, self._lcd_queue, self.get_logger().info)
         self.get_logger().info(
             f"oled_sine: serving sine wave on :{self._lcd_serve_port}/lcd_out at 10 Hz"
         )
@@ -68,44 +68,6 @@ class OledSineNode(Node):
             pass  # ESP32 hasn't consumed last frame — drop
 
         self._t += 0.2
-
-    def _start_lcd_server(self):
-        """Serve a persistent raw framebuffer stream on lcd_serve_port/lcd_out."""
-        node = self
-
-        class _LcdHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == "/lcd_out":
-                    self._serve_stream()
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def _serve_stream(self):
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.end_headers()
-                node.get_logger().info("LCD stream connected")
-                try:
-                    while True:
-                        try:
-                            frame = node._lcd_queue.get(timeout=1.0)
-                        except queue.Empty:
-                            continue
-                        self.wfile.write(frame)
-                        self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass
-                node.get_logger().info("LCD stream disconnected")
-
-            def log_message(self, fmt, *args):
-                pass  # suppress per-request logs
-
-        server = HTTPServer(("0.0.0.0", self._lcd_serve_port), _LcdHandler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.get_logger().info(
-            f"HTTP LCD server listening on :{self._lcd_serve_port}"
-        )
 
 
 def main(args=None):

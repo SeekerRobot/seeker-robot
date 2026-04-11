@@ -164,13 +164,12 @@ void OledSubsystem::lcdFetchTask(void* arg) {
       vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
-    if (!self->fetchFrames()) {
-      self->last_fail_ms_ = millis();
-    }
+    self->fetchFrames();
+    self->last_fail_ms_ = millis();
   }
 }
 
-bool OledSubsystem::fetchFrames() {
+void OledSubsystem::fetchFrames() {
   char url[64];
   snprintf(url, sizeof(url), "http://%s:%u/lcd_out",
            setup_.host_ip_.toString().c_str(), setup_.lcd_port_);
@@ -214,7 +213,6 @@ bool OledSubsystem::fetchFrames() {
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
   Debug::printf(Debug::Level::INFO, "[OLED] LCD stream disconnected");
-  return false;  // always trigger retry backoff on return
 }
 
 // ---------------------------------------------------------------------------

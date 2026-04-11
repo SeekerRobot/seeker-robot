@@ -44,6 +44,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Empty, String
 
+from seeker_display.lcd_http_server import start_lcd_server
+
 try:
     from scipy.signal import lfilter as _scipy_lfilter
     _HAS_SCIPY = True
@@ -172,7 +174,7 @@ class Mp4PlayerNode(Node):
         )
 
         self._start_http_server()
-        self._start_lcd_server()
+        start_lcd_server(self._lcd_serve_port, self._lcd_queue, self.get_logger().info)
         self.get_logger().info(
             f"mp4_player ready — /media/play → "
             f":{self._serve_port}/audio_out + :{self._lcd_serve_port}/lcd_out"
@@ -280,15 +282,9 @@ class Mp4PlayerNode(Node):
             "-loglevel", "quiet",
             "pipe:1",
         ]
-        try:
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
-            )
-        except FileNotFoundError:
-            self.get_logger().error("ffmpeg not found")
-            return
 
-        # Wait for audio ESP32 to connect before releasing the first frame.
+        # Wait for audio ESP32 to connect before starting ffmpeg so no frames
+        # are decoded and dropped during the connection window.
         # Timeout of 60 s covers slow WiFi reconnects; on timeout we proceed
         # anyway so video isn't silently lost if there's no audio.
         if not self._audio_connected_event.wait(timeout=60.0):
@@ -297,6 +293,14 @@ class Mp4PlayerNode(Node):
             )
         elif self._audio_lead_ms > 0:
             time.sleep(self._audio_lead_ms / 1000.0)
+
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            )
+        except FileNotFoundError:
+            self.get_logger().error("ffmpeg not found")
+            return
 
         frame_size = WIDTH * HEIGHT        # 8192 bytes per frame
         interval = 1.0 / TARGET_FPS        # 0.1 s
@@ -373,47 +377,6 @@ class Mp4PlayerNode(Node):
         server = HTTPServer(("0.0.0.0", self._serve_port), _Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.get_logger().info(f"HTTP audio server listening on :{self._serve_port}")
-
-    def _start_lcd_server(self):
-        """Serve a persistent raw framebuffer stream on lcd_serve_port/lcd_out.
-
-        The ESP32 connects once and reads 1024-byte frames continuously until
-        disconnected.  Frames are sourced from _lcd_queue (maxsize=1, drop on
-        full) so the display always shows the most recent frame.
-        """
-        node = self
-
-        class _LcdHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == "/lcd_out":
-                    self._serve_stream()
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def _serve_stream(self):
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.end_headers()
-                node.get_logger().info("LCD stream connected")
-                try:
-                    while True:
-                        try:
-                            frame = node._lcd_queue.get(timeout=1.0)
-                        except queue.Empty:
-                            continue
-                        self.wfile.write(frame)
-                        self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, OSError):
-                    pass
-                node.get_logger().info("LCD stream disconnected")
-
-            def log_message(self, fmt, *args):
-                pass  # suppress per-request logs
-
-        server = HTTPServer(("0.0.0.0", self._lcd_serve_port), _LcdHandler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        self.get_logger().info(f"HTTP LCD server listening on :{self._lcd_serve_port}")
 
 
 def main(args=None):
