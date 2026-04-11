@@ -36,8 +36,12 @@ void BatterySubsystem::update() {
     voltage_ = v;
   }
 
-  Debug::printf(Debug::Level::VERBOSE, "[Battery] raw=%u  voltage=%.3fV", raw,
-                v);
+  uint32_t now = millis();
+  if (now - last_log_ms_ >= kLogIntervalMs) {
+    last_log_ms_ = now;
+    Debug::printf(Debug::Level::VERBOSE, "[Battery] raw=%u  voltage=%.3fV", raw,
+                  v);
+  }
 }
 
 void BatterySubsystem::reset() {

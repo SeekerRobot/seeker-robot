@@ -81,7 +81,7 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   /// Protects imu_data_ between the gyro task (writer) and any reader task.
   mutable Threads::Mutex data_mutex_;
 
-  static constexpr unsigned long kLogIntervalMs = 500;
+  static constexpr unsigned long kLogIntervalMs = 1000;
 
   Adafruit_BNO08x bno08x_;
   ImuData imu_data_ = {};

@@ -173,9 +173,8 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_OLED
   if (!setup_.oled) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[Bridge] BRIDGE_ENABLE_OLED=1 but oled pointer is null");
-    ok = false;
+    Debug::printf(Debug::Level::WARN,
+                  "[Bridge] BRIDGE_ENABLE_OLED=1 but oled pointer is null — skipping");
   } else {
     // Create FreeRTOS queue for bridge -> display frame handoff.
     // Depth kQueueDepth items of OledFrameItem (1024 bytes each).
@@ -270,14 +269,16 @@ void MicroRosBridge::onDestroy() {
   debug_.pub = rcl_get_zero_initialized_publisher();
 #endif
 #if BRIDGE_ENABLE_OLED
-  // Null backing pointer before __fini() so rosidl doesn't free our rx_buf.
-  oled_.msg.framebuffer.data = nullptr;
-  oled_.msg.framebuffer.size = 0;
-  oled_.msg.framebuffer.capacity = 0;
-  mcu_msgs__msg__OledFrame__fini(&oled_.msg);
-  oled_.sub = rcl_get_zero_initialized_subscription();
-  // Keep the queue alive across reconnects — only freed on program exit.
-  // This preserves any in-flight frames and avoids repeated alloc/free.
+  if (setup_.oled) {
+    // Null backing pointer before __fini() so rosidl doesn't free our rx_buf.
+    oled_.msg.framebuffer.data = nullptr;
+    oled_.msg.framebuffer.size = 0;
+    oled_.msg.framebuffer.capacity = 0;
+    mcu_msgs__msg__OledFrame__fini(&oled_.msg);
+    oled_.sub = rcl_get_zero_initialized_subscription();
+    // Keep the queue alive across reconnects — only freed on program exit.
+    // This preserves any in-flight frames and avoids repeated alloc/free.
+  }
 #endif
   initialized_ = false;
   Debug::printf(Debug::Level::INFO, "[Bridge] onDestroy");

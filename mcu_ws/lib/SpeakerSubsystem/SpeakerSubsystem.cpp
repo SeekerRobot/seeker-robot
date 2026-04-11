@@ -23,13 +23,15 @@ void SpeakerSubsystem::update() {
   if (!i2s_ready_) return;
 
   uint32_t now = millis();
+  if (now - last_fail_ms_ < kRetryIntervalMs) return;
+
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
     Debug::printf(Debug::Level::INFO, "[Speaker] Polling %s:%u",
                   setup_.host_ip_.toString().c_str(), setup_.host_port_);
   }
 
-  fetchAndPlay();
+  if (!fetchAndPlay()) last_fail_ms_ = millis();
 }
 
 void SpeakerSubsystem::pause() { deinitI2s(); }

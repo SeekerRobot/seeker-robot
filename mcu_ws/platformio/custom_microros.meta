@@ -13,7 +13,7 @@
         },
         "microxrcedds_client": {
             "cmake-args": [
-                "-DUCLIENT_CUSTOM_TRANSPORT_MTU=1024"
+                "-DUCLIENT_CUSTOM_TRANSPORT_MTU=1100"
             ]
         }
     }
