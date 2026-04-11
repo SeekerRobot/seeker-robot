@@ -35,7 +35,6 @@
 #include <MicSubsystem.h>
 #include <MicroRosBridge.h>
 #include <OledSubsystem.h>
-#include <SpeakerSubsystem.h>
 #include <RobotConfig.h>
 #include <SpeakerSubsystem.h>
 #include <Wire.h>

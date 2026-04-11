@@ -104,12 +104,12 @@ class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
   uint32_t last_log_ms_ = 0;
   uint32_t last_fail_ms_ = 0;
 
-  static constexpr uint32_t kLogIntervalMs   = 1000;
+  static constexpr uint32_t kLogIntervalMs = 1000;
   static constexpr uint32_t kRetryIntervalMs = 3000;
   // Socket read timeout. Failed connections return immediately via TCP
   // RST/ECONNREFUSED regardless of this value, so 30 s only fires on a
   // genuinely stalled active stream — safe for clips up to ~30 s.
-  static constexpr int      kHttpTimeoutMs  = 30000;
+  static constexpr int kHttpTimeoutMs = 30000;
   // DMA geometry — must match initI2s().
   static constexpr uint32_t kDmaBufCount = 8;
   static constexpr uint32_t kDmaBufLen = 512;  // samples per buffer
