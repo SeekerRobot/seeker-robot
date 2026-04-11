@@ -250,23 +250,32 @@ class TtsNode(Node):
                 self.end_headers()
 
             def _handle_stream(self):
-                """Persistent stream — stays open across multiple audio events."""
+                """One clip per connection. Returns 204 when idle so the
+                ESP32 reconnects immediately and tries again. This avoids
+                I2S DMA underrun from the persistent-stream design where the
+                DMA looped the last buffer while waiting for the next clip."""
+                try:
+                    data = node._audio_queue.get(timeout=25)
+                except queue.Empty:
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+
+                duration_s = len(data) / (node._sample_rate * 2)
+                node.get_logger().info(
+                    f"Sending {len(data)} bytes PCM ({duration_s:.1f}s) to client"
+                )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
-
-                node.get_logger().info("Audio stream client connected")
                 try:
-                    while True:
-                        data = node._audio_queue.get()
-                        if data:
-                            self.wfile.write(
-                                f"{len(data):x}\r\n".encode() + data + b"\r\n"
-                            )
-                            self.wfile.flush()
+                    self.wfile.write(data)
+                    self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
-                    node.get_logger().info("Audio stream client disconnected")
+                    node.get_logger().warn(
+                        "Client disconnected mid-playback; clip lost"
+                    )
 
             def log_message(self, format, *args):
                 node.get_logger().debug(format % args)

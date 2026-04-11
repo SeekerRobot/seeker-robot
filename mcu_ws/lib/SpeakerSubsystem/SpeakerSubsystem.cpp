@@ -49,8 +49,8 @@ bool SpeakerSubsystem::initI2s() {
       .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
       .communication_format = I2S_COMM_FORMAT_STAND_I2S,
       .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = 8,
-      .dma_buf_len = 512,
+      .dma_buf_count = kDmaBufCount,
+      .dma_buf_len   = kDmaBufLen,
       .use_apll = false,
   };
   i2s_pin_config_t pin_cfg = {
@@ -146,6 +146,12 @@ bool SpeakerSubsystem::fetchAndPlay() {
   free(buf);
 
   if (playing) {
+    // i2s_write() returns once data is in the DMA ring buffer, not after it
+    // has played out. Wait for the full pipeline to drain before zeroing,
+    // otherwise the tail of the audio is silenced mid-playback.
+    const uint32_t drain_ms =
+        (kDmaBufCount * kDmaBufLen * 1000u) / setup_.sample_rate_ + 50u;
+    vTaskDelay(pdMS_TO_TICKS(drain_ms));
     i2s_zero_dma_buffer(setup_.i2s_port_);
     Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
     if (setup_.mic_) {
