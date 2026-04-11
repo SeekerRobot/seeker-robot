@@ -176,8 +176,9 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_OLED
   if (!setup_.oled) {
-    Debug::printf(Debug::Level::WARN,
-                  "[Bridge] BRIDGE_ENABLE_OLED=1 but oled pointer is null — skipping");
+    Debug::printf(
+        Debug::Level::WARN,
+        "[Bridge] BRIDGE_ENABLE_OLED=1 but oled pointer is null — skipping");
   } else {
     // Create FreeRTOS queue for bridge -> display frame handoff.
     // Depth kQueueDepth items of OledFrameItem (1024 bytes each).
