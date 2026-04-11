@@ -62,15 +62,20 @@ BALL_REACHED_PIXELS = 8000    # ball fills enough of frame = close enough
 
 # Ball approach
 APPROACH_DISTANCE = 0.5       # metres to step toward ball each approach
-CAMERA_HFOV = 1.047           # horizontal FoV in radians (~60 degrees)
+CAMERA_HFOV = 1.396           # horizontal FoV in radians — matches seeker_hexapod.urdf.xacro
 
 # Frontier detection
 MIN_FRONTIER_SIZE = 3         # minimum cells in a cluster to be considered
 VISITED_RADIUS = 0.3          # skip frontiers within this distance of a visited one
+MAX_VISITED_FRONTIERS = 100   # cap to keep the visited-frontier scan O(1) amortised
 
 # Coverage grid
 COVERAGE_SPACING = 1.0        # metres between waypoints in coverage grid
 COVERAGE_MARGIN = 0.35        # stay this far from obstacles / walls
+NEAR_UNKNOWN_MARGIN = 1.5     # prioritise waypoints within this distance of unknown space
+
+# Debug
+RED_PIXEL_LOG_THRESHOLD = 50  # log when this many red pixels are visible (below approach threshold)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +126,7 @@ class BallSearcher(Node):
         self._state = State.WAITING_FOR_NAV2
         self._previous_state = None  # state before APPROACH_BALL
         self._latest_map = None
-        self._visited_frontiers: list[tuple[float, float]] = []
+        self._visited_frontiers: deque[tuple[float, float]] = deque(maxlen=MAX_VISITED_FRONTIERS)
 
         # Rotation tracking
         self._last_yaw = None
@@ -162,13 +167,13 @@ class BallSearcher(Node):
                     "Nav2 action server ready — starting initial rotation"
                 )
                 self._state = State.INITIAL_ROTATION
-                self._last_yaw = self._get_robot_yaw()
+                self._last_yaw = self._get_yaw("odom")
                 self._rotation_accumulated = 0.0
 
         elif self._state == State.INITIAL_ROTATION:
             self._publish_cmd(linear=0.0, angular=ROTATION_SPEED)
 
-            current_yaw = self._get_robot_yaw()
+            current_yaw = self._get_yaw("odom")
             if self._last_yaw is not None:
                 delta = self._angle_diff(current_yaw, self._last_yaw)
                 self._rotation_accumulated += abs(delta)
@@ -206,7 +211,7 @@ class BallSearcher(Node):
     # ------------------------------------------------------------------
 
     def _on_image(self, msg: Image):
-        if self._state == State.BALL_REACHED:
+        if self._state in (State.BALL_REACHED, State.WAITING_FOR_NAV2, State.INITIAL_ROTATION):
             return
 
         try:
@@ -222,8 +227,8 @@ class BallSearcher(Node):
 
         red_pixels = int(np.sum(mask > 0))
 
-        if red_pixels > 50:
-            self.get_logger().info(f"Red pixels detected: {red_pixels}")
+        if red_pixels > RED_PIXEL_LOG_THRESHOLD:
+            self.get_logger().debug(f"Red pixels detected: {red_pixels}")
 
         if red_pixels < MIN_BALL_PIXELS:
             # If we were approaching but lost sight, keep going to last goal
@@ -279,9 +284,7 @@ class BallSearcher(Node):
         self._approach_attempts += 1
 
         robot_x, robot_y = self._get_robot_position()
-        robot_yaw = self._get_robot_yaw()
-        if robot_yaw is None:
-            robot_yaw = 0.0
+        robot_yaw = self._get_yaw("map", default=0.0)
 
         # Compute world-frame angle toward ball
         ball_yaw = robot_yaw + self._ball_bearing
@@ -357,7 +360,7 @@ class BallSearcher(Node):
         free_count = int(np.sum(free_mask))
         unknown_count = int(np.sum(unknown_mask))
         occupied_count = int(np.sum(data > 0))
-        self.get_logger().info(
+        self.get_logger().debug(
             f"Map {width}x{height}: free={free_count}, "
             f"unknown={unknown_count}, occupied={occupied_count}"
         )
@@ -373,7 +376,7 @@ class BallSearcher(Node):
         frontier_mask = free_mask & unknown_neighbor
 
         frontier_count = int(np.sum(frontier_mask))
-        self.get_logger().info(f"Frontier cells: {frontier_count}")
+        self.get_logger().debug(f"Frontier cells: {frontier_count}")
 
         if frontier_count == 0:
             return None
@@ -381,7 +384,7 @@ class BallSearcher(Node):
         # BFS connected-component labelling
         clusters = self._cluster_frontiers(frontier_mask)
 
-        self.get_logger().info(
+        self.get_logger().debug(
             f"Frontier clusters: {len(clusters)}, "
             f"sizes: {sorted([len(c) for c in clusters], reverse=True)[:5]}"
         )
@@ -427,6 +430,21 @@ class BallSearcher(Node):
                 return (fx, fy)
 
         return None
+
+    @staticmethod
+    def _dilate_mask(mask: np.ndarray, cells: int) -> np.ndarray:
+        """Expand a boolean mask by `cells` cells using 4-connected dilation."""
+        result = mask.copy()
+        for _ in range(cells):
+            padded = np.pad(result, 1, constant_values=False)
+            result = (
+                result
+                | padded[:-2, 1:-1]
+                | padded[2:, 1:-1]
+                | padded[1:-1, :-2]
+                | padded[1:-1, 2:]
+            )
+        return result
 
     @staticmethod
     def _cluster_frontiers(frontier_mask):
@@ -487,37 +505,12 @@ class BallSearcher(Node):
         free_mask = data == 0
         occupied_mask = data > 0
 
-        # Dilate occupied cells by COVERAGE_MARGIN / resolution pixels
-        # to create a buffer zone around obstacles
         margin_cells = max(1, int(COVERAGE_MARGIN / resolution))
-        dilated_occupied = occupied_mask.copy()
-        for _ in range(margin_cells):
-            padded = np.pad(dilated_occupied, 1, constant_values=False)
-            dilated_occupied = (
-                dilated_occupied
-                | padded[:-2, 1:-1]
-                | padded[2:, 1:-1]
-                | padded[1:-1, :-2]
-                | padded[1:-1, 2:]
-            )
+        safe_mask = free_mask & ~self._dilate_mask(occupied_mask, margin_cells)
 
-        safe_mask = free_mask & ~dilated_occupied
-
-        # Build a "near unknown" mask: free cells within a few cells of unknown
         unknown_mask = data == -1
-        near_unknown = np.zeros_like(unknown_mask)
-        proximity_cells = max(1, int(1.5 / resolution))  # 1.5m from unknown
-        dilated_unknown = unknown_mask.copy()
-        for _ in range(proximity_cells):
-            padded = np.pad(dilated_unknown, 1, constant_values=False)
-            dilated_unknown = (
-                dilated_unknown
-                | padded[:-2, 1:-1]
-                | padded[2:, 1:-1]
-                | padded[1:-1, :-2]
-                | padded[1:-1, 2:]
-            )
-        near_unknown = safe_mask & dilated_unknown
+        proximity_cells = max(1, int(NEAR_UNKNOWN_MARGIN / resolution))
+        near_unknown = safe_mask & self._dilate_mask(unknown_mask, proximity_cells)
 
         # Generate grid waypoints
         spacing_cells = max(1, int(COVERAGE_SPACING / resolution))
@@ -707,31 +700,18 @@ class BallSearcher(Node):
         except Exception:
             return (0.0, 0.0)
 
-    def _get_robot_yaw(self):
-        """Get robot yaw in odom frame (for rotation tracking)."""
+    def _get_yaw(self, parent_frame: str, default=None):
+        """Get robot yaw from parent_frame → base_footprint TF."""
         try:
             t = self._tf_buffer.lookup_transform(
-                "odom", "base_footprint", rclpy.time.Time()
+                parent_frame, "base_footprint", rclpy.time.Time()
             )
             q = t.transform.rotation
             siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
             cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
             return math.atan2(siny_cosp, cosy_cosp)
         except Exception:
-            return None
-
-    def _get_robot_yaw_map(self):
-        """Get robot yaw in the map frame (for approach bearing)."""
-        try:
-            t = self._tf_buffer.lookup_transform(
-                "map", "base_footprint", rclpy.time.Time()
-            )
-            q = t.transform.rotation
-            siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-            cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-            return math.atan2(siny_cosp, cosy_cosp)
-        except Exception:
-            return 0.0
+            return default
 
     @staticmethod
     def _angle_diff(a, b):

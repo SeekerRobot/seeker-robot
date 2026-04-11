@@ -1,7 +1,10 @@
-"""ROS 2 node: /audio_tts_input → Fish Audio TTS → HTTP server for ESP32."""
+"""ROS 2 node: TTS + WAV file playback → HTTP audio stream for ESP32."""
 
 import os
+import queue
+import struct
 import threading
+import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import rclpy
@@ -49,31 +52,34 @@ class TtsNode(Node):
         )
 
         if not self._api_key:
-            self.get_logger().error(
-                "No Fish Audio API key. Set FISH_API_KEY env var or fish_api_key param"
+            self.get_logger().warn(
+                "No Fish Audio API key. Set FISH_API_KEY env var or fish_api_key param. "
+                "TTS will be unavailable; file playback still works."
             )
         if requests is None:
-            self.get_logger().error("python3-requests not installed")
+            self.get_logger().warn("python3-requests not installed — TTS disabled")
 
-        # Audio buffer: ESP32 long-polls GET /audio_out, blocks until data is
-        # available, then receives the PCM and disconnects.
-        self._audio_ready = threading.Event()
-        self._audio_lock = threading.Lock()
-        self._audio_data: bytes = b""
+        # Single-slot queue: only one audio clip streams at a time.
+        # TTS blocks the executor during API call so it naturally goes first.
+        # File playback drops if the queue is full (TTS has priority).
+        self._audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=1)
 
         self._start_http_server()
 
-        self._sub = self.create_subscription(
-            String, "/audio_tts_input", self._on_transcription, 10
+        self._tts_sub = self.create_subscription(
+            String, "/audio_tts_input", self._on_tts, 10
+        )
+        self._file_sub = self.create_subscription(
+            String, "/audio_play_file", self._on_play_file, 10
         )
         self.get_logger().info(
-            f"TTS node ready — listening on /audio_tts_input, "
-            f"serving audio on :{self._serve_port}/audio_out"
+            f"TTS node ready — /audio_tts_input (TTS), /audio_play_file (WAV), "
+            f"serving on :{self._serve_port}/audio_out"
         )
 
-    # ---- ROS subscription callback -------------------------------------------
+    # ---- TTS callback --------------------------------------------------------
 
-    def _on_transcription(self, msg: String):
+    def _on_tts(self, msg: String):
         text = msg.data.strip()
         if not text:
             return
@@ -84,9 +90,28 @@ class TtsNode(Node):
         if pcm is None:
             return
 
-        with self._audio_lock:
-            self._audio_data = pcm
-        self._audio_ready.set()
+        # Blocking put — waits until previous audio is consumed.
+        self._audio_queue.put(pcm)
+
+    # ---- File playback callback ----------------------------------------------
+
+    def _on_play_file(self, msg: String):
+        filepath = msg.data.strip()
+        if not filepath:
+            return
+
+        self.get_logger().info(f"File play request: {filepath}")
+
+        pcm = self._load_wav(filepath)
+        if pcm is None:
+            return
+
+        try:
+            self._audio_queue.put_nowait(pcm)
+        except queue.Full:
+            self.get_logger().warn(
+                f"Dropped file playback — TTS audio still streaming"
+            )
 
     # ---- Fish Audio TTS ------------------------------------------------------
 
@@ -127,6 +152,91 @@ class TtsNode(Node):
         )
         return pcm
 
+    # ---- WAV loader ----------------------------------------------------------
+
+    def _load_wav(self, filepath: str) -> bytes | None:
+        if not os.path.isfile(filepath):
+            self.get_logger().error(f"File not found: {filepath}")
+            return None
+
+        try:
+            with wave.open(filepath, "rb") as wf:
+                nchannels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                framerate = wf.getframerate()
+                frames = wf.readframes(wf.getnframes())
+        except wave.Error as e:
+            self.get_logger().error(f"Invalid WAV file: {e}")
+            return None
+
+        # Convert to 16-bit mono at target sample rate.
+        pcm = self._convert_pcm(frames, nchannels, sampwidth, framerate)
+        duration_s = len(pcm) / (self._sample_rate * 2)
+        self.get_logger().info(
+            f"Loaded {filepath} → {len(pcm)} bytes PCM ({duration_s:.1f}s)"
+        )
+        return pcm
+
+    def _convert_pcm(
+        self, frames: bytes, nchannels: int, sampwidth: int, framerate: int
+    ) -> bytes:
+        """Convert WAV frames to 16-bit mono at self._sample_rate."""
+        # Step 1: convert to 16-bit if needed.
+        if sampwidth == 1:
+            # 8-bit unsigned → 16-bit signed
+            samples = [((b - 128) << 8) for b in frames]
+            frames = struct.pack(f"<{len(samples)}h", *samples)
+            sampwidth = 2
+        elif sampwidth == 3:
+            # 24-bit signed → 16-bit signed (drop low byte)
+            out = bytearray()
+            for i in range(0, len(frames), 3):
+                out.extend(frames[i + 1 : i + 3])
+            frames = bytes(out)
+            sampwidth = 2
+        elif sampwidth == 4:
+            # 32-bit signed → 16-bit signed
+            samples_32 = struct.unpack(f"<{len(frames) // 4}i", frames)
+            frames = struct.pack(
+                f"<{len(samples_32)}h", *[s >> 16 for s in samples_32]
+            )
+            sampwidth = 2
+
+        # Step 2: stereo → mono (average channels).
+        if nchannels == 2:
+            samples_16 = struct.unpack(f"<{len(frames) // 2}h", frames)
+            mono = []
+            for i in range(0, len(samples_16), 2):
+                mono.append((samples_16[i] + samples_16[i + 1]) // 2)
+            frames = struct.pack(f"<{len(mono)}h", *mono)
+            nchannels = 1
+        elif nchannels > 2:
+            # Take first channel only.
+            samples_16 = struct.unpack(f"<{len(frames) // 2}h", frames)
+            mono = samples_16[::nchannels]
+            frames = struct.pack(f"<{len(mono)}h", *mono)
+            nchannels = 1
+
+        # Step 3: resample if needed (linear interpolation).
+        if framerate != self._sample_rate:
+            src = struct.unpack(f"<{len(frames) // 2}h", frames)
+            ratio = framerate / self._sample_rate
+            n_out = int(len(src) / ratio)
+            resampled = []
+            for i in range(n_out):
+                pos = i * ratio
+                idx = int(pos)
+                frac = pos - idx
+                if idx + 1 < len(src):
+                    s = src[idx] + frac * (src[idx + 1] - src[idx])
+                else:
+                    s = src[idx] if idx < len(src) else 0
+                s = max(-32768, min(32767, int(s)))
+                resampled.append(s)
+            frames = struct.pack(f"<{len(resampled)}h", *resampled)
+
+        return frames
+
     # ---- HTTP server for ESP32 -----------------------------------------------
 
     def _start_http_server(self):
@@ -140,7 +250,7 @@ class TtsNode(Node):
                 self.end_headers()
 
             def _handle_stream(self):
-                """Persistent stream — stays open across multiple TTS events."""
+                """Persistent stream — stays open across multiple audio events."""
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
                 self.send_header("Transfer-Encoding", "chunked")
@@ -149,11 +259,7 @@ class TtsNode(Node):
                 node.get_logger().info("Audio stream client connected")
                 try:
                     while True:
-                        node._audio_ready.wait()
-                        with node._audio_lock:
-                            data = node._audio_data
-                            node._audio_data = b""
-                            node._audio_ready.clear()
+                        data = node._audio_queue.get()
                         if data:
                             self.wfile.write(
                                 f"{len(data):x}\r\n".encode() + data + b"\r\n"
