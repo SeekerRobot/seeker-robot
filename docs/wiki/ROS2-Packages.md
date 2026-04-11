@@ -25,6 +25,7 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 **Messages** (`msg/`):
 
 - `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner.
+- `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, column-major, 8 pages) framebuffer for the onboard OLED. Published on `/mcu/lcd`; consumed by the `BRIDGE_ENABLE_OLED` subscriber in the MCU `MicroRosBridge` at a hard 10 Hz cap.
 - `ExampleMsg.msg` — scaffolding example.
 
 **Services** (`srv/`):
@@ -191,11 +192,13 @@ You should not normally run this node standalone — use a `seeker_gazebo` launc
 
 **Build type:** `ament_python`
 
-Text-to-speech bridge. Reads transcribed text off a ROS topic, calls the Fish Audio TTS API, and re-serves the resulting PCM audio over a persistent chunked HTTP stream that the ESP32 `SpeakerSubsystem` long-polls.
+Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS and local WAV file playback — and re-serves both as a persistent chunked HTTP PCM stream that the ESP32 `SpeakerSubsystem` long-polls.
 
 **Nodes:**
 
-- `tts_node` (`seeker_tts/tts_node.py`) — subscribes to `/audio_tts_input` (`std_msgs/String`), POSTs the text to `https://api.fish.audio/v1/tts` with `format=pcm`, and pushes the returned PCM bytes out of an HTTP server on `http://<host>:<serve_port>/audio_out`. The connection stays open across TTS events; each new transcription writes another chunk.
+- `tts_node` (`seeker_tts/tts_node.py`) — maintains an internal single-slot queue of PCM audio clips, drained by an HTTP server on `http://<host>:<serve_port>/audio_out`. Subscribes to:
+  - `/audio_tts_input` (`std_msgs/String`) — text gets POSTed to `https://api.fish.audio/v1/tts` with `format=pcm` and the returned PCM bytes land on the queue. Has priority over file playback (TTS blocks the executor during the API call).
+  - `/audio_play_file` (`std_msgs/String`) — value is a path to a `.wav` file on the host; the file is decoded with `wave` and enqueued as PCM. Drops if the queue is full (TTS has priority).
 
 **Parameters** (declared in the node, overridable via the launch file):
 

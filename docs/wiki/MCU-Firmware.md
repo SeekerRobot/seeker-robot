@@ -12,8 +12,8 @@ All envs are defined in `mcu_ws/platformio/platformio.ini`.
 
 | Env | Board | Transport | Partition | Notes |
 |---|---|---|---|---|
-| `esp32s3sense` *(default)* | Seeed XIAO ESP32-S3 Sense | WiFi UDP | `min_spiffs.csv` | Primary target. Camera + PSRAM. All `BRIDGE_ENABLE_*` on. |
-| `esp32dev` | Generic ESP32-WROOM-32 | WiFi UDP | `min_spiffs.csv` | No camera. `BRIDGE_ENABLE_LIDAR=1`, others on. |
+| `esp32s3sense` *(default)* | Seeed XIAO ESP32-S3 Sense | WiFi UDP | `min_spiffs.csv` | Primary target. Camera + PSRAM. `BRIDGE_ENABLE_HEARTBEAT/GYRO/BATTERY/LIDAR/DEBUG/OLED=1`, `ENABLE_ARDUINO_OTA=1`. |
+| `esp32dev` | Generic ESP32-WROOM-32 | WiFi UDP | `min_spiffs.csv` | No camera. Same `BRIDGE_ENABLE_*` set as the S3 Sense (heartbeat/gyro/battery/lidar/debug/oled) plus `ENABLE_ARDUINO_OTA=1`. |
 | `esp32s3senseserial` | Seeed XIAO ESP32-S3 Sense | Serial | default | Serial micro-ROS transport (for the serial agent). |
 | `esp32devserial` | Generic ESP32-WROOM-32 | Serial | default | Serial micro-ROS transport. |
 | `esp32cam` | AI-Thinker ESP32-CAM | WiFi UDP | `huge_app.csv` | PSRAM cache fix enabled. Used by `test_raw_cam`. |
@@ -47,11 +47,12 @@ Every subfolder is a PlatformIO library shared across all sketches via `lib_extr
 | `CamMicSubsystem` | Thin wrapper that runs `CameraSubsystem` and `MicSubsystem` side-by-side. |
 | `SpeakerSubsystem` | I²S speaker output; long-polls the ROS host for audio. |
 | `LedSubsystem` | SK6812 RGB LED chain with patterns (solid, pulse, chase, rainbow…). |
+| `OledSubsystem` | SSD1306 128×64 I²C display. Frame + text-overlay model (up to 4 text slots, PROGMEM bitmap frames in `OledFrames.h`), renders CPU-side into a NanoCanvas; only the final `blt()` touches I²C under the shared bus mutex. Also exposes `setFramebuffer()` for the `MicroRosBridge` OLED subscriber. |
 | `ESP32WifiSubsystem` | WiFi connect/reconnect state machine with static IP. |
 | `BleDebugSubsystem` | BLE Nordic UART transport for debug output. |
 | `HeartbeatParticipant` | Minimal `IMicroRosParticipant` that just publishes a 1 Hz counter on `/mcu/heartbeat`. |
 | `Microros` | `MicrorosManager` + `IMicroRosParticipant` interface + `MicroRosContext` helpers. |
-| `MicroRosBridge` | Compile-time plugin bridge: conditionally publishes IMU/battery/LiDAR/log/heartbeat based on `BRIDGE_ENABLE_*` flags. |
+| `MicroRosBridge` | Compile-time plugin bridge: conditionally publishes IMU/battery/LiDAR/log/heartbeat and subscribes to `/mcu/lcd` (OLED) based on `BRIDGE_ENABLE_*` flags. |
 | `MicroRosDebug` | Debug print helpers for the micro-ROS transport state. |
 | `CustomDebug` | Multi-transport debug log (`DEBUG_TRANSPORT_SERIAL`, `DEBUG_TRANSPORT_BLUETOOTH`, `DEBUG_TRANSPORT_MICROROS`) gated by `DEBUG_LEVEL`. |
 
@@ -70,6 +71,7 @@ Flags default to `0`. Set `-DBRIDGE_ENABLE_FOO=1` in the **sketch's** `platformi
 | `BRIDGE_ENABLE_BATTERY` | Battery voltage | `/mcu/battery_voltage` (`std_msgs/Float32`, 1 Hz) |
 | `BRIDGE_ENABLE_LIDAR` | LD14P LiDAR | `/mcu/scan` (`sensor_msgs/LaserScan`, ~6 Hz, 20 Hz cap) |
 | `BRIDGE_ENABLE_DEBUG` | Log strings | `/mcu/log` (`std_msgs/String`, event) |
+| `BRIDGE_ENABLE_OLED` | OLED framebuffer **subscriber** (not a publisher) | `/mcu/lcd` (`mcu_msgs/OledFrame`, ≤10 Hz — frames above the cap are dropped) |
 | `BRIDGE_ENABLE_SERVO` | *(reserved — stubbed)* | — |
 
 Disabled publishers cost zero RAM — the internal state struct becomes `EmptyState` via `std::conditional_t`.

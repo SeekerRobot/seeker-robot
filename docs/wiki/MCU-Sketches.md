@@ -4,7 +4,7 @@ Every directory under `mcu_ws/src/` is a standalone PlatformIO project. They fol
 
 - `main` — placeholder for full system integration (empty `setup()`/`loop()`)
 - `test_all` — **full** integration: micro-ROS bridge + camera + mic running concurrently
-- `test_bridge_*` — exercises the full micro-ROS stack via WiFi
+- `test_bridge_*` — exercises the full micro-ROS stack via WiFi (either sensor publishers or the OLED `/mcu/lcd` subscriber)
 - `test_sub_*` — single subsystem in isolation (mostly serial-only, no micro-ROS)
 - `test_raw_*` — low-level hardware tests with no subsystem abstraction
 - `test_threaded_blink` — `ThreadedSubsystem` / FreeRTOS task smoke test
@@ -49,12 +49,12 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 
 - **Board env:** `esp32s3sense`
 - **Transport:** WiFi
-- **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
-- **Purpose:** Like `test_all` but **without** the camera and mic HTTP servers. Pure micro-ROS sensor bridge — ideal for SLAM, Nav2, or anything that doesn't need the camera feed.
+- **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG, OLED`
+- **Purpose:** Like `test_all` but **without** the camera and mic HTTP servers. Pure micro-ROS sensor bridge (plus the OLED `/mcu/lcd` subscriber) — ideal for SLAM, Nav2, or anything that doesn't need the camera feed.
 - **Prereq:** micro-ROS agent running.
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
-- **Verify on ROS side:** `ros2 topic hz /mcu/{heartbeat,imu,battery_voltage,scan}`
-- **Debug tips:** Same as `test_all` minus the camera/mic issues. If `/mcu/scan` publishes 0 points, the LD14P is probably unpowered or the UART pins in `RobotConfig.h` don't match your wiring.
+- **Verify on ROS side:** `ros2 topic hz /mcu/{heartbeat,imu,battery_voltage,scan}`, plus `ros2 topic pub -1 /mcu/lcd mcu_msgs/msg/OledFrame ...` to push a framebuffer to the OLED.
+- **Debug tips:** Same as `test_all` minus the camera/mic issues. If `/mcu/scan` publishes 0 points, the LD14P is probably unpowered or the UART pins in `RobotConfig.h` don't match your wiring. If the OLED never updates, confirm `BRIDGE_ENABLE_OLED=1` is set and the I²C address in `RobotConfig.h` matches your display.
 
 ### `test_bridge_gait`
 
@@ -66,6 +66,23 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
 - **Verify on ROS side:** `ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.05}}"` — robot should walk.
 - **Debug tips:** (1) If servos twitch but don't sync, the PCA9685 frequency is off — check `test_sub_servo freq`. (2) If the robot falls over, the neutral gait pose may need retuning — use `test_sub_gait` first. (3) No `/cmd_vel` response means the subscription was never created — watch the serial log for the `create_session` line. (4) Always power cycle servos before re-flashing; a stuck PWM can kill the MCU's power rail. (5) You can send commands with `teleop_twist_keyboard` for interactive driving.
+
+### `test_bridge_oled`
+
+- **Board env:** `esp32s3sense`
+- **Transport:** WiFi
+- **Bridge flags:** `OLED` only (no gyro/battery/lidar/debug)
+- **Purpose:** Isolates the `BRIDGE_ENABLE_OLED` subscriber. The sketch brings up WiFi, the `OledSubsystem`, and a `MicroRosBridge` with only the OLED subscriber enabled; frames published to `/mcu/lcd` (`mcu_msgs/OledFrame`, a raw 1024-byte SSD1306 framebuffer) are pushed into an internal FreeRTOS queue and drained at a hard 10 Hz cap into `OledSubsystem::setFramebuffer()`. Text overlays show the boot banner and micro-ROS connection state.
+- **Prereq:** micro-ROS agent running; SSD1306 128×64 wired on the shared I²C bus (`Config::sda`/`Config::scl`, default address `0x3C`).
+- **Build/flash:** `pio run -e esp32s3sense -t upload`
+- **Verify on ROS side:**
+  ```bash
+  # All pixels on:
+  ros2 topic pub -1 /mcu/lcd mcu_msgs/msg/OledFrame \
+      "{framebuffer: [$(python3 -c 'print(",".join(["255"]*1024))')]}"
+  # Animated sine wave (see the in-sketch docblock for the snippet).
+  ```
+- **Debug tips:** (1) Frames wrong size → the callback drops anything that isn't exactly 1024 bytes. (2) Display blank → confirm `oled_addr` in `RobotConfig.h` and that the shared I²C mutex is used. (3) Updates slower than expected are normal: the bridge caps at 10 Hz and `OledSubsystem::update()` itself runs at 10 Hz. (4) If text overlays don't show, remember the frame push overrides them until the next overlay update tick.
 
 ---
 
@@ -142,11 +159,19 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Purpose:** `MicSubsystem`-only HTTP PCM streaming at `http://<IP>:81/audio`. 16 kHz 16-bit mono PDM.
 - **Debug tips:** (1) `ffplay -f s16le -ar 16000 -ac 1 http://<ip>:81/audio` to play back in real-time. (2) If output is silence, check the PDM clock pin; mics are sensitive to CLK polarity. (3) If it crackles, increase the I²S DMA buffer count.
 
+### `test_sub_oled`
+
+- **Board env:** serial-only (no WiFi / no micro-ROS)
+- **Purpose:** Interactive serial harness for `OledSubsystem` driving an SSD1306 128×64 I²C display. The subsystem keeps a background frame (looked up by key in `OledFrames.h`, e.g. `blank`/`boot`/`status`) plus up to four text overlays (6×8 font, page-aligned `y`). All draw calls go into a RAM canvas and only the final `blt()` touches I²C, guarded by the shared bus mutex.
+- **Commands:** `frame <key>`, `text <slot> <x> <y> <msg…>`, `cleartext [slot]`, `clear`, `contrast <0-255>`, `invert`, `normal`, `info`, `help`.
+- **Build/flash:** `pio run -e <serial env> -t upload`, then `pio device monitor -b 921600`.
+- **Debug tips:** (1) If `init` fails, check `oled_addr` in `RobotConfig.h` (default `0x3C`) and the I²C pull-ups. (2) `y` should be page-aligned (multiples of 8) for the 6×8 font — off-page y values clip weirdly. (3) Overlay slots are 0..3; slot 4+ is rejected. (4) Share the same I²C mutex with any other I²C subsystem (gyro, PCA9685) when combining sketches.
+
 ### `test_sub_speaker`
 
 - **Board env:** `esp32s3sense` / **Transport:** WiFi
 - **Purpose:** Complement to `seeker_tts`: long-polls `http://<AGENT_IP>:8383/audio_out` for PCM audio and plays it over I²S via `SpeakerSubsystem`.
-- **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host with a valid `FISH_API_KEY`, then `ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once` to generate audio.
+- **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host. For Fish Audio TTS set `FISH_API_KEY` and publish text to `/audio_tts_input` (`ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once`). For local WAV playback, publish a file path on `/audio_play_file` (`ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once`). Both share the same `/audio_out` HTTP stream.
 - **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:8383/audio_out` from another machine to test the endpoint independently — it should stay open and deliver a chunked stream whenever new text is published. (4) 404 from the endpoint means the path is wrong — the `tts_node` only serves `/audio_out`. (5) Mute first! Speaker volume defaults to max.
 
 ### `test_sub_ble_debug`
@@ -170,6 +195,12 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Board env:** `esp32s3sense` / **Transport:** WiFi
 - **Purpose:** Raw PDM I²S stream over HTTP on port 80 without `MicSubsystem`. 16 kHz, 16-bit PCM.
 - **Debug tips:** Same as `test_sub_mic`, but useful to rule out a subsystem bug vs a hardware bug.
+
+### `test_raw_oled`
+
+- **Board env:** bare (no WiFi / no micro-ROS)
+- **Purpose:** Runs the upstream `lexus2k/ssd1306` demo sketch (`ssd1306_demo.cpp` + `sova.*`) directly against the SSD1306 128×64, with no `OledSubsystem` abstraction. Good sanity check when `test_sub_oled` misbehaves and you need to rule out everything above the bare driver.
+- **Debug tips:** (1) Uses the ssd1306 library's own I²C init — don't share a bus with other subsystems without disabling them first. (2) If the display flickers, lower the I²C clock. (3) If the bitmap renders inverted, the column remap is wrong for your particular panel revision.
 
 ### `test_fast_led_raw`
 

@@ -85,5 +85,6 @@ seeker-robot/
 | `/mcu/log` | `std_msgs/String` | event | ESP32 → ROS |
 | `/cmd_vel` | `geometry_msgs/Twist` | on demand | ROS → ESP32 |
 | `/mcu/hexapod_cmd` | `mcu_msgs/HexapodCmd` | on demand | ROS → ESP32 |
+| `/mcu/lcd` | `mcu_msgs/OledFrame` | ≤10 Hz | ROS → ESP32 |
 
 See **[Architecture](Architecture.md)** for the full topic graph and TF tree.

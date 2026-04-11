@@ -14,7 +14,7 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `seeker_gazebo` — Gazebo Harmonic simulation, sensor bridges, and simulation launch files.
   - `seeker_navigation` — Nav2, SLAM Toolbox, EKF configs, and `ball_searcher` mission planner.
   - `seeker_sim` — `fake_mcu_node`: simulates ESP32 gait for testing without hardware.
-  - `seeker_tts` — Text-to-speech node (Fish Audio API).
+  - `seeker_tts` — Fish Audio TTS node plus a local-WAV playback topic, both re-served as an HTTP PCM stream for the ESP32 `SpeakerSubsystem`.
   - `test_package` — Minimal C++ ROS 2 node for workflow verification.
 - **`mcu_ws/`** — PlatformIO workspace for ESP32 firmware. Uses micro-ROS WiFi transport (Jazzy distro). Multi-project layout:
   - `platformio/platformio.ini` — Shared base config (board environments, build flags, library deps). All sketches inherit from this via `extra_configs`.
@@ -121,7 +121,7 @@ The manager runs a 4-state reconnection machine: `WAITING_AGENT → AGENT_AVAILA
 ### MicroRosBridge — compile-time plugin pattern (`mcu_ws/lib/MicroRosBridge/`)
 `MicroRosBridge` implements `IMicroRosParticipant` and is the sole owner of all hardware publishers. Non-ROS-aware subsystems (gyro, battery, lidar) expose thread-safe getters; the bridge reads them and publishes at configured rates.
 
-Each publisher is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEARTBEAT`, `BRIDGE_ENABLE_GYRO`, `BRIDGE_ENABLE_BATTERY`, `BRIDGE_ENABLE_SERVO`, `BRIDGE_ENABLE_LIDAR`, `BRIDGE_ENABLE_DEBUG`. Disabled publishers cost zero RAM — the state struct becomes an `EmptyState` placeholder via `std::conditional_t`. To add a new subsystem publisher:
+Each publisher/subscriber is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEARTBEAT`, `BRIDGE_ENABLE_GYRO`, `BRIDGE_ENABLE_BATTERY`, `BRIDGE_ENABLE_SERVO`, `BRIDGE_ENABLE_LIDAR`, `BRIDGE_ENABLE_DEBUG`, `BRIDGE_ENABLE_OLED`. Disabled entries cost zero RAM — the state struct becomes an `EmptyState` placeholder via `std::conditional_t`. `BRIDGE_ENABLE_OLED=1` is the only current *subscriber* on the bridge: it listens on `/mcu/lcd` (`mcu_msgs/OledFrame`, 1024-byte SSD1306 framebuffers) and hands frames to `OledSubsystem::setFramebuffer()` through a FreeRTOS queue at a hard 10 Hz cap. To add a new subsystem publisher:
 
 1. Add `#ifndef BRIDGE_ENABLE_FOO / #define BRIDGE_ENABLE_FOO 0` in `MicroRosBridge.h`
 2. Conditionally include the subsystem header and define `FooPublisherState`

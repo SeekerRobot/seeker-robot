@@ -33,7 +33,7 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │       │  Publishes              Subscribes                                  │
 │       │  /mcu/imu                /cmd_vel           ◄── Nav2 / teleop       │
 │       │  /mcu/scan               /mcu/hexapod_cmd   ◄── mission planner     │
-│       │  /mcu/battery_voltage                                               │
+│       │  /mcu/battery_voltage    /mcu/lcd           ◄── OLED framebuffer    │
 │       │  /mcu/heartbeat                                                     │
 │       │  /mcu/log                                                           │
 │       ▼                                                                     │
@@ -149,7 +149,7 @@ All subsystems that share a resource (I²C bus, the micro-ROS transport, publish
 
 ## The `MicroRosBridge` compile-time plugin pattern
 
-A single `MicroRosBridge` instance (see `mcu_ws/lib/MicroRosBridge/`) owns every ROS publisher the robot exposes. Non-ROS-aware subsystems provide thread-safe getters; the bridge reads them and publishes at configured rates.
+A single `MicroRosBridge` instance (see `mcu_ws/lib/MicroRosBridge/`) owns every ROS publisher (and the OLED subscriber) the robot exposes. Non-ROS-aware subsystems provide thread-safe getters; the bridge reads them and publishes at configured rates. Incoming frames on `/mcu/lcd` are handed to the `OledSubsystem` through a fixed-size FreeRTOS queue so the micro-ROS executor callback never blocks on I²C.
 
 ```
 GyroSubsystem ─────┐
@@ -167,6 +167,7 @@ Each publisher is **gated by a preprocessor flag** so disabled subsystems cost z
 | `BRIDGE_ENABLE_BATTERY=1` | `/mcu/battery_voltage` (`std_msgs/Float32`, 1 Hz) |
 | `BRIDGE_ENABLE_LIDAR=1` | `/mcu/scan` (`sensor_msgs/LaserScan`, ~6 Hz, capped at 20 Hz) |
 | `BRIDGE_ENABLE_DEBUG=1` | `/mcu/log` (`std_msgs/String`, event-driven) |
+| `BRIDGE_ENABLE_OLED=1` | **Subscribes** to `/mcu/lcd` (`mcu_msgs/OledFrame`, 1024-byte SSD1306 framebuffers) and forwards frames to `OledSubsystem` via an internal FreeRTOS queue at a hard 10 Hz cap |
 | `BRIDGE_ENABLE_SERVO=1` | Reserved (servo telemetry — currently stubbed) |
 
 When a flag is `0`, the corresponding state struct inside `MicroRosBridge` is a no-op placeholder via `std::conditional_t<..., FooPublisherState, EmptyState>` — the publisher is completely absent from the binary.

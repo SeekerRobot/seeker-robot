@@ -228,6 +228,7 @@ When something misbehaves on the full stack, bisect with the `test_sub_*` sketch
 | Mic silent or crackling | `test_sub_mic`, then `test_raw_mic` |
 | TTS playback silent | `test_sub_speaker` + verify `seeker_tts` via `curl` |
 | LED chain colour wrong | `test_sub_led`, then `test_fast_led_raw` |
+| OLED display dead / wrong frame | `test_sub_oled` (serial-only draw), then `test_bridge_oled` (full `/mcu/lcd` path), fall back to `test_raw_oled` to rule out `OledSubsystem` |
 
 ---
 

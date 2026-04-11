@@ -122,12 +122,12 @@ seeker-robot/
 
 | Package | Purpose |
 |---------|---------|
-| `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg`) |
+| `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg`, `OledFrame.msg`) |
 | `seeker_description` | URDF/Xacro hexapod model, `display.launch.py` for RViz |
 | `seeker_gazebo` | Gazebo Harmonic simulation, sensor bridges, simulation launch files |
 | `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` mission planner, real robot launch |
 | `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
-| `seeker_tts` | Text-to-speech node (Fish Audio API integration) |
+| `seeker_tts` | Fish Audio TTS + local WAV file playback, re-served as a chunked HTTP PCM stream for the ESP32 speaker |
 | `test_package` | Minimal ROS 2 node for build/workflow verification |
 
 ---
@@ -136,13 +136,15 @@ seeker-robot/
 
 | Sketch | Purpose |
 |--------|---------|
-| `test_bridge_all` | All sensor publishers enabled (heartbeat, IMU, battery, LiDAR, debug). Use for SLAM/navigation testing. |
+| `test_bridge_all` | All sensor publishers enabled (heartbeat, IMU, battery, LiDAR, debug) plus the OLED `/mcu/lcd` subscriber. Use for SLAM/navigation testing. |
 | `test_bridge_gait` | Gait + micro-ROS. Subscribes to `/cmd_vel` for walking. No sensor publishing. |
+| `test_bridge_oled` | Isolated micro-ROS bridge test for the OLED subscriber — streams `/mcu/lcd` framebuffers to the SSD1306 at a 10 Hz cap. |
 | `test_all` | Integration test for all subsystems together |
 | `test_threaded_blink` | ThreadedSubsystem / FreeRTOS task smoke test |
 | `test_fast_led_raw` | FastLED SK6812 RGB LED test |
 | `test_raw_cam` | Raw camera I2C/PSRAM test (no subsystem abstraction) |
 | `test_raw_mic` | PDM microphone raw data test |
+| `test_raw_oled` | Raw SSD1306 demo using the upstream `lexus2k/ssd1306` library directly (no `OledSubsystem` abstraction). |
 | `test_sub_gyro_nondma` | BNO085 IMU in isolation (serial only, no micro-ROS) |
 | `test_sub_lidar` | LD14P LiDAR in isolation |
 | `test_sub_servo` | PCA9685 servo motion profiling in isolation |
@@ -153,6 +155,7 @@ seeker-robot/
 | `test_sub_heartbeat` | micro-ROS heartbeat publisher test |
 | `test_sub_led` | SK6812 LED subsystem test |
 | `test_sub_mic` | I2S PDM microphone test |
+| `test_sub_oled` | Interactive serial test for `OledSubsystem` (SSD1306 128x64): `frame`, `text`, `clear`, `contrast`, `invert`. |
 | `test_sub_speaker` | I2S speaker output test |
 | `test_sub_wifi` | WiFi connectivity test |
 | `test_sub_ble_debug` | BLE debug output test |
@@ -171,6 +174,7 @@ seeker-robot/
 | `/mcu/log` | `std_msgs/String` | event | BEST_EFFORT | ESP32 → ROS | Debug messages from firmware |
 | `/cmd_vel` | `geometry_msgs/Twist` | on demand | BEST_EFFORT | ROS → ESP32 | Walking velocity (vx, vy, wz) |
 | `/mcu/hexapod_cmd` | `mcu_msgs/HexapodCmd` | on demand | BEST_EFFORT | ROS → ESP32 | Gait mode (STAND/WALK/SIT), body height/pitch/roll |
+| `/mcu/lcd` | `mcu_msgs/OledFrame` | ≤10 Hz | BEST_EFFORT | ROS → ESP32 | Raw 1024-byte SSD1306 framebuffer for the 128×64 OLED display |
 | `/odom` | `nav_msgs/Odometry` | 50 Hz | — | EKF output | EKF-estimated odometry; orientation / roll-pitch TF from IMU |
 | `/map` | `nav_msgs/OccupancyGrid` | ~0.2 Hz | TRANSIENT_LOCAL | SLAM output | 5 cm/cell occupancy grid |
 
