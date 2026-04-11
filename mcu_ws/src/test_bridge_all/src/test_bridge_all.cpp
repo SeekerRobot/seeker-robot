@@ -34,7 +34,8 @@
  * Speaker / TTS (seeker_tts node on host, port 8383):
  *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
  *   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
- *   ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once
+ *   ros2 topic pub /audio_play_file std_msgs/String "data:
+ * '/path/to/sound.wav'" --once
  */
 #include <Arduino.h>
 #include <BatterySubsystem.h>
@@ -126,8 +127,7 @@ void setup() {
   // Uses I2S_NUM_1, pinned to Core 1. No mic present here; update() retries
   // gracefully until WiFi is up and the TTS server is running.
   static Subsystem::SpeakerSetup speaker_setup(
-      I2S_NUM_1, 16000,
-      Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
+      I2S_NUM_1, 16000, Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
       agent_ip, 8383, 2048, nullptr);
   auto& spk = Subsystem::SpeakerSubsystem::getInstance(speaker_setup);
   if (!spk.init()) {
