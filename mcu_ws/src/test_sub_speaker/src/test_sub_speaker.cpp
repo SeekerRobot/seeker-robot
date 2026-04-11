@@ -5,7 +5,9 @@
  *
  * Pair with the seeker_tts ROS 2 node on the host:
  *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
- *   ros2 topic pub /audio_transcription std_msgs/String "data: 'hello'" --once
+ *   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
+ *   ros2 topic pub /audio_play_file std_msgs/String "data:
+ * '/path/to/sound.wav'" --once
  *
  * Commands (serial monitor at 921600 baud):
  *   info      Print subsystem status
@@ -60,9 +62,11 @@ static void printHelp() {
       "help / ?   Show this help\r\n"
       "=========================================================\r\n"
       "Audio is fetched automatically from the TTS host.\r\n"
-      "Publish text on the ROS 2 side:\r\n"
-      "  ros2 topic pub /audio_transcription std_msgs/String "
-      "\"data: 'hello'\" --once\r\n");
+      "Publish on the ROS 2 side:\r\n"
+      "  TTS:  ros2 topic pub /audio_tts_input std_msgs/String "
+      "\"data: 'hello'\" --once\r\n"
+      "  File: ros2 topic pub /audio_play_file std_msgs/String "
+      "\"data: '/path/to/sound.wav'\" --once\r\n");
 }
 
 static void cmdInfo() {
