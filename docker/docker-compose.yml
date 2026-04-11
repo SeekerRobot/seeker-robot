@@ -7,6 +7,7 @@ services:
       dockerfile: docker/Dockerfile
       target: ${BUILD_TARGET}
     image: seeker-robot:${BUILD_TARGET}
+    profiles: ["base"]
     environment:
       - DISPLAY=${DISPLAY_CONFIG}
       - QT_X11_NO_MITSHM=1
