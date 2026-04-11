@@ -64,7 +64,7 @@ static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
 static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
                                          /*rx_buf_size=*/512,
                                          /*scan_freq_hz=*/6.0f);
-static Subsystem::OledSetup oled_setup(i2c_mutex);
+static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8384);
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
                                                      WIFI_PASSWORD, static_ip,
                                                      gateway, subnet);
@@ -152,7 +152,6 @@ void setup() {
   bridge_setup.gyro = &gyro;
   bridge_setup.battery = &batt;
   bridge_setup.lidar = &lidar;
-  bridge_setup.oled = &oled;
   static Subsystem::MicroRosBridge bridge(bridge_setup);
 
   manager.registerParticipant(&bridge);

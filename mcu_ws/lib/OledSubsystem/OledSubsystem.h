@@ -21,6 +21,9 @@
 
 #include <Arduino.h>
 #include <ThreadedSubsystem.h>
+#include <WiFi.h>
+#include <esp_http_client.h>
+#include <freertos/FreeRTOS.h>
 #include <hal_thread.h>
 
 namespace Subsystem {
@@ -34,12 +37,22 @@ class OledSetup : public Classes::BaseSetup {
   OledSetup() = delete;
   ~OledSetup() = default;
 
-  /// @param i2c_mutex Shared I2C bus mutex (same one used by GyroSubsystem,
-  ///                  ServoSubsystem, etc.)
-  explicit OledSetup(Threads::Mutex& i2c_mutex)
-      : Classes::BaseSetup("OledSubsystem"), i2c_mutex_(i2c_mutex) {}
+  /// @param i2c_mutex  Shared I2C bus mutex.
+  /// @param host_ip    IP of the ROS 2 host serving GET /lcd_out.
+  ///                   Pass IPAddress(0,0,0,0) (default) to disable HTTP client.
+  /// @param lcd_port   Port the host LCD server listens on (default 8384).
+  ///                   Set to 0 to disable HTTP client (e.g. serial-only sketches).
+  explicit OledSetup(Threads::Mutex& i2c_mutex,
+                     IPAddress host_ip = IPAddress(0, 0, 0, 0),
+                     uint16_t  lcd_port = 0)
+      : Classes::BaseSetup("OledSubsystem"),
+        i2c_mutex_(i2c_mutex),
+        host_ip_(host_ip),
+        lcd_port_(lcd_port) {}
 
   Threads::Mutex& i2c_mutex_;
+  const IPAddress host_ip_;
+  const uint16_t  lcd_port_;
 };
 
 // ---------------------------------------------------------------------------
@@ -59,9 +72,9 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
   // ---- ThreadedSubsystem overrides ----------------------------------------
 
   bool init() override;
-  void begin() override { return; }
+  void begin() override;
   void update() override;
-  void pause() override { return; }
+  void pause() override;
   void reset() override;
   const char* getInfo() override { return setup_.getId(); }
 
@@ -106,11 +119,16 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
 
   // ---- Constants ----------------------------------------------------------
 
-  static constexpr uint8_t kWidth = 128;
-  static constexpr uint8_t kHeight = 64;
+  static constexpr uint8_t  kWidth    = 128;
+  static constexpr uint8_t  kHeight   = 64;
   static constexpr uint16_t kBufferSize = kWidth * kHeight / 8;  // 1024
-  static constexpr uint8_t kMaxOverlays = 4;
-  static constexpr uint8_t kMaxTextLen = 21;  // 128 / 6 = 21 chars (6x8 font)
+  static constexpr uint8_t  kMaxOverlays = 4;
+  static constexpr uint8_t  kMaxTextLen  = 21;  // 128 / 6 = 21 chars (6x8 font)
+
+  // ---- HTTP client constants (LCD stream from host) -----------------------
+
+  static constexpr uint32_t kRetryIntervalMs = 3000;
+  static constexpr int      kHttpTimeoutMs   = 30000;
 
  private:
   explicit OledSubsystem(const OledSetup& setup)
@@ -127,9 +145,19 @@ class OledSubsystem : public Subsystem::ThreadedSubsystem {
 
   // ---- State --------------------------------------------------------------
 
+  // ---- LCD HTTP client -------------------------------------------------------
+  static void lcdFetchTask(void* arg);
+  bool fetchFrames();
+
+  // ---- State --------------------------------------------------------------
+
   const OledSetup setup_;
   Threads::Mutex& i2c_mutex_;
   mutable Threads::Mutex data_mutex_;
+
+  TaskHandle_t fetch_task_  = nullptr;
+  uint32_t     last_fail_ms_ = 0;
+  uint32_t     last_log_ms_  = 0;
 
   uint8_t framebuffer_[kBufferSize] = {};
   uint8_t raw_framebuffer_[kBufferSize] = {};  ///< Staging for setFramebuffer()

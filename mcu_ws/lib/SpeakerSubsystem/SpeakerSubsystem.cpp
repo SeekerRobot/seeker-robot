@@ -27,7 +27,7 @@ void SpeakerSubsystem::update() {
 
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO, "[Speaker] Polling %s:%u",
+    Debug::printf(Debug::Level::VERBOSE, "[Speaker] Polling %s:%u",
                   setup_.host_ip_.toString().c_str(), setup_.host_port_);
   }
 

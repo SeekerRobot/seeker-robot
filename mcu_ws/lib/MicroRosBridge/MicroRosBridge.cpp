@@ -11,16 +11,8 @@
 
 namespace Subsystem {
 
-#if BRIDGE_ENABLE_OLED
-MicroRosBridge* MicroRosBridge::s_instance_ = nullptr;
-#endif
-
 MicroRosBridge::MicroRosBridge(const MicroRosBridgeSetup& setup)
-    : setup_(setup) {
-#if BRIDGE_ENABLE_OLED
-  s_instance_ = this;
-#endif
-}
+    : setup_(setup) {}
 
 bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
   bool ok = true;
@@ -174,54 +166,6 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
   }
 #endif  // BRIDGE_ENABLE_DEBUG
 
-#if BRIDGE_ENABLE_OLED
-  if (!setup_.oled) {
-    Debug::printf(Debug::Level::WARN,
-                  "[Bridge] BRIDGE_ENABLE_OLED=1 but oled pointer is null — skipping");
-  } else {
-    // Create FreeRTOS queue for bridge -> display frame handoff.
-    // Depth kQueueDepth items of OledFrameItem (1024 bytes each).
-    // Total RAM: ~10 KB. Callback drops new frames on full.
-    if (!oled_.queue) {
-      oled_.queue =
-          xQueueCreate(OledSubscriberState::kQueueDepth, sizeof(OledFrameItem));
-      if (!oled_.queue) {
-        Debug::printf(Debug::Level::ERROR, "[Bridge] OLED queue alloc failed");
-        ok = false;
-      }
-    }
-
-    // __init allocates rosidl sequence metadata; wire our pre-allocated rx_buf
-    // so micro-CDR deserializes framebuffer bytes in place without malloc.
-    mcu_msgs__msg__OledFrame__init(&oled_.msg);
-    oled_.msg.framebuffer.data = oled_.rx_buf;
-    oled_.msg.framebuffer.size = 0;
-    oled_.msg.framebuffer.capacity = sizeof(oled_.rx_buf);
-
-    rcl_ret_t rc = ctx.createSubscriptionBestEffort(
-        &oled_.sub, ROSIDL_GET_MSG_TYPE_SUPPORT(mcu_msgs, msg, OledFrame),
-        setup_.lcd_topic);
-    if (rc != RCL_RET_OK) {
-      Debug::printf(Debug::Level::ERROR,
-                    "[Bridge] OLED createSubscription failed (%d)", (int)rc);
-      ok = false;
-    } else {
-      rc = ctx.addSubscription(&oled_.sub, &oled_.msg,
-                               &MicroRosBridge::oledFrameCb);
-      if (rc != RCL_RET_OK) {
-        Debug::printf(Debug::Level::ERROR,
-                      "[Bridge] OLED addSubscription failed (%d)", (int)rc);
-        ok = false;
-      } else {
-        Debug::printf(Debug::Level::INFO,
-                      "[Bridge] OLED subscriber <- %s (10 Hz cap, depth=%u)",
-                      setup_.lcd_topic,
-                      (unsigned)OledSubscriberState::kQueueDepth);
-      }
-    }
-  }
-#endif  // BRIDGE_ENABLE_OLED
-
   initialized_ = ok;
   return ok;
 }
@@ -270,18 +214,6 @@ void MicroRosBridge::onDestroy() {
   debug_.msg.data.capacity = 0;
   std_msgs__msg__String__fini(&debug_.msg);
   debug_.pub = rcl_get_zero_initialized_publisher();
-#endif
-#if BRIDGE_ENABLE_OLED
-  if (setup_.oled) {
-    // Null backing pointer before __fini() so rosidl doesn't free our rx_buf.
-    oled_.msg.framebuffer.data = nullptr;
-    oled_.msg.framebuffer.size = 0;
-    oled_.msg.framebuffer.capacity = 0;
-    mcu_msgs__msg__OledFrame__fini(&oled_.msg);
-    oled_.sub = rcl_get_zero_initialized_subscription();
-    // Keep the queue alive across reconnects — only freed on program exit.
-    // This preserves any in-flight frames and avoids repeated alloc/free.
-  }
 #endif
   initialized_ = false;
   Debug::printf(Debug::Level::INFO, "[Bridge] onDestroy");
@@ -410,63 +342,6 @@ void MicroRosBridge::publishAll() {
   }
 #endif  // BRIDGE_ENABLE_DEBUG
 
-#if BRIDGE_ENABLE_OLED
-  // Drain one frame per kMinIntervalMs (hard 10 Hz cap). Extra frames sit in
-  // the queue until the next tick; if the queue fills, the callback drops new
-  // frames. The OledSubsystem's own 10 Hz update loop + dirty flag provides a
-  // second rate-limiting layer.
-  if (setup_.oled && oled_.queue &&
-      oled_.elapsed >= OledSubscriberState::kMinIntervalMs) {
-    static OledFrameItem item;  // static: reused across calls, 1 KB off-stack
-    if (xQueueReceive(oled_.queue, &item, 0) == pdTRUE) {
-      oled_.elapsed = 0;
-      setup_.oled->setFramebuffer(item.data);
-    }
-  }
-#endif  // BRIDGE_ENABLE_OLED
 }
-
-#if BRIDGE_ENABLE_OLED
-// Subscriber callback — runs in the micro-ROS executor (manager) task.
-// Must be non-blocking: copies the frame into a FreeRTOS queue and returns.
-// Drops the frame if the queue is full (no wait).
-void MicroRosBridge::oledFrameCb(const void* msg_in) {
-  Debug::printf(Debug::Level::DEBUG, "[Bridge] oledFrameCb fired");
-  if (!s_instance_ || !s_instance_->initialized_) {
-    Debug::printf(Debug::Level::WARN, "[Bridge] oledFrameCb: not initialized");
-    return;
-  }
-  if (!s_instance_->oled_.queue) {
-    Debug::printf(Debug::Level::WARN, "[Bridge] oledFrameCb: no queue");
-    return;
-  }
-
-  const auto* msg = static_cast<const mcu_msgs__msg__OledFrame*>(msg_in);
-  if (!msg || !msg->framebuffer.data) {
-    Debug::printf(Debug::Level::WARN, "[Bridge] oledFrameCb: null msg");
-    return;
-  }
-
-  Debug::printf(Debug::Level::DEBUG, "[Bridge] OLED frame size=%u",
-                (unsigned)msg->framebuffer.size);
-
-  // Only accept exactly-sized frames. Drop anything else to avoid partial
-  // display corruption.
-  if (msg->framebuffer.size != sizeof(OledFrameItem::data)) {
-    Debug::printf(Debug::Level::WARN,
-                  "[Bridge] OLED frame wrong size (%u != %u), dropping",
-                  (unsigned)msg->framebuffer.size,
-                  (unsigned)sizeof(OledFrameItem::data));
-    return;
-  }
-
-  OledFrameItem item;
-  memcpy(item.data, msg->framebuffer.data, sizeof(item.data));
-  // xQueueSend with 0 ticks timeout — non-blocking, drops on full.
-  if (xQueueSend(s_instance_->oled_.queue, &item, 0) != pdTRUE) {
-    // Queue full — frame dropped. Not logged to avoid log spam.
-  }
-}
-#endif  // BRIDGE_ENABLE_OLED
 
 }  // namespace Subsystem

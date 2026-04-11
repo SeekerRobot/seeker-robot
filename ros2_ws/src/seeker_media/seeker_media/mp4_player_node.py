@@ -1,23 +1,33 @@
 """
 mp4_player_node — Stream an MP4 to the OLED display and ESP32 audio simultaneously.
 
-Video pipeline  : ffmpeg → 128×64 grayscale → SSD1306 framebuffer → /mcu/lcd (10 Hz)
-Audio pipeline  : ffmpeg → 16 kHz 16-bit mono PCM → HTTP /audio_out → ESP32
+Video pipeline  : ffmpeg → 128×64 grayscale → SSD1306 framebuffer → HTTP :lcd_serve_port/lcd_out
+Audio pipeline  : ffmpeg → 16 kHz 16-bit mono PCM → HTTP :serve_port/audio_out → ESP32
 
-Sync strategy   : Audio is extracted first (sub-second via ffmpeg), then queued on
-                  the HTTP server.  The ESP32 begins streaming audio over TCP almost
-                  immediately; video publishing starts after audio_lead_ms so the
-                  two streams arrive at the hardware in rough lockstep.
+Sync strategy   : Audio is extracted first (sub-second via ffmpeg) and held in a
+                  queue.  The video pipeline starts immediately but blocks until the
+                  audio HTTP handler fires _audio_connected_event (i.e. the ESP32 has
+                  connected and audio bytes are about to flow).  This removes the
+                  variable 0–3 s polling delay from the equation.
+
+                  audio_lead_ms is a post-connection trim offset: positive values
+                  delay video relative to audio.  Typical values:
+                    0    — frames and audio bytes leave the host simultaneously
+                    50   — adds ~50 ms video delay (compensates for I2S DMA latency
+                           vs OLED render latency so both hit the user at the same time)
+
+  OLED transport uses plain HTTP streaming (no micro-ROS agent required).
+  The ESP32 connects to GET /lcd_out and reads 1024-byte frames continuously.
 
 Topics
   Sub : /media/play  (std_msgs/String)  — absolute path to an .mp4 file
   Sub : /media/stop  (std_msgs/Empty)   — abort current playback
-  Pub : /mcu/lcd     (mcu_msgs/OledFrame) — SSD1306 raw framebuffer
 
 Parameters
-  serve_port     int   8383  HTTP port (same default as tts_node — don't run both)
+  serve_port     int   8383  HTTP port for audio (same default as tts_node — don't run both)
+  lcd_serve_port int   8384  HTTP port for OLED LCD stream
   threshold      int   127   greyscale → 1-bit cutoff (0-255)
-  audio_lead_ms  int   200   ms between audio queue and first OLED frame
+  audio_lead_ms  int   0     ms to wait after audio ESP32 connects before first OLED frame
 """
 
 import os
@@ -31,7 +41,6 @@ import math
 
 import numpy as np
 import rclpy
-from mcu_msgs.msg import OledFrame
 from rclpy.node import Node
 from std_msgs.msg import Empty, String
 
@@ -94,10 +103,10 @@ BYTES_PER_SAMPLE = 2  # 16-bit signed LE
 # Frame conversion helper
 # ---------------------------------------------------------------------------
 
-def _frame_to_oled(frame_data: bytes, threshold: int) -> list:
+def _frame_to_oled(frame_data: bytes, threshold: int) -> bytes:
     """Convert raw 128×64 grayscale bytes to a 1024-byte SSD1306 framebuffer.
 
-    SSD1306 page-major layout (matches OledFrame.msg):
+    SSD1306 page-major layout:
       8 pages × 128 columns = 1024 bytes
       Each byte = 8 vertical pixels; bit 0 = topmost row of the page.
     """
@@ -106,7 +115,7 @@ def _frame_to_oled(frame_data: bytes, threshold: int) -> list:
     paged = bits.reshape(PAGES, 8, WIDTH)            # (8 pages, 8 rows/page, 128 cols)
     weights = (1 << np.arange(8, dtype=np.uint8))[:, np.newaxis]  # (8,1) bit masks
     fb = (paged * weights).sum(axis=1).astype(np.uint8)            # (8, 128)
-    return fb.flatten().tolist()
+    return bytes(fb.flatten())
 
 
 # ---------------------------------------------------------------------------
@@ -118,13 +127,17 @@ class Mp4PlayerNode(Node):
         super().__init__("mp4_player")
 
         self.declare_parameter("serve_port", 8383)
+        self.declare_parameter("lcd_serve_port", 8384)
         self.declare_parameter("threshold", 127)
-        self.declare_parameter("audio_lead_ms", 200)
+        self.declare_parameter("audio_lead_ms", 0)
         self.declare_parameter("eq_bass_hz", 300.0)
         self.declare_parameter("eq_bass_db", 0.0)
 
         self._serve_port = (
             self.get_parameter("serve_port").get_parameter_value().integer_value
+        )
+        self._lcd_serve_port = (
+            self.get_parameter("lcd_serve_port").get_parameter_value().integer_value
         )
         self._threshold = (
             self.get_parameter("threshold").get_parameter_value().integer_value
@@ -139,13 +152,18 @@ class Mp4PlayerNode(Node):
             self.get_parameter("eq_bass_db").get_parameter_value().double_value
         )
 
-        # Single-slot queue mirrors tts_node design: one clip at a time.
+        # Single-slot queues: one audio clip and one LCD frame at a time.
         self._audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=1)
+        self._lcd_queue: queue.Queue[bytes] = queue.Queue(maxsize=1)
+
+        # Fired by the audio HTTP handler the instant it is about to push PCM
+        # bytes to the ESP32.  _stream_video() blocks on this so video frames
+        # never lead audio.
+        self._audio_connected_event = threading.Event()
 
         self._stop_event = threading.Event()
         self._playing = False
 
-        self._oled_pub = self.create_publisher(OledFrame, "/mcu/lcd", 10)
         self._play_sub = self.create_subscription(
             String, "/media/play", self._on_play, 10
         )
@@ -154,8 +172,10 @@ class Mp4PlayerNode(Node):
         )
 
         self._start_http_server()
+        self._start_lcd_server()
         self.get_logger().info(
-            f"mp4_player ready — /media/play → /mcu/lcd + :{self._serve_port}/audio_out"
+            f"mp4_player ready — /media/play → "
+            f":{self._serve_port}/audio_out + :{self._lcd_serve_port}/lcd_out"
         )
 
     # ---- ROS callbacks --------------------------------------------------------
@@ -186,6 +206,7 @@ class Mp4PlayerNode(Node):
 
         self._playing = True
         self._stop_event.clear()
+        self._audio_connected_event.clear()
         try:
             # 1. Extract and queue audio (sub-second for typical files).
             audio_ready = threading.Event()
@@ -200,12 +221,8 @@ class Mp4PlayerNode(Node):
             if not audio_ready.wait(timeout=30):
                 self.get_logger().warn("Audio extraction timed out — continuing without audio")
 
-            # 2. Short lead: let the ESP32 open the HTTP connection and start
-            #    buffering PCM before the first OLED frame arrives.
-            if self._audio_lead_ms > 0 and not self._stop_event.is_set():
-                time.sleep(self._audio_lead_ms / 1000.0)
-
-            # 3. Stream video frames.
+            # 2. Stream video. _stream_video() blocks internally until the audio
+            #    HTTP handler fires _audio_connected_event (ESP32 connected).
             if not self._stop_event.is_set():
                 self._stream_video(filepath)
         finally:
@@ -247,7 +264,13 @@ class Mp4PlayerNode(Node):
             self.get_logger().warn("Audio queue full; skipping audio playback")
 
     def _stream_video(self, filepath: str):
-        """Decode video to 128×64 grayscale and publish OLED frames at TARGET_FPS."""
+        """Decode video to 128×64 grayscale and stream OLED frames at TARGET_FPS.
+
+        Blocks until _audio_connected_event fires so the first video frame is
+        sent only after the audio ESP32 has connected and PCM bytes are flowing.
+        audio_lead_ms can trim the offset if audio and video arrive at slightly
+        different times (positive = delay video further).
+        """
         cmd = [
             "ffmpeg", "-i", filepath,
             "-f", "rawvideo",
@@ -265,6 +288,16 @@ class Mp4PlayerNode(Node):
             self.get_logger().error("ffmpeg not found")
             return
 
+        # Wait for audio ESP32 to connect before releasing the first frame.
+        # Timeout of 60 s covers slow WiFi reconnects; on timeout we proceed
+        # anyway so video isn't silently lost if there's no audio.
+        if not self._audio_connected_event.wait(timeout=60.0):
+            self.get_logger().warn(
+                "Audio not connected after 60 s — starting video without sync"
+            )
+        elif self._audio_lead_ms > 0:
+            time.sleep(self._audio_lead_ms / 1000.0)
+
         frame_size = WIDTH * HEIGHT        # 8192 bytes per frame
         interval = 1.0 / TARGET_FPS        # 0.1 s
         t_start = time.monotonic()
@@ -277,9 +310,10 @@ class Mp4PlayerNode(Node):
                     break  # EOF
 
                 fb = _frame_to_oled(raw, self._threshold)
-                oled_msg = OledFrame()
-                oled_msg.framebuffer = fb
-                self._oled_pub.publish(oled_msg)
+                try:
+                    self._lcd_queue.put_nowait(fb)
+                except queue.Full:
+                    pass  # ESP32 hasn't consumed last frame yet — drop
 
                 frame_idx += 1
                 # Pace output to TARGET_FPS.
@@ -290,7 +324,7 @@ class Mp4PlayerNode(Node):
         finally:
             proc.kill()
             proc.wait()
-            self.get_logger().info(f"Video done: {frame_idx} frames published")
+            self.get_logger().info(f"Video done: {frame_idx} frames streamed")
 
     # ---- HTTP server (mirrors tts_node pattern) -------------------------------
 
@@ -324,6 +358,9 @@ class Mp4PlayerNode(Node):
                 self.send_header("Content-Type", "application/octet-stream")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
+                # Signal video pipeline: audio bytes are about to flow.
+                # _stream_video() is waiting on this before sending first frame.
+                node._audio_connected_event.set()
                 try:
                     self.wfile.write(data)
                     self.wfile.flush()
@@ -336,6 +373,47 @@ class Mp4PlayerNode(Node):
         server = HTTPServer(("0.0.0.0", self._serve_port), _Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.get_logger().info(f"HTTP audio server listening on :{self._serve_port}")
+
+    def _start_lcd_server(self):
+        """Serve a persistent raw framebuffer stream on lcd_serve_port/lcd_out.
+
+        The ESP32 connects once and reads 1024-byte frames continuously until
+        disconnected.  Frames are sourced from _lcd_queue (maxsize=1, drop on
+        full) so the display always shows the most recent frame.
+        """
+        node = self
+
+        class _LcdHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/lcd_out":
+                    self._serve_stream()
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def _serve_stream(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.end_headers()
+                node.get_logger().info("LCD stream connected")
+                try:
+                    while True:
+                        try:
+                            frame = node._lcd_queue.get(timeout=1.0)
+                        except queue.Empty:
+                            continue
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                node.get_logger().info("LCD stream disconnected")
+
+            def log_message(self, fmt, *args):
+                pass  # suppress per-request logs
+
+        server = HTTPServer(("0.0.0.0", self._lcd_serve_port), _LcdHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.get_logger().info(f"HTTP LCD server listening on :{self._lcd_serve_port}")
 
 
 def main(args=None):

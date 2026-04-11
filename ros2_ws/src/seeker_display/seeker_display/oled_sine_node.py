@@ -1,16 +1,26 @@
 """
-oled_sine_node — Publish an animated sine wave to /mcu/lcd.
+oled_sine_node — Serve an animated sine wave to the OLED display via HTTP.
 
-SSD1306 framebuffer format (column-major, from OledFrame.msg):
-  - 8 pages × 128 columns = 1024 bytes
-  - Each byte = 8 vertical pixels, LSB = topmost row of that page
-  - Pages run top-to-bottom (page 0 = rows 0-7, page 7 = rows 56-63)
+Generates a 1024-byte SSD1306 framebuffer at 10 Hz and serves it as a
+persistent raw stream on GET /lcd_out (port lcd_serve_port, default 8384).
+The ESP32 connects as an HTTP client and reads 1024-byte frames continuously.
+No micro-ROS agent required.
+
+SSD1306 framebuffer format (page-major):
+  8 pages × 128 columns = 1024 bytes
+  Each byte = 8 vertical pixels, LSB = topmost row of that page
+  Pages run top-to-bottom (page 0 = rows 0-7, page 7 = rows 56-63)
+
+Parameters
+  lcd_serve_port  int  8384  HTTP port for the LCD stream
 """
 
 import math
+import queue
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import rclpy
-from mcu_msgs.msg import OledFrame
 from rclpy.node import Node
 
 WIDTH = 128
@@ -26,11 +36,22 @@ def set_pixel(fb: bytearray, x: int, y: int) -> None:
 class OledSineNode(Node):
     def __init__(self):
         super().__init__("oled_sine")
-        self._pub = self.create_publisher(OledFrame, "/mcu/lcd", 10)
+
+        self.declare_parameter("lcd_serve_port", 8384)
+        self._lcd_serve_port = (
+            self.get_parameter("lcd_serve_port").get_parameter_value().integer_value
+        )
+
+        self._lcd_queue: queue.Queue[bytes] = queue.Queue(maxsize=1)
         self._t = 0.0
-        # 10 Hz matches the OLED bridge's hard rate cap
+
+        # 10 Hz matches the OLED update rate
         self._timer = self.create_timer(0.1, self._tick)
-        self.get_logger().info("oled_sine: publishing to /mcu/lcd at 10 Hz")
+
+        self._start_lcd_server()
+        self.get_logger().info(
+            f"oled_sine: serving sine wave on :{self._lcd_serve_port}/lcd_out at 10 Hz"
+        )
 
     def _tick(self):
         fb = bytearray(WIDTH * PAGES)
@@ -41,10 +62,50 @@ class OledSineNode(Node):
             set_pixel(fb, x, y)
             set_pixel(fb, x, y + 1)
 
-        msg = OledFrame()
-        msg.framebuffer = list(fb)
-        self._pub.publish(msg)
+        try:
+            self._lcd_queue.put_nowait(bytes(fb))
+        except queue.Full:
+            pass  # ESP32 hasn't consumed last frame — drop
+
         self._t += 0.2
+
+    def _start_lcd_server(self):
+        """Serve a persistent raw framebuffer stream on lcd_serve_port/lcd_out."""
+        node = self
+
+        class _LcdHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/lcd_out":
+                    self._serve_stream()
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def _serve_stream(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.end_headers()
+                node.get_logger().info("LCD stream connected")
+                try:
+                    while True:
+                        try:
+                            frame = node._lcd_queue.get(timeout=1.0)
+                        except queue.Empty:
+                            continue
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                node.get_logger().info("LCD stream disconnected")
+
+            def log_message(self, fmt, *args):
+                pass  # suppress per-request logs
+
+        server = HTTPServer(("0.0.0.0", self._lcd_serve_port), _LcdHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.get_logger().info(
+            f"HTTP LCD server listening on :{self._lcd_serve_port}"
+        )
 
 
 def main(args=None):

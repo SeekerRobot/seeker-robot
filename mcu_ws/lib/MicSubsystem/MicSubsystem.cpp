@@ -54,7 +54,7 @@ void MicSubsystem::update() {
   uint32_t now = millis();
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO, "[Mic] /audio %s on port %u",
+    Debug::printf(Debug::Level::VERBOSE, "[Mic] /audio %s on port %u",
                   isServerRunning() ? "up" : "down", setup_.http_port_);
   }
 }

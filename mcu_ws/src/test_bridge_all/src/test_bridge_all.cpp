@@ -3,12 +3,15 @@
  * @author Aldem Pido
  * @date 4/3/2026
  * @brief Integration test: WiFi micro-ROS + MicroRosBridge with all features
- * enabled (heartbeat, gyro, battery, lidar, debug log, OLED) + I2S speaker.
+ * enabled (heartbeat, gyro, battery, lidar, debug log) + I2S speaker + OLED.
  *
  * WiFi transport: ESP32WifiSubsystem brings up the network connection before
  * the micro-ROS manager starts. All Debug::printf output is forwarded to
  * /mcu/log via DEBUG_TRANSPORT_MICROROS once the agent is connected.
  * Serial is free for pre-connect debug output (DEBUG_TRANSPORT_SERIAL).
+ *
+ * OLED display fetches 1024-byte framebuffers over HTTP from the host
+ * (AGENT_IP:8384/lcd_out). micro-ROS agent is NOT required for OLED.
  *
  * Build flags (set in this sketch's platformio.ini):
  *   -DDEBUG_TRANSPORT_SERIAL
@@ -18,7 +21,6 @@
  *   -DBRIDGE_ENABLE_BATTERY=1
  *   -DBRIDGE_ENABLE_LIDAR=1
  *   -DBRIDGE_ENABLE_DEBUG=1
- *   -DBRIDGE_ENABLE_OLED=1
  *
  * Verify on host:
  *   ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
@@ -27,9 +29,10 @@
  *   ros2 topic echo /mcu/battery_voltage
  *   ros2 topic hz   /mcu/scan       # ~6 Hz
  *   ros2 topic echo /mcu/log
- *   # Push a test framebuffer (1024 bytes of 0xFF = all pixels on):
- *   ros2 topic pub -1 /mcu/lcd mcu_msgs/msg/OledFrame \
- *       "{framebuffer: [$(python3 -c 'print(",".join(["255"]*1024))')]}"
+ *
+ * OLED (no micro_ros_agent needed):
+ *   ros2 run seeker_display oled_sine_node
+ *   # or: ros2 run seeker_media mp4_player_node
  *
  * Speaker / TTS (seeker_tts node on host, port 8383):
  *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
@@ -70,7 +73,7 @@ static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
-static Subsystem::OledSetup oled_setup(i2c_mutex);
+static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8384);
 
 // LidarSetup holds a HardwareSerial& — Serial2 is a global object, safe here.
 static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
@@ -153,7 +156,6 @@ void setup() {
   bridge_setup.gyro = &gyro;
   bridge_setup.battery = &batt;
   bridge_setup.lidar = &lidar;
-  bridge_setup.oled = &oled;
   static Subsystem::MicroRosBridge bridge(bridge_setup);
 
   manager.registerParticipant(&bridge);

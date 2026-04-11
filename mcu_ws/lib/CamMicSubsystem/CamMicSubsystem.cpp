@@ -83,7 +83,7 @@ void CamMicSubsystem::update() {
   uint32_t now = millis();
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO, "[CamMic] cam=%s(:%u) mic=%s(:%u)",
+    Debug::printf(Debug::Level::VERBOSE, "[CamMic] cam=%s(:%u) mic=%s(:%u)",
                   (camera_ready_ && isCamServerRunning()) ? "up" : "down",
                   setup_.cam_port_,
                   (mic_ready_ && isAudioServerRunning()) ? "up" : "down",
