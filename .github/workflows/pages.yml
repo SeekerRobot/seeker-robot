@@ -1,0 +1,59 @@
+name: Deploy docs to GitHub Pages
+
+# Builds docs/wiki/ with Jekyll and deploys to GitHub Pages whenever the
+# docs source changes on main. The jekyll-relative-links plugin resolves
+# the GitHub-Wiki-style `[Name](Name)` inter-page links to their `.html`
+# counterparts at build time, so we can keep the markdown sources readable
+# on GitHub directly and still get a nice rendered site.
+#
+# Requirements:
+#   - Pages must be enabled for the repo with "Source: GitHub Actions"
+#     (Settings -> Pages -> Build and deployment -> Source).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/wiki/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs/wiki
+          destination: ./_site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

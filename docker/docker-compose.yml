@@ -11,11 +11,14 @@ services:
       - DISPLAY=${DISPLAY_CONFIG}
       - QT_X11_NO_MITSHM=1
       - PLATFORMIO_CORE_DIR=/home/ubuntu/.platformio
+      - FISH_API_KEY=${FISH_API_KEY:-}
+      - FISH_REFERENCE_ID=${FISH_REFERENCE_ID:-}
     volumes:
       # --- Source Code (Synced with Host) ---
       - ../ros2_ws/src:/home/ubuntu/ros2_workspaces/src/seeker_ros:delegated
       - ../ros2_ws/.vscode:/home/ubuntu/ros2_workspaces/.vscode:delegated
       - ../mcu_ws:/home/ubuntu/mcu_workspaces/seeker_mcu:delegated
+      - ../mcu_ws/platformio/network_config.ini:/home/ubuntu/mcu_workspaces/seeker_mcu/platformio/network_config.ini:ro
       - ../ros2_ws/src/mcu_msgs:/home/ubuntu/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs:delegated
       - ../scripts:/home/ubuntu/scripts
 

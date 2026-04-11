@@ -92,6 +92,14 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
 
   /// @brief Set the BNO085 reports.
   void setReports();
+  /// @brief Write the mounting-orientation quaternion to the BNO085 FRS so
+  ///        all sensor outputs are in ROS REP 103 (X=fwd, Y=left, Z=up).
+  ///        Must be called once after begin_I2C() and reset().
+  ///        The value persists in flash through soft resets.
+  void setReorientation();
+  /// @brief Zero the yaw to the robot's current heading while leaving
+  ///        pitch/roll gravity-referenced. Safe to call any time after init().
+  void tareYaw();
   /// @brief Log IMU data.
   void logImuData();
 };

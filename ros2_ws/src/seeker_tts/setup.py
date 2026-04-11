@@ -1,8 +1,7 @@
 from setuptools import find_packages, setup
-import os
 from glob import glob
 
-package_name = "seeker_navigation"
+package_name = "seeker_tts"
 
 setup(
     name=package_name,
@@ -12,18 +11,16 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
         (f"share/{package_name}/launch", glob("launch/*.py")),
-        (f"share/{package_name}/config", glob("config/*.yaml")),
-        (f"share/{package_name}/rviz", glob("rviz/*.rviz")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="seeker",
     maintainer_email="todo@todo.com",
-    description="Ball search and navigation for the Seeker hexapod robot",
+    description="TTS bridge: /audio_transcription -> Fish Audio -> ESP32 speaker",
     license="Apache-2.0",
     entry_points={
         "console_scripts": [
-            "ball_searcher = seeker_navigation.ball_searcher:main",
+            "tts_node = seeker_tts.tts_node:main",
         ],
     },
 )

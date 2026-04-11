@@ -146,6 +146,7 @@ using HeartbeatPublisherState = EmptyState;
 struct GyroPublisherState {
   rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
   sensor_msgs__msg__Imu msg{};
+  char frame_id_buf[10] = "base_link";
   elapsedMillis elapsed{};
 };
 #else

@@ -1,50 +1,63 @@
-"""Real hardware: full autonomy — EKF + SLAM + Nav2 + ball searcher.
+"""Simulation: Full autonomy demo — Gazebo + fake MCU + EKF + SLAM + Nav2 + ball searcher.
 
-The robot uses the BNO085 IMU for tilt-compensated SLAM, then performs
-frontier exploration with Nav2 until it finds and approaches the red ball.
+Self-contained. No other launches required.
 
-Prerequisites (run before this launch):
-  ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
-  # Wait for [create_session] log line (ESP32 connected), then launch this.
-
-Usage:
-  ros2 launch seeker_navigation real_ball_search.launch.py
+The robot performs an initial 360° rotation to seed the SLAM map, then uses
+Nav2 frontier exploration to search for the red ball. When found, it approaches.
 
 Timeline:
-  t=0s  robot_state_publisher
-  t=2s  EKF starts (fuses /mcu/imu → odom->base_footprint with roll/pitch)
-  t=4s  SLAM Toolbox starts
+  t=0s  Gazebo + fake MCU + ROS bridges
+  t=2s  EKF starts (IMU fusion, odom->base_footprint with roll/pitch)
+  t=5s  SLAM Toolbox starts
   t=10s SLAM configured + activated
-  t=13s Nav2 stack (controller, planner, behavior, bt_navigator, smoother)
+  t=13s Nav2 stack starts (controller, planner, behavior, bt_navigator, smoother)
   t=15s Nav2 lifecycle manager activates all nodes
   t=25s ball_searcher starts frontier exploration
 
-If Nav2 goal rejections appear after t=25s, SLAM may not be fully active yet.
-Check: ros2 lifecycle get /slam_toolbox
+Usage:
+  ros2 launch seeker_gazebo sim_ball_search.launch.py
+
+Watch in RViz (Fixed Frame: map):
+  - Map builds as robot rotates
+  - Green path = Nav2 global plan
+  - Blue path  = Nav2 local plan
+  - Costmaps appear once Nav2 is active
 """
 
 import os
 
-import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, LogInfo, TimerAction
+from launch.actions import ExecuteProcess, IncludeLaunchDescription, LogInfo, TimerAction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+import xacro
 
 
 def generate_launch_description():
-    nav_pkg  = get_package_share_directory('seeker_navigation')
-    desc_pkg = get_package_share_directory('seeker_description')
+    desc_pkg   = get_package_share_directory('seeker_description')
+    gz_pkg     = get_package_share_directory('seeker_gazebo')
+    nav_pkg    = get_package_share_directory('seeker_navigation')
+    ros_gz_pkg = get_package_share_directory('ros_gz_sim')
 
     robot_description = xacro.process_file(
         os.path.join(desc_pkg, 'urdf', 'seeker_hexapod.urdf.xacro')
     ).toxml()
 
-    slam_params = os.path.join(nav_pkg, 'config', 'slam_toolbox_params_real.yaml')
+    world_file  = os.path.join(gz_pkg, 'worlds', 'slam_test.sdf')
+    bridge_cfg  = os.path.join(gz_pkg, 'config', 'bridge.yaml')
+    slam_params = os.path.join(gz_pkg, 'config', 'slam_toolbox_params.yaml')
     ekf_params  = os.path.join(nav_pkg, 'config', 'ekf_params.yaml')
-    nav2_params = os.path.join(nav_pkg, 'config', 'nav2_params_real.yaml')
+    nav2_params = os.path.join(nav_pkg, 'config', 'nav2_params.yaml')
 
-    # ── t=0: robot_state_publisher ────────────────────────────────────────────
+    # ── Sim infrastructure (NO gz_odom_bridge — EKF replaces it) ─────────────
+    gz_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(ros_gz_pkg, 'launch', 'gz_sim.launch.py')
+        ),
+        launch_arguments={'gz_args': f'-r {world_file}'}.items(),
+    )
+
     robot_state_pub = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -52,7 +65,30 @@ def generate_launch_description():
         remappings=[('joint_states', '/mcu/joint_states')],
     )
 
-    # ── t=2s: EKF ─────────────────────────────────────────────────────────────
+    gz_spawn = Node(
+        package='ros_gz_sim',
+        executable='create',
+        arguments=['-name', 'seeker', '-topic', '/robot_description',
+                   '-x', '0', '-y', '0', '-z', '0.10'],
+        output='screen',
+    )
+
+    gz_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        parameters=[{'config_file': bridge_cfg, 'use_sim_time': True}],
+        output='screen',
+    )
+
+    fake_mcu = Node(
+        package='seeker_sim',
+        executable='fake_mcu_node',
+        name='fake_mcu_node',
+        parameters=[{'use_sim_time': False}],
+        output='screen',
+    )
+
+    # ── EKF (t=2s) ────────────────────────────────────────────────────────────
     ekf_node = TimerAction(
         period=2.0,
         actions=[
@@ -60,22 +96,22 @@ def generate_launch_description():
                 package='robot_localization',
                 executable='ekf_node',
                 name='ekf_filter_node',
-                parameters=[ekf_params, {'use_sim_time': False}],
+                parameters=[ekf_params, {'use_sim_time': True}],
                 remappings=[('odometry/filtered', '/odom')],
                 output='screen',
             )
         ],
     )
 
-    # ── t=4s: SLAM Toolbox ────────────────────────────────────────────────────
+    # ── SLAM Toolbox (t=5s) ───────────────────────────────────────────────────
     slam_toolbox = TimerAction(
-        period=4.0,
+        period=5.0,
         actions=[
             Node(
                 package='slam_toolbox',
                 executable='async_slam_toolbox_node',
                 name='slam_toolbox',
-                parameters=[slam_params],
+                parameters=[slam_params, {'use_sim_time': True}],
                 output='screen',
             )
         ],
@@ -94,7 +130,7 @@ def generate_launch_description():
         ],
     )
 
-    # ── t=13s: Nav2 nodes ─────────────────────────────────────────────────────
+    # ── Nav2 nodes (t=13s) ────────────────────────────────────────────────────
     nav2_nodes = TimerAction(
         period=13.0,
         actions=[
@@ -125,7 +161,7 @@ def generate_launch_description():
         ],
     )
 
-    # ── t=25s: ball_searcher ──────────────────────────────────────────────────
+    # ── Ball searcher (t=25s) ─────────────────────────────────────────────────
     ball_searcher = TimerAction(
         period=25.0,
         actions=[
@@ -133,7 +169,7 @@ def generate_launch_description():
                 package='seeker_navigation',
                 executable='ball_searcher',
                 name='ball_searcher',
-                parameters=[{'use_sim_time': False}],
+                parameters=[{'use_sim_time': True}],
                 output='screen',
             )
         ],
@@ -144,17 +180,17 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         arguments=['-d', os.path.join(nav_pkg, 'rviz', 'nav2.rviz')],
+        parameters=[{'use_sim_time': True}],
         output='screen',
     )
 
     hint = LogInfo(
         msg='\n'
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
-            '  Real hardware full autonomy starting.\n'
-            '  Prerequisites: micro-ROS agent must be running.\n'
-            '  t=0s  robot_state_publisher\n'
-            '  t=2s  EKF (IMU tilt compensation)\n'
-            '  t=4s  SLAM Toolbox\n'
+            '  Full autonomy demo launching.\n'
+            '  t=0s  Gazebo + fake MCU\n'
+            '  t=2s  EKF (IMU fusion)\n'
+            '  t=5s  SLAM Toolbox\n'
             '  t=10s SLAM activated\n'
             '  t=13s Nav2 stack\n'
             '  t=15s Nav2 lifecycle manager\n'
@@ -164,7 +200,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        gz_sim,
         robot_state_pub,
+        gz_spawn,
+        gz_bridge,
+        fake_mcu,
         ekf_node,
         slam_toolbox,
         slam_activate,

@@ -112,9 +112,24 @@ void MicrorosManager::update() {
       });
       break;
     case AGENT_AVAILABLE:
-      state_ = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
-      if (state_ == WAITING_AGENT) {
+      if (create_entities()) {
+        // Sync ESP32 clock to ROS agent wall time so message stamps use Unix
+        // epoch. Without this, micros()-based stamps are boot-relative
+        // (~seconds) while the EKF runs on wall time (~1.77B seconds), causing
+        // dt overflow.
+        rmw_ret_t sync_ret = rmw_uros_sync_session(1000);
+        if (sync_ret == RMW_RET_OK) {
+          state_ = AGENT_CONNECTED;
+        } else {
+          Debug::printf(Debug::Level::ERROR,
+                        "[uROS] FAIL: rmw_uros_sync_session (%d)",
+                        static_cast<int>(sync_ret));
+          destroy_entities();
+          state_ = WAITING_AGENT;
+        }
+      } else {
         destroy_entities();
+        state_ = WAITING_AGENT;
       }
       break;
     case AGENT_CONNECTED:

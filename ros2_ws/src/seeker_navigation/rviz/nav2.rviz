@@ -25,40 +25,63 @@ Visualization Manager:
         Value: /map
         Reliability Policy: Reliable
         Durability Policy: Transient Local
-      Alpha: 0.7
+      Alpha: 0.5
       Color Scheme: map
-    - Class: rviz_default_plugins/LaserScan
-      Name: LaserScan (sim)
+    - Class: rviz_default_plugins/Map
+      Name: Global Costmap
       Enabled: true
       Topic:
-        Value: /lidar/scan
-        Reliability Policy: Best Effort
-      Size (m): 0.03
-      Color Transformer: FlatColor
-      Color: 255; 0; 0
+        Value: /global_costmap/costmap
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+      Alpha: 0.3
+      Color Scheme: costmap
+    - Class: rviz_default_plugins/Map
+      Name: Local Costmap
+      Enabled: true
+      Topic:
+        Value: /local_costmap/costmap
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Alpha: 0.4
+      Color Scheme: costmap
+    - Class: rviz_default_plugins/Path
+      Name: Global Plan
+      Enabled: true
+      Topic:
+        Value: /plan
+      Color: 0; 200; 0
+      Line Width: 0.03
+    - Class: rviz_default_plugins/Path
+      Name: Local Plan
+      Enabled: true
+      Topic:
+        Value: /local_plan
+      Color: 0; 0; 200
+      Line Width: 0.02
     - Class: rviz_default_plugins/LaserScan
-      Name: LaserScan (mcu)
-      Enabled: false
+      Name: LaserScan
+      Enabled: true
       Topic:
         Value: /mcu/scan
         Reliability Policy: Best Effort
       Size (m): 0.03
       Color Transformer: FlatColor
-      Color: 0; 0; 255
+      Color: 255; 0; 0
     - Class: rviz_default_plugins/Image
       Name: Camera Image
       Enabled: true
       Topic:
         Value: /camera/image
   Global Options:
-    Fixed Frame: odom
+    Fixed Frame: map
     Frame Rate: 30
   Views:
     Current:
       Class: rviz_default_plugins/TopDownOrtho
-      Scale: 100
+      Scale: 80
       X: 0
       Y: 0
 Window Geometry:
-  Width: 1200
-  Height: 800
+  Width: 1400
+  Height: 900
