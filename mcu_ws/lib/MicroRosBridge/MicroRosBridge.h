@@ -104,11 +104,11 @@ class LidarSubsystem;
 
 struct BridgeConfig {
   static constexpr bool kEnableHeartbeat = BRIDGE_ENABLE_HEARTBEAT;
-  static constexpr bool kEnableGyro      = BRIDGE_ENABLE_GYRO;
-  static constexpr bool kEnableBattery   = BRIDGE_ENABLE_BATTERY;
-  static constexpr bool kEnableServo     = BRIDGE_ENABLE_SERVO;
-  static constexpr bool kEnableLidar     = BRIDGE_ENABLE_LIDAR;
-  static constexpr bool kEnableDebug     = BRIDGE_ENABLE_DEBUG;
+  static constexpr bool kEnableGyro = BRIDGE_ENABLE_GYRO;
+  static constexpr bool kEnableBattery = BRIDGE_ENABLE_BATTERY;
+  static constexpr bool kEnableServo = BRIDGE_ENABLE_SERVO;
+  static constexpr bool kEnableLidar = BRIDGE_ENABLE_LIDAR;
+  static constexpr bool kEnableDebug = BRIDGE_ENABLE_DEBUG;
 };
 
 // ---- Zero-cost placeholder for disabled features

@@ -154,10 +154,9 @@ void OledSubsystem::lcdFetchTask(void* arg) {
 
     if (now - self->last_log_ms_ >= 1000) {
       self->last_log_ms_ = now;
-      Debug::printf(Debug::Level::VERBOSE,
-                    "[OLED] Polling http://%s:%u/lcd_out",
-                    self->setup_.host_ip_.toString().c_str(),
-                    self->setup_.lcd_port_);
+      Debug::printf(
+          Debug::Level::VERBOSE, "[OLED] Polling http://%s:%u/lcd_out",
+          self->setup_.host_ip_.toString().c_str(), self->setup_.lcd_port_);
     }
 
     if (now - self->last_fail_ms_ < kRetryIntervalMs) {
@@ -175,8 +174,8 @@ void OledSubsystem::fetchFrames() {
            setup_.host_ip_.toString().c_str(), setup_.lcd_port_);
 
   esp_http_client_config_t cfg = {};
-  cfg.url         = url;
-  cfg.timeout_ms  = kHttpTimeoutMs;
+  cfg.url = url;
+  cfg.timeout_ms = kHttpTimeoutMs;
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (!client) return false;
@@ -199,9 +198,8 @@ void OledSubsystem::fetchFrames() {
   uint8_t buf[kBufferSize];
   int got = 0;
   while (true) {
-    int r = esp_http_client_read(client,
-                                  reinterpret_cast<char*>(buf) + got,
-                                  kBufferSize - got);
+    int r = esp_http_client_read(client, reinterpret_cast<char*>(buf) + got,
+                                 kBufferSize - got);
     if (r <= 0) break;
     got += r;
     if (got >= static_cast<int>(kBufferSize)) {
