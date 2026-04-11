@@ -115,6 +115,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-requests && \
     rm -rf /var/lib/apt/lists/*
 
+# Vision dependencies (ultralytics/YOLO + deepface emotion detection)
+RUN pip install --break-system-packages \
+    ultralytics \
+    deepface \
+    tf-keras
+
 FROM base AS dev
 
 # Switch to root to install Gazebo Harmonic and required tools, then switch back
