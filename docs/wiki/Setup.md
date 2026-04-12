@@ -151,7 +151,7 @@ colcon build
 source install/setup.bash
 ```
 
-This builds `mcu_msgs`, `seeker_description`, `seeker_gazebo`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, and `test_package`. Build artifacts go into named Docker volumes (`ros2_build`, `ros2_install`, `ros2_log`) so they survive container restarts without cluttering the host.
+This builds `mcu_msgs`, `seeker_description`, `seeker_display`, `seeker_gazebo`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, and `test_package`. Build artifacts go into named Docker volumes (`ros2_build`, `ros2_install`, `ros2_log`) so they survive container restarts without cluttering the host.
 
 `source install/setup.bash` must be rerun in every new shell — or add it to `~/.bashrc` alongside `source /opt/ros/jazzy/setup.bash` (the Dockerfile adds only the ROS 2 base source automatically).
 
@@ -164,7 +164,7 @@ Run these inside the container after the first build to make sure everything is 
 ```bash
 # ROS 2 finds the packages
 ros2 pkg list | grep seeker
-# Expected: seeker_description seeker_gazebo seeker_navigation seeker_sim seeker_tts ...
+# Expected: seeker_description seeker_display seeker_gazebo seeker_media seeker_navigation seeker_sim seeker_tts ...
 
 # micro-ROS agent is installed
 ros2 run micro_ros_agent micro_ros_agent --help

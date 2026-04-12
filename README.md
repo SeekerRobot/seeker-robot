@@ -101,6 +101,8 @@ seeker-robot/
 │       ├── mcu_msgs/           # Shared message definitions (ROS2 ↔ micro-ROS)
 │       ├── seeker_description/ # URDF, robot_state_publisher launch
 │       ├── seeker_gazebo/      # Gazebo Harmonic simulation
+│       ├── seeker_display/     # OLED display nodes (HTTP LCD server + demos)
+│       ├── seeker_media/       # MP4 player node (video → OLED + audio → speaker)
 │       ├── seeker_navigation/  # Nav2, SLAM, EKF configs, mission planner
 │       ├── seeker_sim/         # Simulated MCU node (fake_mcu_node)
 │       ├── seeker_tts/         # Text-to-speech node (Fish Audio API)
@@ -109,7 +111,7 @@ seeker-robot/
 │   ├── platformio/             # Shared board/library config (inherited by all sketches)
 │   ├── src/                    # Firmware sketches (each is a standalone PlatformIO project)
 │   ├── lib/                    # Shared C++ libraries
-│   └── extra_packages/         # mcu_msgs for micro-ROS build (bind-mounted from ros2_ws)
+│   └── platformio/extra_packages/ # mcu_msgs for micro-ROS build (bind-mounted from ros2_ws)
 └── docker/               # Containerized dev environment
     ├── Dockerfile              # Multi-stage: base → dev/prod
     ├── docker-compose.yml
@@ -124,7 +126,9 @@ seeker-robot/
 |---------|---------|
 | `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg`, `OledFrame.msg`) |
 | `seeker_description` | URDF/Xacro hexapod model, `display.launch.py` for RViz |
+| `seeker_display` | OLED display nodes: `oled_sine_node` (animated demo) + `lcd_http_server` (HTTP framebuffer server on port 8384 for the ESP32 OLED) |
 | `seeker_gazebo` | Gazebo Harmonic simulation, sensor bridges, simulation launch files |
+| `seeker_media` | MP4 player: decodes video → OLED framebuffers (HTTP :8384) + audio → PCM stream (HTTP :8383), with A/V sync |
 | `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` mission planner, real robot launch |
 | `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
 | `seeker_tts` | Fish Audio TTS + local WAV file playback, re-served as a chunked HTTP PCM stream for the ESP32 speaker |
@@ -136,10 +140,12 @@ seeker-robot/
 
 | Sketch | Purpose |
 |--------|---------|
-| `test_bridge_all` | All sensor publishers enabled (heartbeat, IMU, battery, LiDAR, debug) plus the OLED `/mcu/lcd` subscriber. Use for SLAM/navigation testing. |
+| `test_bridge_all` | All sensor publishers (heartbeat, IMU, battery, LiDAR, debug) + I2S speaker + OLED HTTP display. Use for SLAM/navigation testing. |
 | `test_bridge_gait` | Gait + micro-ROS. Subscribes to `/cmd_vel` for walking. No sensor publishing. |
-| `test_bridge_oled` | Isolated micro-ROS bridge test for the OLED subscriber — streams `/mcu/lcd` framebuffers to the SSD1306 at a 10 Hz cap. |
-| `test_all` | Integration test for all subsystems together |
+| `test_bridge_oled` | WiFi + OLED HTTP streaming test (no micro-ROS). Fetches framebuffers from host at `AGENT_IP:8384/lcd_out`. |
+| `test_bridge_media` | Placeholder for media bridge test (platformio.ini only, no source yet). |
+| `test_all` | Full integration: micro-ROS bridge + camera + mic + speaker + OLED, all running concurrently. |
+| `build_microros` | Placeholder sketch for pre-building the micro-ROS library. |
 | `test_threaded_blink` | ThreadedSubsystem / FreeRTOS task smoke test |
 | `test_fast_led_raw` | FastLED SK6812 RGB LED test |
 | `test_raw_cam` | Raw camera I2C/PSRAM test (no subsystem abstraction) |
@@ -174,7 +180,8 @@ seeker-robot/
 | `/mcu/log` | `std_msgs/String` | event | BEST_EFFORT | ESP32 → ROS | Debug messages from firmware |
 | `/cmd_vel` | `geometry_msgs/Twist` | on demand | BEST_EFFORT | ROS → ESP32 | Walking velocity (vx, vy, wz) |
 | `/mcu/hexapod_cmd` | `mcu_msgs/HexapodCmd` | on demand | BEST_EFFORT | ROS → ESP32 | Gait mode (STAND/WALK/SIT), body height/pitch/roll |
-| `/mcu/lcd` | `mcu_msgs/OledFrame` | ≤10 Hz | BEST_EFFORT | ROS → ESP32 | Raw 1024-byte SSD1306 framebuffer for the 128×64 OLED display |
+| `/media/play` | `std_msgs/String` | on demand | — | ROS internal | Trigger MP4 playback (absolute file path) |
+| `/media/stop` | `std_msgs/Empty` | on demand | — | ROS internal | Stop current MP4 playback |
 | `/odom` | `nav_msgs/Odometry` | 50 Hz | — | EKF output | EKF-estimated odometry; orientation / roll-pitch TF from IMU |
 | `/map` | `nav_msgs/OccupancyGrid` | ~0.2 Hz | TRANSIENT_LOCAL | SLAM output | 5 cm/cell occupancy grid |
 
@@ -402,7 +409,7 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
 |-----------|----------------|------|
 | `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | Bind mount |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | Bind mount |
-| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount |
+| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | Bind mount |
 | Named volumes | `~/ros2_workspaces/{build,install,log}` | Docker volume |
 | Named volume | `~/.platformio` | Docker volume |
 | Named volume | `~/mcu_workspaces/seeker_mcu/libs_external` | Docker volume |

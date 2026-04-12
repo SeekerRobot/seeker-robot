@@ -14,7 +14,7 @@ source ~/ros2_workspaces/install/setup.bash
 You must have built at least:
 
 ```bash
-colcon build --packages-select mcu_msgs seeker_description seeker_sim seeker_gazebo seeker_navigation
+colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation
 ```
 
 ---

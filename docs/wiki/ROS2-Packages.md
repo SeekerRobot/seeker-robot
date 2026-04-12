@@ -12,7 +12,7 @@ colcon build --symlink-install --packages-select <pkg> # symlink so Python edits
 source install/setup.bash
 ```
 
-`--symlink-install` is especially handy for the Python packages (`seeker_navigation`, `seeker_sim`, `seeker_tts`) because you don't need to rebuild for every edit.
+`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`) because you don't need to rebuild for every edit.
 
 ---
 
@@ -25,7 +25,7 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 **Messages** (`msg/`):
 
 - `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner.
-- `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, column-major, 8 pages) framebuffer for the onboard OLED. Published on `/mcu/lcd`; consumed by the `BRIDGE_ENABLE_OLED` subscriber in the MCU `MicroRosBridge` at a hard 10 Hz cap.
+- `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, page-major, 8 pages) framebuffer for the onboard OLED. Used by `seeker_display` and `seeker_media` to generate frames; the ESP32 receives them via plain HTTP (`GET /lcd_out` on port 8384), not via micro-ROS.
 - `ExampleMsg.msg` — scaffolding example.
 
 **Services** (`srv/`):
@@ -36,6 +36,33 @@ Any change here **must** be rebuilt in both workspaces — see [Architecture →
 
 ```bash
 colcon build --packages-select mcu_msgs
+```
+
+---
+
+## `seeker_display`
+
+**Build type:** `ament_python`
+
+OLED display nodes and the shared HTTP LCD server used by `seeker_media`. The ESP32 `OledSubsystem` connects as an HTTP client to `GET /lcd_out` on port 8384 and reads 1024-byte SSD1306 framebuffers continuously — no micro-ROS agent required.
+
+**Nodes:**
+
+- `oled_sine` (`seeker_display/oled_sine_node.py`) — generates an animated sine wave at 10 Hz and serves it via the LCD HTTP server. Good for verifying the OLED HTTP pipeline end-to-end.
+
+**Modules:**
+
+- `lcd_http_server` (`seeker_display/lcd_http_server.py`) — shared helper: starts a daemon-thread HTTP server on `0.0.0.0:<port>` serving `GET /lcd_out` as a persistent raw byte stream of 1024-byte framebuffers. Used by both `oled_sine_node` and `seeker_media/mp4_player_node`.
+
+**Parameters** (on `oled_sine`):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `lcd_serve_port` | `8384` | HTTP port for the LCD stream |
+
+```bash
+colcon build --packages-select seeker_display
+ros2 run seeker_display oled_sine
 ```
 
 ---
@@ -98,6 +125,44 @@ All Gazebo Harmonic simulation launches, plus the small helpers that bridge Gaze
 ```bash
 colcon build --packages-select mcu_msgs seeker_description seeker_sim seeker_gazebo
 ros2 launch seeker_gazebo sim_teleop.launch.py
+```
+
+---
+
+## `seeker_media`
+
+**Build type:** `ament_python`
+
+MP4 media player node. Decodes video to 128×64 SSD1306 framebuffers served over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync. Depends on `seeker_display` (uses `lcd_http_server`).
+
+**Nodes:**
+
+- `mp4_player` (`seeker_media/mp4_player_node.py`) — subscribes to `/media/play` (`std_msgs/String`, absolute file path) to trigger playback and `/media/stop` (`std_msgs/Empty`) to abort. Video frames are dithered to 1-bit and served via the LCD HTTP server on port 8384. Audio is extracted via `ffmpeg`, optionally EQ'd with a low-shelf filter, and served on port 8383 (same port as `seeker_tts` — don't run both simultaneously). The video pipeline blocks until the ESP32 audio client connects so the first frame and first audio byte arrive together.
+
+**Parameters:**
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `serve_port` | `8383` | HTTP port for audio (shared with `seeker_tts`) |
+| `lcd_serve_port` | `8384` | HTTP port for OLED LCD stream |
+| `threshold` | `127` | Greyscale → 1-bit cutoff (0–255) |
+| `audio_lead_ms` | `0` | ms to delay video after audio connects (compensates for I2S DMA latency) |
+| `eq_bass_hz` | `300.0` | Low-shelf EQ corner frequency |
+| `eq_bass_db` | `0.0` | Low-shelf EQ gain (negative = cut bass) |
+
+**Launch:**
+
+- `launch/media.launch.py` — starts `mp4_player` with `audio_lead_ms=200`.
+
+**Video files** (`video/`):
+
+- `badapple.mp4`, `badapple.mov` — demo media (stored via Git LFS).
+
+```bash
+colcon build --packages-select seeker_display seeker_media
+ros2 launch seeker_media media.launch.py
+# in another terminal:
+ros2 topic pub /media/play std_msgs/String "data: '/path/to/video.mp4'" --once
 ```
 
 ---
@@ -209,10 +274,16 @@ Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS 
 | `fish_model` | `"s2-pro"` | Fish Audio model name. |
 | `serve_port` | `8383` | HTTP port for the `/audio_out` endpoint. |
 | `sample_rate` | `16000` | Passed to the Fish Audio request. |
+| `eq_bass_hz` | `300.0` | Low-shelf EQ corner frequency. |
+| `eq_bass_db` | `0.0` | Low-shelf EQ gain (negative = cut bass). |
 
 **Launch:**
 
 - `launch/tts.launch.py` — starts `tts_node` with `sample_rate` and `fish_model` overrides.
+
+**Bundled sounds** (`sounds/`):
+
+- `intro.wav` — startup jingle. Play with: `ros2 topic pub /audio_play_file std_msgs/String "data: '<install_path>/sounds/intro.wav'" --once`
 
 **Environment variables** (set in `docker/.env`):
 
@@ -246,6 +317,7 @@ ros2 launch test_package test_node.launch.py
 ```
 seeker_gazebo ──► seeker_description
 seeker_gazebo ──► seeker_sim
+seeker_media  ──► seeker_display
 seeker_navigation ──► seeker_description
 every ROS node importing HexapodCmd ──► mcu_msgs
 ```

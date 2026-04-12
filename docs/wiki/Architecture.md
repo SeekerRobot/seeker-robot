@@ -33,7 +33,7 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │       │  Publishes              Subscribes                                  │
 │       │  /mcu/imu                /cmd_vel           ◄── Nav2 / teleop       │
 │       │  /mcu/scan               /mcu/hexapod_cmd   ◄── mission planner     │
-│       │  /mcu/battery_voltage    /mcu/lcd           ◄── OLED framebuffer    │
+│       │  /mcu/battery_voltage                                               │
 │       │  /mcu/heartbeat                                                     │
 │       │  /mcu/log                                                           │
 │       ▼                                                                     │
@@ -49,14 +49,16 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │  ball_searcher (mission planner)                                            │
 │       ◄── /map, camera feed   ──► NavigateToPose goals                      │
 │                                                                             │
-│  seeker_tts  ──► HTTP /audio  ──►  ESP32 SpeakerSubsystem                   │
+│  seeker_tts     ──► HTTP :8383 /audio_out ──► ESP32 SpeakerSubsystem         │
+│  seeker_display ──► HTTP :8384 /lcd_out   ──► ESP32 OledSubsystem           │
+│  seeker_media   ──► HTTP :8383 + :8384    ──► ESP32 speaker + OLED          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Key observations:
 
 - The **micro-ROS agent runs inside the Docker container**, not on the ESP32. The firmware acts as an XRCE-DDS client. This is why you must start `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888` **before** the firmware tries to connect.
-- **Camera and mic do not go through micro-ROS.** They are too fat for XRCE-DDS to handle on an ESP32-S3. Instead the firmware exposes raw HTTP endpoints (`/stream` on :80, `/audio` on :81), and ROS-side consumers (e.g. `ball_searcher`, `seeker_tts`) pull from those directly.
+- **Camera, mic, speaker, and OLED do not go through micro-ROS.** They are too fat for XRCE-DDS to handle on an ESP32-S3. The firmware exposes HTTP endpoints for camera (`/stream` :80) and mic (`/audio` :81), while the speaker and OLED act as HTTP *clients* that pull data from the host: `SpeakerSubsystem` fetches PCM from `:8383/audio_out` (served by `seeker_tts` or `seeker_media`), and `OledSubsystem` fetches framebuffers from `:8384/lcd_out` (served by `seeker_display` or `seeker_media`).
 - **TF compensation for hexapod body tilt is implicit.** The BNO085 game rotation vector feeds roll/pitch into EKF, which bakes them into `odom → base_footprint`. SLAM Toolbox then un-tilts LiDAR rays automatically when projecting into the `map` frame — no custom filter node is required.
 
 ---
@@ -88,6 +90,8 @@ seeker-robot/
 │       ├── seeker_gazebo/       # sim_*.launch.py + bridge.yaml + worlds/
 │       ├── seeker_navigation/   # ball_searcher + EKF/SLAM/Nav2 configs + real_*.launch.py
 │       ├── seeker_sim/          # fake_mcu_node
+│       ├── seeker_display/      # OLED display nodes + HTTP LCD server
+│       ├── seeker_media/        # MP4 player (video → OLED + audio → speaker)
 │       ├── seeker_tts/          # Fish Audio TTS node + tts.launch.py
 │       └── test_package/        # Tiny CI-sanity C++ node
 ├── mcu_ws/
@@ -95,10 +99,10 @@ seeker-robot/
 │   │   ├── platformio.ini               # Shared base config (board envs, lib_base)
 │   │   ├── network_config.ini           # WiFi creds + agent IP (gitignored)
 │   │   └── network_config.example.ini   # Template
-│   ├── src/                             # 21 per-sketch PlatformIO projects
+│   ├── src/                             # 26 per-sketch PlatformIO projects
 │   ├── lib/                             # Shared subsystems (see below)
 │   ├── libs_external/esp32/             # Pre-vendored micro-ROS PlatformIO lib
-│   └── extra_packages/mcu_msgs/         # Bind-mounted from ros2_ws/src/mcu_msgs
+│   └── platformio/extra_packages/mcu_msgs/ # Bind-mounted from ros2_ws/src/mcu_msgs
 └── docker/
     ├── Dockerfile                       # Multi-stage base → dev/prod
     ├── Dockerfile.init-bootstrap        # Volume chown + libs_external seed
@@ -116,7 +120,7 @@ seeker-robot/
 | `ros2_ws/.vscode/` | `~/ros2_workspaces/.vscode/` | bind (delegated) | Shared VS Code settings |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | bind (delegated) | Edit firmware from the host |
 | `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | bind (ro) | Secret-ish WiFi creds |
-| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | bind (delegated) | Makes `mcu_msgs` visible to micro-ROS codegen |
+| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | bind (delegated) | Makes `mcu_msgs` visible to micro-ROS codegen |
 | `scripts/` | `~/scripts/` | bind | Utility scripts |
 | `/dev`, `/sys`, `/tmp/.X11-unix` | same | bind | USB, GPIO, X server |
 | (named) `ros2_build` | `~/ros2_workspaces/build` | volume | colcon build artifacts |
@@ -149,7 +153,7 @@ All subsystems that share a resource (I²C bus, the micro-ROS transport, publish
 
 ## The `MicroRosBridge` compile-time plugin pattern
 
-A single `MicroRosBridge` instance (see `mcu_ws/lib/MicroRosBridge/`) owns every ROS publisher (and the OLED subscriber) the robot exposes. Non-ROS-aware subsystems provide thread-safe getters; the bridge reads them and publishes at configured rates. Incoming frames on `/mcu/lcd` are handed to the `OledSubsystem` through a fixed-size FreeRTOS queue so the micro-ROS executor callback never blocks on I²C.
+A single `MicroRosBridge` instance (see `mcu_ws/lib/MicroRosBridge/`) owns every ROS publisher the robot exposes. Non-ROS-aware subsystems provide thread-safe getters; the bridge reads them and publishes at configured rates.
 
 ```
 GyroSubsystem ─────┐
@@ -167,8 +171,9 @@ Each publisher is **gated by a preprocessor flag** so disabled subsystems cost z
 | `BRIDGE_ENABLE_BATTERY=1` | `/mcu/battery_voltage` (`std_msgs/Float32`, 1 Hz) |
 | `BRIDGE_ENABLE_LIDAR=1` | `/mcu/scan` (`sensor_msgs/LaserScan`, ~6 Hz, capped at 20 Hz) |
 | `BRIDGE_ENABLE_DEBUG=1` | `/mcu/log` (`std_msgs/String`, event-driven) |
-| `BRIDGE_ENABLE_OLED=1` | **Subscribes** to `/mcu/lcd` (`mcu_msgs/OledFrame`, 1024-byte SSD1306 framebuffers) and forwards frames to `OledSubsystem` via an internal FreeRTOS queue at a hard 10 Hz cap |
 | `BRIDGE_ENABLE_SERVO=1` | Reserved (servo telemetry — currently stubbed) |
+
+> **OLED display** is **not** part of the bridge. `OledSubsystem` runs its own HTTP client that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8384). The host-side server is provided by `seeker_display` (demo sine wave) or `seeker_media` (MP4 playback). No micro-ROS agent is required for the OLED.
 
 When a flag is `0`, the corresponding state struct inside `MicroRosBridge` is a no-op placeholder via `std::conditional_t<..., FooPublisherState, EmptyState>` — the publisher is completely absent from the binary.
 
@@ -212,7 +217,7 @@ void publishAll();                    // called under the transport mutex; must 
 
 ## How `mcu_msgs` flows between workspaces
 
-`mcu_msgs` lives in `ros2_ws/src/mcu_msgs/` as a standard `ament_cmake` package with `.msg`/`.srv` files. Docker Compose bind-mounts the same directory into the MCU workspace at `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/`, which is where the micro-ROS build tooling looks for extra packages when generating the firmware's typesupport.
+`mcu_msgs` lives in `ros2_ws/src/mcu_msgs/` as a standard `ament_cmake` package with `.msg`/`.srv` files. Docker Compose bind-mounts the same directory into the MCU workspace at `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/`, which is where the micro-ROS build tooling looks for extra packages when generating the firmware's typesupport.
 
 When you edit a message:
 

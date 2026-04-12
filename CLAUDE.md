@@ -9,11 +9,13 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
 ## Architecture
 
 - **`ros2_ws/`** — ROS 2 colcon workspace. Packages live in `ros2_ws/src/`:
-  - `mcu_msgs` — Custom ROS 2 message/service definitions (`.msg`/`.srv` files) shared between ROS 2 nodes and micro-ROS MCUs. Also mounted into `mcu_ws/extra_packages/` by Docker so micro-ROS firmware can use the same interfaces.
+  - `mcu_msgs` — Custom ROS 2 message/service definitions (`.msg`/`.srv` files) shared between ROS 2 nodes and micro-ROS MCUs. Also mounted into `mcu_ws/platformio/extra_packages/` by Docker so micro-ROS firmware can use the same interfaces.
   - `seeker_description` — URDF/Xacro hexapod model and `robot_state_publisher` launch.
   - `seeker_gazebo` — Gazebo Harmonic simulation, sensor bridges, and simulation launch files.
   - `seeker_navigation` — Nav2, SLAM Toolbox, EKF configs, and `ball_searcher` mission planner.
   - `seeker_sim` — `fake_mcu_node`: simulates ESP32 gait for testing without hardware.
+  - `seeker_display` — OLED display nodes: `oled_sine_node` (animated sine wave demo) and `lcd_http_server` (shared helper that serves SSD1306 framebuffers over HTTP on port 8384 for the ESP32 `OledSubsystem`).
+  - `seeker_media` — MP4 media player node (`mp4_player_node`): decodes video to 128×64 SSD1306 framebuffers streamed over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync.
   - `seeker_tts` — Fish Audio TTS node plus a local-WAV playback topic, both re-served as an HTTP PCM stream for the ESP32 `SpeakerSubsystem`.
   - `test_package` — Minimal C++ ROS 2 node for workflow verification.
 - **`mcu_ws/`** — PlatformIO workspace for ESP32 firmware. Uses micro-ROS WiFi transport (Jazzy distro). Multi-project layout:
@@ -22,7 +24,7 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `src/<sketch>/` — Each sketch is a standalone PlatformIO project with its own `platformio.ini` and `src/` directory.
   - `lib/` — Shared libraries available to all sketches via `lib_extra_dirs`.
   - `libs_external/esp32/micro_ros_platformio/` — micro-ROS PlatformIO library (pre-vendored).
-  - `extra_packages/` — Extra ROS packages (including `mcu_msgs`) needed at micro-ROS build time.
+  - `platformio/extra_packages/` — Extra ROS packages (including `mcu_msgs`) needed at micro-ROS build time.
 - **`docker/`** — Containerized dev environment:
   - `Dockerfile` — Multi-stage build (`base` → `dev`/`prod`). Base installs micro-ROS agent, PlatformIO, ROS 2 Jazzy. `dev` adds Gazebo Harmonic, RViz, rqt.
   - `Dockerfile.init-bootstrap` — One-shot init container that chowns named volumes and seeds `libs_external` into the `mcu_lib_external` volume.
@@ -91,7 +93,7 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
 |---|---|---|
 | `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | Source code (bind mount) |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | MCU firmware (bind mount) |
-| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/extra_packages/mcu_msgs/` | Bind mount for micro-ROS build |
+| `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | Bind mount for micro-ROS build |
 | `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | Network config (read-only) |
 | `scripts/` | `~/scripts/` | Utility scripts (bind mount) |
 | Named volumes | `~/ros2_workspaces/{build,install,log}` | colcon artifacts |
@@ -121,7 +123,7 @@ The manager runs a 4-state reconnection machine: `WAITING_AGENT → AGENT_AVAILA
 ### MicroRosBridge — compile-time plugin pattern (`mcu_ws/lib/MicroRosBridge/`)
 `MicroRosBridge` implements `IMicroRosParticipant` and is the sole owner of all hardware publishers. Non-ROS-aware subsystems (gyro, battery, lidar) expose thread-safe getters; the bridge reads them and publishes at configured rates.
 
-Each publisher/subscriber is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEARTBEAT`, `BRIDGE_ENABLE_GYRO`, `BRIDGE_ENABLE_BATTERY`, `BRIDGE_ENABLE_SERVO`, `BRIDGE_ENABLE_LIDAR`, `BRIDGE_ENABLE_DEBUG`, `BRIDGE_ENABLE_OLED`. Disabled entries cost zero RAM — the state struct becomes an `EmptyState` placeholder via `std::conditional_t`. `BRIDGE_ENABLE_OLED=1` is the only current *subscriber* on the bridge: it listens on `/mcu/lcd` (`mcu_msgs/OledFrame`, 1024-byte SSD1306 framebuffers) and hands frames to `OledSubsystem::setFramebuffer()` through a FreeRTOS queue at a hard 10 Hz cap. To add a new subsystem publisher:
+Each publisher is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEARTBEAT`, `BRIDGE_ENABLE_GYRO`, `BRIDGE_ENABLE_BATTERY`, `BRIDGE_ENABLE_SERVO`, `BRIDGE_ENABLE_LIDAR`, `BRIDGE_ENABLE_DEBUG`. Disabled publishers cost zero RAM — the state struct becomes an `EmptyState` placeholder via `std::conditional_t`. The OLED display is **not** part of the bridge — `OledSubsystem` runs its own HTTP client that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8384, served by `seeker_display` or `seeker_media`). To add a new subsystem publisher:
 
 1. Add `#ifndef BRIDGE_ENABLE_FOO / #define BRIDGE_ENABLE_FOO 0` in `MicroRosBridge.h`
 2. Conditionally include the subsystem header and define `FooPublisherState`
@@ -136,12 +138,13 @@ Each publisher/subscriber is gated by a preprocessor flag (default 0): `BRIDGE_E
 - `test_raw_*` — low-level hardware tests with no subsystem abstraction (e.g., raw camera I2C, raw PDM mic)
 - `test_all` — integration test for all subsystems together
 - `test_threaded_blink` — ThreadedSubsystem / FreeRTOS task smoke test
+- `build_microros` — placeholder sketch used only to pre-build the micro-ROS library
 - `main` — placeholder for full system integration (currently empty)
 
 ## Conventions
 
 - **Commit messages**: Conventional Commits enforced via commitlint (`@commitlint/config-conventional`). Use prefixes like `feat:`, `fix:`, `docs:`, `chore:`, etc.
 - **ROS 2 distro**: Jazzy (matches micro-ROS distro setting in `platformio.ini`).
-- **`mcu_msgs` is shared**: Any changes to message definitions in `ros2_ws/src/mcu_msgs/` must be rebuilt on both the ROS 2 side (`colcon build --packages-select mcu_msgs`) and the MCU side (`pio run` with the extra_packages symlink).
+- **`mcu_msgs` is shared**: Any changes to message definitions in `ros2_ws/src/mcu_msgs/` must be rebuilt on both the ROS 2 side (`colcon build --packages-select mcu_msgs`) and the MCU side (`pio run` — the bind-mount at `platformio/extra_packages/mcu_msgs` picks up changes automatically).
 - **Board environments**: `esp32s3sense` (Seeed XIAO ESP32-S3, default) and `esp32dev` (generic ESP32-WROOM-32). Pin definitions are in `mcu_ws/lib/RobotConfig/RobotConfig.h`, gated by `ENV_ESP32S3SENSE` / `ENV_ESP32DEV` macros set by the board's build flags.
 - **`test_sub_*` sketches** exclude `libs_external/esp32` from `lib_extra_dirs` to avoid pulling in micro-ROS; they set their own minimal `platformio.ini` env blocks with only `${common.lib_base}` and `../../lib/`.
