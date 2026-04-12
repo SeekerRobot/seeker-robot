@@ -1,7 +1,6 @@
 from setuptools import find_packages, setup
-from glob import glob
 
-package_name = "seeker_tts"
+package_name = "seeker_media"
 
 setup(
     name=package_name,
@@ -10,18 +9,17 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", glob("launch/*.py")),
-        (f"share/{package_name}/sounds", glob("sounds/*.wav")),
+        (f"share/{package_name}/launch", ["launch/media.launch.py"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="seeker",
     maintainer_email="todo@todo.com",
-    description="TTS bridge: /audio_transcription -> Fish Audio -> ESP32 speaker",
+    description="MP4 media player node for Seeker robot",
     license="Apache-2.0",
     entry_points={
         "console_scripts": [
-            "tts_node = seeker_tts.tts_node:main",
+            "mp4_player = seeker_media.mp4_player_node:main",
         ],
     },
 )

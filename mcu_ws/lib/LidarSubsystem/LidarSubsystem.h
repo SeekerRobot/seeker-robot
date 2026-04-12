@@ -137,6 +137,9 @@ class LidarSubsystem : public Subsystem::ThreadedSubsystem {
 
   mutable Threads::Mutex data_mutex_;
   bool initialized_ = false;
+  uint32_t last_log_ms_ = 0;
+
+  static constexpr uint32_t kLogIntervalMs = 1000;
 
   /// Set in init(); used by static C callback stubs.
   static LidarSubsystem* instance_;

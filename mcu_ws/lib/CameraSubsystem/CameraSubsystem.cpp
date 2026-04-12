@@ -51,7 +51,7 @@ void CameraSubsystem::update() {
   uint32_t now = millis();
   if (now - last_log_ms_ >= kLogIntervalMs) {
     last_log_ms_ = now;
-    Debug::printf(Debug::Level::INFO, "[Camera] /cam %s on port %u",
+    Debug::printf(Debug::Level::VERBOSE, "[Camera] /cam %s on port %u",
                   isServerRunning() ? "up" : "down", setup_.port_);
   }
 }

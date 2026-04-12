@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     yq \
     git-lfs \
     pipx \
+    ffmpeg \
     # Qt/X11 runtime dependencies
     libxcb1 \
     libx11-xcb1 \

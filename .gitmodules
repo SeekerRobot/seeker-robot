@@ -2,3 +2,31 @@
 	path = mcu_ws/libs_external/esp32/micro_ros_platformio
 	url = https://github.com/IEEE-UCF/micro_ros_platformio.git
 	branch = new
+[submodule "mcu_ws/lib/FastLED"]
+	path = mcu_ws/lib/FastLED
+	url = https://github.com/FastLED/FastLED.git
+[submodule "mcu_ws/lib/LDS"]
+	path = mcu_ws/lib/LDS
+	url = https://github.com/kaiaai/LDS.git
+[submodule "mcu_ws/lib/NimBLE-Arduino"]
+	path = mcu_ws/lib/NimBLE-Arduino
+	url = https://github.com/h2zero/NimBLE-Arduino
+[submodule "mcu_ws/lib/elapsedMillis"]
+	path = mcu_ws/lib/elapsedMillis
+	url = https://github.com/pfeerick/elapsedMillis.git
+[submodule "mcu_ws/lib/ssd1306"]
+	path = mcu_ws/lib/ssd1306
+	url = https://github.com/lexus2k/ssd1306
+[submodule "mcu_ws/lib/SEC-Base-Classes"]
+	path = mcu_ws/lib/SEC-Base-Classes
+	url = https://github.com/IEEE-UCF/SEC-Base-Classes.git
+[submodule "mcu_ws/lib/Adafruit_BNO08x"]
+	path = mcu_ws/lib/Adafruit_BNO08x
+	url = https://github.com/adafruit/Adafruit_BNO08x.git
+[submodule "mcu_ws/lib/Adafruit_BusIO"]
+	path = mcu_ws/lib/Adafruit_BusIO
+	url = https://github.com/adafruit/Adafruit_BusIO.git
+[submodule "mcu_ws/lib/Adafruit_Sensor"]
+	path = mcu_ws/lib/Adafruit_Sensor
+	url = https://github.com/SeekerRobot/Adafruit_Sensor.git
+	branch = fix
