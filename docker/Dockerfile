@@ -116,10 +116,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Vision dependencies (ultralytics/YOLO + deepface emotion detection)
+# tensorflow[and-cuda] bundles CUDA runtime + cuDNN so the GPU is available
+# without a separate CUDA toolkit install in the image.
 RUN pip install --break-system-packages \
     ultralytics \
     deepface \
-    tf-keras
+    tf-keras \
+    "tensorflow[and-cuda]"
 
 FROM base AS dev
 

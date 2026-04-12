@@ -45,7 +45,7 @@ class ObjectDetectionNode(Node):
 
         self.pub = self.create_publisher(HexapodCmd, '/mcu/hexapod_cmd', 10)
 
-        self.cap = cv2.VideoCapture("http://192.168.8.200/stream")  #! Change to ESP32 stream URL
+        self.cap = cv2.VideoCapture("http://localhost:8080/stream")
         self.cap.set(3, 640)
         self.cap.set(4, 480)
 
