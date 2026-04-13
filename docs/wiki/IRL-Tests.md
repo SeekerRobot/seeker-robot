@@ -225,6 +225,7 @@ When something misbehaves on the full stack, bisect with the `test_sub_*` sketch
 | Specific servo leg twitches | `test_sub_servo` |
 | Whole gait is wrong | `test_sub_gait` |
 | Camera feed dead | `test_sub_cam`, then `test_raw_cam` |
+| YOLO detection not working | Verify cam proxy: `curl -s http://localhost:8080/stream > /dev/null`; then `ros2 launch seeker_vision mcu_cam.launch.py` |
 | Mic silent or crackling | `test_sub_mic`, then `test_raw_mic` |
 | TTS playback silent | `test_sub_speaker` + verify `seeker_tts` via `curl` |
 | LED chain colour wrong | `test_sub_led`, then `test_fast_led_raw` |

@@ -2,7 +2,7 @@
 
 **Seeker Robot** is a six-legged autonomous robot built on **ROS 2 Jazzy** and an **ESP32-S3** firmware stack talking to the host through **micro-ROS** over WiFi. The entire development environment lives inside a single multi-stage Docker image, so you can go from clone to running simulation (or flashing firmware) with the same five commands on Linux, macOS, or Windows.
 
-The robot maps its environment with a 360° LiDAR and a BNO085 IMU, navigates with Nav2 + SLAM Toolbox, and hunts for a red ball using frontier exploration plus HSV-thresholded camera detection. A Fish Audio-backed TTS node closes the loop for voice feedback.
+The robot maps its environment with a 360° LiDAR and a BNO085 IMU, navigates with Nav2 + SLAM Toolbox, and hunts for objects using YOLO-based camera detection and frontier exploration. A Fish Audio-backed TTS node closes the loop for voice feedback.
 
 ---
 
@@ -62,6 +62,7 @@ seeker-robot/
 │       ├── seeker_navigation/  # Nav2 + SLAM + EKF + ball_searcher
 │       ├── seeker_sim/         # fake_mcu_node (tripod gait sim)
 │       ├── seeker_tts/         # Fish Audio TTS bridge
+│       ├── seeker_vision/     # YOLO object detection + emotion detection + camera proxy
 │       └── test_package/       # Minimal CI sanity package
 ├── mcu_ws/            # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared base platformio.ini + network_config.ini

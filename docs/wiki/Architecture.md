@@ -46,6 +46,9 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │  Nav2 (BT navigator, controller, planner, behaviors, smoother)              │
 │       ◄── /map, /odom, TF     ──► /cmd_vel                                  │
 │                                                                             │
+│  seeker_vision  ──► /object_found, /detection_detail, /emotion_detail        │
+│       ◄── ESP32 cam proxy or Gazebo /camera/image or local webcam           │
+│                                                                             │
 │  ball_searcher (mission planner)                                            │
 │       ◄── /map, camera feed   ──► NavigateToPose goals                      │
 │                                                                             │
@@ -93,6 +96,7 @@ seeker-robot/
 │       ├── seeker_display/      # OLED display nodes + HTTP LCD server
 │       ├── seeker_media/        # MP4 player (video → OLED + audio → speaker)
 │       ├── seeker_tts/          # Fish Audio TTS node + tts.launch.py
+│       ├── seeker_vision/      # YOLO detection + emotion + camera proxy
 │       └── test_package/        # Tiny CI-sanity C++ node
 ├── mcu_ws/
 │   ├── platformio/

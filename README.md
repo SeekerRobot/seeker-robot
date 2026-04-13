@@ -106,6 +106,7 @@ seeker-robot/
 │       ├── seeker_navigation/  # Nav2, SLAM, EKF configs, mission planner
 │       ├── seeker_sim/         # Simulated MCU node (fake_mcu_node)
 │       ├── seeker_tts/         # Text-to-speech node (Fish Audio API)
+│       ├── seeker_vision/     # YOLO object detection + emotion detection + camera proxy
 │       └── test_package/       # Minimal test package
 ├── mcu_ws/               # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared board/library config (inherited by all sketches)
@@ -124,7 +125,7 @@ seeker-robot/
 
 | Package | Purpose |
 |---------|---------|
-| `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg`, `OledFrame.msg`) |
+| `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg` with STAND/WALK/SIT/DANCE modes, `OledFrame.msg`) |
 | `seeker_description` | URDF/Xacro hexapod model, `display.launch.py` for RViz |
 | `seeker_display` | OLED display nodes: `oled_sine_node` (animated demo) + `lcd_http_server` (HTTP framebuffer server on port 8384 for the ESP32 OLED) |
 | `seeker_gazebo` | Gazebo Harmonic simulation, sensor bridges, simulation launch files |
@@ -132,6 +133,7 @@ seeker-robot/
 | `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` mission planner, real robot launch |
 | `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
 | `seeker_tts` | Fish Audio TTS + local WAV file playback, re-served as a chunked HTTP PCM stream for the ESP32 speaker |
+| `seeker_vision` | YOLO object detection, DeepFace emotion detection, MJPEG camera proxy for the ESP32 camera stream |
 | `test_package` | Minimal ROS 2 node for build/workflow verification |
 
 ---

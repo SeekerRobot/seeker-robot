@@ -14,7 +14,7 @@ source ~/ros2_workspaces/install/setup.bash
 You must have built at least:
 
 ```bash
-colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation
+colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_vision
 ```
 
 ---
@@ -140,6 +140,22 @@ ros2 topic echo /cmd_vel
 
 **RViz fixed frame:** `map`
 Recommended displays: `Map` (`/map`, Transient Local), `LaserScan` (`/lidar/scan`), `RobotModel`, `TF`, `Path` (`/plan`), `Costmap (local)` (`/local_costmap/costmap`), `Costmap (global)` (`/global_costmap/costmap`).
+
+---
+
+## Adding YOLO vision to a simulation run
+
+The `seeker_vision` package provides a Gazebo-compatible vision node that subscribes to `/camera/image` (bridged from the Gazebo camera plugin). Run it alongside any simulation launch that publishes a camera feed:
+
+```bash
+# Terminal 1 — any sim launch that publishes /camera/image
+ros2 launch seeker_gazebo sim_teleop.launch.py
+
+# Terminal 2 — YOLO detection on the Gazebo camera
+ros2 launch seeker_vision gazebo_cam.launch.py
+```
+
+When the target object (default: `"teddy bear"`) appears in the camera view, the node publishes `true` on `/object_found` and a `MODE_DANCE` command to `/mcu/hexapod_cmd`. See **[ROS2 Packages → seeker_vision](ROS2-Packages.md#seeker_vision)** for all launch modes.
 
 ---
 

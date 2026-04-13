@@ -12,7 +12,7 @@ colcon build --symlink-install --packages-select <pkg> # symlink so Python edits
 source install/setup.bash
 ```
 
-`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`) because you don't need to rebuild for every edit.
+`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`) because you don't need to rebuild for every edit.
 
 ---
 
@@ -24,7 +24,7 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 
 **Messages** (`msg/`):
 
-- `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner.
+- `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT` / `DANCE`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner or the vision node (DANCE on target detection).
 - `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, page-major, 8 pages) framebuffer for the onboard OLED. Used by `seeker_display` and `seeker_media` to generate frames; the ESP32 receives them via plain HTTP (`GET /lcd_out` on port 8384), not via micro-ROS.
 - `ExampleMsg.msg` — scaffolding example.
 
@@ -299,6 +299,49 @@ The ESP32-side consumer is the `test_sub_speaker` sketch — see **[MCU Sketches
 
 ---
 
+## `seeker_vision`
+
+**Build type:** `ament_python`
+
+Camera-based perception: YOLO object detection, DeepFace emotion recognition, and an MJPEG camera proxy that bridges the ESP32's HTTP camera stream to `localhost` so OpenCV can consume it from inside the container. The Dockerfile's `base` stage pre-installs `ultralytics`, `deepface`, and `tensorflow[and-cuda]`, so the package works out of the box on GPU-equipped hosts.
+
+**Nodes:**
+
+- `vision_node` (`seeker_vision/vision_core.py`) — opens an MJPEG or V4L2 video source, runs YOLOv8-nano (`yolo26n.pt`, bundled) at ~30 fps, and publishes:
+  - `/object_found` (`std_msgs/Bool`) — `true` when the target object (default: `"teddy bear"`) is in frame.
+  - `/detection_detail` (`std_msgs/Float32MultiArray`) — `[area, center_x, frame_width]` for the target bounding box (zeros when not found).
+  - `/mcu/hexapod_cmd` (`mcu_msgs/HexapodCmd`) — sends `MODE_DANCE` when the target is detected.
+- `gazebo_vision_node` (`seeker_vision/gazebo_vision_core.py`) — same detection pipeline, but subscribes to `/camera/image` (`sensor_msgs/Image`) instead of opening an HTTP stream. Use this in Gazebo simulation.
+- `cam_proxy` (`seeker_vision/cam_proxy.py`) — standalone MJPEG proxy. Fetches the ESP32 camera stream (default `http://192.168.8.50/cam`) and re-serves it at `http://localhost:8080/stream`. Needed because the container may not have a direct route to the ESP32's IP.
+- `emotion_node` (`seeker_vision/emotion_node.py`) — Haar-cascade face localisation + DeepFace emotion analysis at ~10 fps. Publishes the dominant emotion to `/emotion_detail` (`std_msgs/String`).
+
+**Parameters** (on `vision_node` / `emotion_node`):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `video_source` | `http://localhost:8080/stream` | MJPEG URL or V4L2 device path (e.g. `/dev/video0`) |
+
+**Launch files:**
+
+| Launch | What it starts | Camera source |
+|---|---|---|
+| `mcu_cam.launch.py` | `cam_proxy` + `vision_node` (2 s delay) | ESP32 camera via proxy |
+| `gazebo_cam.launch.py` | `gazebo_vision_node` | Gazebo `/camera/image` topic |
+| `local_cam.launch.py` | `vision_node` | Host webcam (`/dev/video0`) |
+
+**Model:**
+
+- `model/yolo26n.pt` — YOLOv8-nano weights (stored via Git LFS). Detects 80 COCO classes; the node filters for a configurable target name.
+
+```bash
+colcon build --packages-select mcu_msgs seeker_vision
+ros2 launch seeker_vision mcu_cam.launch.py       # real ESP32 camera
+ros2 launch seeker_vision gazebo_cam.launch.py     # Gazebo simulation
+ros2 launch seeker_vision local_cam.launch.py      # host webcam
+```
+
+---
+
 ## `test_package`
 
 **Build type:** `ament_cmake`
@@ -319,6 +362,7 @@ seeker_gazebo ──► seeker_description
 seeker_gazebo ──► seeker_sim
 seeker_media  ──► seeker_display
 seeker_navigation ──► seeker_description
+seeker_vision ──► mcu_msgs
 every ROS node importing HexapodCmd ──► mcu_msgs
 ```
 

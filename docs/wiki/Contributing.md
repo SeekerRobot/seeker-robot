@@ -87,7 +87,7 @@ Serial-only sketches must **exclude** `libs_external/esp32` from `lib_extra_dirs
 
 ### ROS 2 packages (`ros2_ws/src/<name>/`)
 
-- `seeker_*` — all runtime packages for the robot. One package = one concern (description, display, gazebo sim, media, navigation, sim stub, tts).
+- `seeker_*` — all runtime packages for the robot. One package = one concern (description, display, gazebo sim, media, navigation, sim stub, tts, vision).
 - `mcu_msgs` — the only package **not** prefixed `seeker_`, because it's a pure interface package shared with the firmware.
 - `test_package` — CI-sanity only.
 

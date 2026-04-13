@@ -17,6 +17,7 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `seeker_display` — OLED display nodes: `oled_sine_node` (animated sine wave demo) and `lcd_http_server` (shared helper that serves SSD1306 framebuffers over HTTP on port 8384 for the ESP32 `OledSubsystem`).
   - `seeker_media` — MP4 media player node (`mp4_player_node`): decodes video to 128×64 SSD1306 framebuffers streamed over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync.
   - `seeker_tts` — Fish Audio TTS node plus a local-WAV playback topic, both re-served as an HTTP PCM stream for the ESP32 `SpeakerSubsystem`.
+  - `seeker_vision` — YOLO object detection (`vision_node`, `gazebo_vision_node`), DeepFace emotion detection (`emotion_node`), and an MJPEG camera proxy (`cam_proxy`) that bridges the ESP32 camera stream to localhost. Three launch files: `mcu_cam.launch.py` (ESP32 camera via proxy), `gazebo_cam.launch.py` (Gazebo `/camera/image`), `local_cam.launch.py` (host webcam).
   - `test_package` — Minimal C++ ROS 2 node for workflow verification.
 - **`mcu_ws/`** — PlatformIO workspace for ESP32 firmware. Uses micro-ROS WiFi transport (Jazzy distro). Multi-project layout:
   - `platformio/platformio.ini` — Shared base config (board environments, build flags, library deps). All sketches inherit from this via `extra_configs`.
@@ -26,7 +27,7 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `libs_external/esp32/micro_ros_platformio/` — micro-ROS PlatformIO library (pre-vendored).
   - `platformio/extra_packages/` — Extra ROS packages (including `mcu_msgs`) needed at micro-ROS build time.
 - **`docker/`** — Containerized dev environment:
-  - `Dockerfile` — Multi-stage build (`base` → `dev`/`prod`). Base installs micro-ROS agent, PlatformIO, ROS 2 Jazzy. `dev` adds Gazebo Harmonic, RViz, rqt.
+  - `Dockerfile` — Multi-stage build (`base` → `dev`/`prod`). Base installs micro-ROS agent, PlatformIO, ROS 2 Jazzy, and vision dependencies (ultralytics, deepface, tensorflow+CUDA). `dev` adds Gazebo Harmonic, RViz, rqt.
   - `Dockerfile.init-bootstrap` — One-shot init container that chowns named volumes and seeds `libs_external` into the `mcu_lib_external` volume.
   - `docker-compose.yml` — Defines `ros2` (main dev container), `init-bootstrap` (one-shot volume init), and GPU-enabled profile services `ros2-nvidia` (NVIDIA) and `ros2-amd` (AMD). `COMPOSE_PROJECT_NAME` in `.env` isolates containers/volumes per worktree.
   - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|prod`, and display/network config for your OS.
