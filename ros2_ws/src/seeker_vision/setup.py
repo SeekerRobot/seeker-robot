@@ -24,6 +24,7 @@ setup(
             "vision_node = seeker_vision.vision_core:main",
             "gazebo_vision_node = seeker_vision.gazebo_vision_core:main",
             "cam_proxy = seeker_vision.cam_proxy:main",
+            "emotion_node = seeker_vision.emotion_node:main",
         ],
     },
 )

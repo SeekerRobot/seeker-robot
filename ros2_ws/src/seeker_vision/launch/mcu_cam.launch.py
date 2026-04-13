@@ -15,7 +15,7 @@ def generate_launch_description():
         actions=[
             Node(
                 package="seeker_vision",
-                executable="seeker_vision_node",
+                executable="vision_node",
                 name="object_detection_node",
                 output="screen",
                 parameters=[{"video_source": "http://localhost:8080/stream"}],

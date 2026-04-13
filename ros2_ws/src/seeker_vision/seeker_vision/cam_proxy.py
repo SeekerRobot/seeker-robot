@@ -46,19 +46,19 @@ def _iter_frames(resp):
         return
 
     sep = b"--" + boundary
-    buf = b""
+    buf = bytearray()
 
     while True:
         chunk = resp.read(_READ)
         if not chunk:
             break
-        buf += chunk
+        buf.extend(chunk)
 
         while True:
             idx = buf.find(sep)
             if idx == -1:
-                # Keep the tail in case it's a partial boundary
-                buf = buf[-(len(sep) - 1):]
+                # Keep enough tail to detect a boundary split across reads
+                del buf[:-len(sep)]
                 break
 
             after_sep = idx + len(sep)
@@ -84,8 +84,8 @@ def _iter_frames(resp):
             if content_length < 0 or len(buf) < data_start + content_length:
                 break  # wait for more data
 
-            yield buf[data_start:data_start + content_length]
-            buf = buf[data_start + content_length:]
+            yield bytes(buf[data_start:data_start + content_length])
+            del buf[:data_start + content_length]
 
 
 class _ProxyHandler(http.server.BaseHTTPRequestHandler):

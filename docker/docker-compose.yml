@@ -8,6 +8,7 @@ services:
       target: ${BUILD_TARGET}
     image: seeker-robot:${BUILD_TARGET}
     tty: true
+    profiles: ["cpu"]
     environment:
       - DISPLAY=${DISPLAY_CONFIG}
       - QT_X11_NO_MITSHM=1
