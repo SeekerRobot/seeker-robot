@@ -217,6 +217,7 @@ cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config
 Edit `docker/.env`:
 - `COMPOSE_PROJECT_NAME` — unique name (e.g. `seeker-robot`)
 - `BUILD_TARGET` — `dev` (includes Gazebo/RViz) or `prod` (headless)
+- `COMPOSE_PROFILES` — `cpu` (default), `nvidia` (NVIDIA GPU), or `amd` (AMD GPU)
 - Uncomment the Display/Network block for your OS
 
 Edit `mcu_ws/platformio/network_config.ini` with your WiFi credentials and the IP of the machine running the Docker container (the micro-ROS agent IP).

@@ -110,8 +110,8 @@ seeker-robot/
 └── docker/
     ├── Dockerfile                       # Multi-stage base → dev/prod
     ├── Dockerfile.init-bootstrap        # Volume chown + libs_external seed
-    ├── docker-compose.yml               # ros2 + ros2-nvidia + ros2-amd + init-bootstrap
-    └── .env.example                     # Template for COMPOSE_PROJECT_NAME, BUILD_TARGET, display/network
+    ├── docker-compose.yml               # ros2 (cpu profile) + ros2-nvidia + ros2-amd + init-bootstrap
+    └── .env.example                     # Template for COMPOSE_PROJECT_NAME, BUILD_TARGET, COMPOSE_PROFILES, display/network
 ```
 
 ---
@@ -123,7 +123,7 @@ seeker-robot/
 | `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | bind (delegated) | Edit ROS 2 code from the host |
 | `ros2_ws/.vscode/` | `~/ros2_workspaces/.vscode/` | bind (delegated) | Shared VS Code settings |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | bind (delegated) | Edit firmware from the host |
-| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | bind (ro) | Secret-ish WiFi creds |
+| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | bind (via parent) | Secret-ish WiFi creds (part of the `mcu_ws/` mount) |
 | `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | bind (delegated) | Makes `mcu_msgs` visible to micro-ROS codegen |
 | `scripts/` | `~/scripts/` | bind | Utility scripts |
 | `/dev`, `/sys`, `/tmp/.X11-unix` | same | bind | USB, GPIO, X server |

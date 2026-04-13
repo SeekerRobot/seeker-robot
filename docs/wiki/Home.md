@@ -30,6 +30,7 @@ git clone --recurse-submodules https://github.com/SeekerRobot/seeker-robot.git &
 # 2. Configure (edit the copies afterwards — WiFi credentials, agent IP, OS display/network block)
 cp docker/.env.example docker/.env
 cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config.ini
+# In docker/.env set COMPOSE_PROFILES=cpu (or nvidia/amd for GPU hosts)
 
 # 3. Build + start the dev container
 cd docker && docker compose build && docker compose up init-bootstrap && docker compose up -d ros2
