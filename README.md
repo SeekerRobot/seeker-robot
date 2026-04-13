@@ -178,14 +178,12 @@ seeker-robot/
 
 ## Prerequisites
 
-| Tool | Notes |
-|------|-------|
-| Git | For cloning |
-| Docker Desktop | Runs the dev container |
-| VSCode + Dev Containers extension | Recommended editor |
-| X Server (VcXsrv / XQuartz) | Required for Gazebo and RViz on Windows/macOS |
-
----
+| Tool                        | Link                                                          | Notes                          |
+| --------------------------- | ------------------------------------------------------------- | ------------------------------ |
+| **Git**                     | [git-scm.com](https://git-scm.com/)                           | Required for cloning the repo  |
+| **Docker Desktop**          | [docker.com](https://www.docker.com/products/docker-desktop/) | Runs the development container |
+| **VSCode**                  | [code.visualstudio.com](https://code.visualstudio.com/)       | Recommended editor             |
+| **X Server** (for GUI apps) | See [X11 Setup](#x11-server-setup) below                      | Required for Gazebo, RViz, rqt |
 
 ## Quick Start
 

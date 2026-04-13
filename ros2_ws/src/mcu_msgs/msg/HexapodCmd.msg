@@ -5,6 +5,7 @@
 uint8 MODE_STAND = 0
 uint8 MODE_WALK  = 1
 uint8 MODE_SIT   = 2
+uint8 MODE_DANCE = 3
 
 uint8   mode          # gait mode (see constants above)
 float32 body_height   # body height offset from neutral (mm, positive = higher)
