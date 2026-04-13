@@ -11,6 +11,14 @@
 #include <ThreadedSubsystem.h>
 #include <WiFi.h>
 
+#ifndef ENABLE_ARDUINO_OTA
+#define ENABLE_ARDUINO_OTA 0
+#endif
+
+#if ENABLE_ARDUINO_OTA
+#include <ArduinoOTA.h>
+#endif
+
 namespace Subsystem {
 
 /// @brief WiFi connection states driven by the internal state machine.
@@ -140,6 +148,11 @@ class ESP32WifiSubsystem : public Subsystem::ThreadedSubsystem {
   /// @brief Full radio power cycle (OFF → delay → STA) to recover from stuck
   ///        PHY or stale association state after repeated failures.
   void powerCycleRadio();
+
+#if ENABLE_ARDUINO_OTA
+  void setupOTA();
+  bool ota_started_ = false;
+#endif
 
   static void onWifiEvent(WiFiEvent_t event);
   static ESP32WifiSubsystem* s_instance_;

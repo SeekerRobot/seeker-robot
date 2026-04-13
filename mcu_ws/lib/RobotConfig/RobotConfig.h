@@ -19,11 +19,12 @@ constexpr static int sda = D4;
 constexpr static int scl = D5;
 constexpr static int tx = D6;
 constexpr static int rx = D7;
-// D8 - SCK NC
-// D9 - MISO NC
-// D10 - MOSI NC
+constexpr static int spk_bclk = D8;   // I2S1 bit clock (SPI SCK)
+constexpr static int spk_lrclk = D9;  // I2S1 word select (SPI MISO)
+constexpr static int spk_dout = D10;  // I2S1 data out (SPI MOSI)
 constexpr static int gyro_addr = 0x4A;
 constexpr static uint8_t pca_addr = 0x40;
+constexpr static uint8_t oled_addr = 0x3C;
 // Onboard PDM microphone (MSM261D3526H1CPM)
 constexpr static int pdm_clk = 42;   // PDM clock  (I2S ws_io_num)
 constexpr static int pdm_data = 41;  // PDM data   (I2S data_in_num)
@@ -40,6 +41,7 @@ constexpr static int tx = 17;    // UART2 TX
 constexpr static int rx = 16;    // UART2 RX
 constexpr static int gyro_addr = 0x4B;
 constexpr static uint8_t pca_addr = 0x40;
+constexpr static uint8_t oled_addr = 0x3C;
 #endif
 
 // ---------------------------------------------------------------------------

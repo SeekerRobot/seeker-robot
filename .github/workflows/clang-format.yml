@@ -1,14 +1,13 @@
 name: clang-format
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
   format:
     runs-on: ubuntu-latest
+    environment: docs-approval
     permissions:
       contents: write
 

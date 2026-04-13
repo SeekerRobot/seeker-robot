@@ -71,6 +71,14 @@ void LidarSubsystem::begin() {
 void LidarSubsystem::update() {
   if (!initialized_) return;
   lidar_.loop();
+
+  uint32_t now = millis();
+  if (now - last_log_ms_ >= kLogIntervalMs) {
+    last_log_ms_ = now;
+    Debug::printf(Debug::Level::VERBOSE, "[Lidar] %.1f Hz  scans=%lu  pts=%u",
+                  lidar_.getCurrentScanFreqHz(),
+                  (unsigned long)completed_scans_, published_.count);
+  }
 }
 
 // ---------------------------------------------------------------------------
