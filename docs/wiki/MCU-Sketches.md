@@ -3,8 +3,9 @@
 Every directory under `mcu_ws/src/` is a standalone PlatformIO project. They follow a naming convention:
 
 - `main` — placeholder for full system integration (empty `setup()`/`loop()`)
-- `test_all` — **full** integration: micro-ROS bridge + camera + mic running concurrently
-- `test_bridge_*` — exercises the full micro-ROS stack via WiFi
+- `build_microros` — placeholder sketch used only to pre-build the micro-ROS library
+- `test_all` — **full** integration: micro-ROS bridge + camera + mic + speaker + OLED, all concurrently
+- `test_bridge_*` — exercises the full micro-ROS stack via WiFi (sensor publishers, gait subscription, or OLED HTTP display)
 - `test_sub_*` — single subsystem in isolation (mostly serial-only, no micro-ROS)
 - `test_raw_*` — low-level hardware tests with no subsystem abstraction
 - `test_threaded_blink` — `ThreadedSubsystem` / FreeRTOS task smoke test
@@ -28,9 +29,9 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 ### `test_all`
 
 - **Board env:** `esp32s3sense`
-- **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81)
+- **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81, speaker from :8383, OLED from :8384)
 - **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
-- **Purpose:** The "everything on" integration test. Runs the full `MicroRosBridge` plus a concurrent MJPEG camera server and PDM audio HTTP server on a single ESP32-S3 Sense. This is the firmware you flash when you want the real robot to look like the Gazebo simulation — all sensor topics live plus camera/mic streams pullable from ROS.
+- **Purpose:** The "everything on" integration test. Runs the full `MicroRosBridge` plus a concurrent MJPEG camera server, PDM audio HTTP server, I2S speaker (fetches PCM from host :8383), and OLED display (fetches framebuffers from host :8384) on a single ESP32-S3 Sense. This is the firmware you flash when you want the real robot to look like the Gazebo simulation — all sensor topics live plus camera/mic streams pullable from ROS.
 - **Prereq:** micro-ROS agent running (`ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`).
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
 - **Serial output:** WiFi connection status, agent state transitions, IP + RSSI, periodic participant heartbeat.
@@ -43,18 +44,42 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
   curl http://<esp_ip>/stream         # MJPEG
   curl http://<esp_ip>:81/audio       # raw PCM
   ```
+- **OLED (no micro_ros_agent needed):**
+  ```bash
+  ros2 run seeker_display oled_sine   # animated sine wave demo
+  # or: ros2 launch seeker_media media.launch.py
+  ```
+- **Speaker / TTS:**
+  ```bash
+  ros2 launch seeker_tts tts.launch.py
+  ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
+  ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once
+  ```
 - **Debug tips:** (1) If topics appear but the camera 404s, PSRAM failed to init — check serial. (2) If the whole thing boots but micro-ROS never connects, double-check `agent_ip` in `network_config.ini`. (3) RSSI < −75 dBm reliably breaks micro-ROS — move closer to the AP. (4) `min_spiffs.csv` partition can run tight — watch `RAM: %` after build. (5) Use `pio device monitor --filter esp32_exception_decoder` to get backtraces on panic.
 
 ### `test_bridge_all`
 
 - **Board env:** `esp32s3sense`
-- **Transport:** WiFi
+- **Transport:** WiFi (micro-ROS) + HTTP (speaker from :8383, OLED from :8384)
 - **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
-- **Purpose:** Like `test_all` but **without** the camera and mic HTTP servers. Pure micro-ROS sensor bridge — ideal for SLAM, Nav2, or anything that doesn't need the camera feed.
+- **Purpose:** Like `test_all` but **without** the camera and mic HTTP servers. micro-ROS sensor bridge + I2S speaker + OLED HTTP display — ideal for SLAM, Nav2, or anything that doesn't need the camera feed.
 - **Prereq:** micro-ROS agent running.
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
-- **Verify on ROS side:** `ros2 topic hz /mcu/{heartbeat,imu,battery_voltage,scan}`
-- **Debug tips:** Same as `test_all` minus the camera/mic issues. If `/mcu/scan` publishes 0 points, the LD14P is probably unpowered or the UART pins in `RobotConfig.h` don't match your wiring.
+- **Verify on ROS side:**
+  ```bash
+  ros2 topic hz /mcu/{heartbeat,imu,battery_voltage,scan}
+  ```
+- **OLED (no micro_ros_agent needed):**
+  ```bash
+  ros2 run seeker_display oled_sine   # animated sine wave demo
+  # or: ros2 launch seeker_media media.launch.py
+  ```
+- **Speaker / TTS:**
+  ```bash
+  ros2 launch seeker_tts tts.launch.py
+  ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
+  ```
+- **Debug tips:** Same as `test_all` minus the camera/mic issues. If `/mcu/scan` publishes 0 points, the LD14P is probably unpowered or the UART pins in `RobotConfig.h` don't match your wiring. If the OLED never updates, make sure the host is serving on port 8384 (`ros2 run seeker_display oled_sine`) and that the ESP32 can reach `AGENT_IP:8384`.
 
 ### `test_bridge_gait`
 
@@ -66,6 +91,21 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
 - **Verify on ROS side:** `ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.05}}"` — robot should walk.
 - **Debug tips:** (1) If servos twitch but don't sync, the PCA9685 frequency is off — check `test_sub_servo freq`. (2) If the robot falls over, the neutral gait pose may need retuning — use `test_sub_gait` first. (3) No `/cmd_vel` response means the subscription was never created — watch the serial log for the `create_session` line. (4) Always power cycle servos before re-flashing; a stuck PWM can kill the MCU's power rail. (5) You can send commands with `teleop_twist_keyboard` for interactive driving.
+
+### `test_bridge_oled`
+
+- **Board env:** `esp32s3sense`
+- **Transport:** WiFi (HTTP only — **no micro-ROS agent required**)
+- **Bridge flags:** none
+- **Purpose:** Isolated WiFi + OLED HTTP streaming test. The ESP32 connects to WiFi, then opens a persistent HTTP connection to the host at `AGENT_IP:8384/lcd_out` and reads 1024-byte SSD1306 framebuffers continuously. The `OledSubsystem` renders them at ~10 Hz. Text overlays show the boot banner and WiFi connection state. No `MicroRosBridge` is involved — the OLED data flows over plain HTTP, independent of DDS.
+- **Prereq:** WiFi configured in `network_config.ini`; SSD1306 128×64 wired on the shared I²C bus (`Config::sda`/`Config::scl`, default address `0x3C`); a host-side LCD server running.
+- **Build/flash:** `pio run -e esp32s3sense -t upload`
+- **Verify on host (pick one):**
+  ```bash
+  ros2 run seeker_display oled_sine    # animated sine wave
+  ros2 launch seeker_media media.launch.py  # MP4 video playback
+  ```
+- **Debug tips:** (1) Display blank → confirm `AGENT_IP` in `network_config.ini` and that the host LCD server is running on port 8384. (2) Display shows boot frame but never updates → WiFi may not be connected yet; check serial output. (3) Updates cap at 10 Hz — this is by design. (4) If text overlays don't show, remember the HTTP framebuffer push overrides them until the next overlay update tick.
 
 ---
 
@@ -142,12 +182,20 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Purpose:** `MicSubsystem`-only HTTP PCM streaming at `http://<IP>:81/audio`. 16 kHz 16-bit mono PDM.
 - **Debug tips:** (1) `ffplay -f s16le -ar 16000 -ac 1 http://<ip>:81/audio` to play back in real-time. (2) If output is silence, check the PDM clock pin; mics are sensitive to CLK polarity. (3) If it crackles, increase the I²S DMA buffer count.
 
+### `test_sub_oled`
+
+- **Board env:** serial-only (no WiFi / no micro-ROS)
+- **Purpose:** Interactive serial harness for `OledSubsystem` driving an SSD1306 128×64 I²C display. The subsystem keeps a background frame (looked up by key in `OledFrames.h`, e.g. `blank`/`boot`/`status`) plus up to four text overlays (6×8 font, page-aligned `y`). All draw calls go into a RAM canvas and only the final `blt()` touches I²C, guarded by the shared bus mutex.
+- **Commands:** `frame <key>`, `text <slot> <x> <y> <msg…>`, `cleartext [slot]`, `clear`, `contrast <0-255>`, `invert`, `normal`, `info`, `help`.
+- **Build/flash:** `pio run -e <serial env> -t upload`, then `pio device monitor -b 921600`.
+- **Debug tips:** (1) If `init` fails, check `oled_addr` in `RobotConfig.h` (default `0x3C`) and the I²C pull-ups. (2) `y` should be page-aligned (multiples of 8) for the 6×8 font — off-page y values clip weirdly. (3) Overlay slots are 0..3; slot 4+ is rejected. (4) Share the same I²C mutex with any other I²C subsystem (gyro, PCA9685) when combining sketches.
+
 ### `test_sub_speaker`
 
 - **Board env:** `esp32s3sense` / **Transport:** WiFi
-- **Purpose:** Complement to `seeker_tts`: long-polls the ROS host (`AGENT_IP`) for PCM audio and plays it over I²S via `SpeakerSubsystem`.
-- **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host with a valid `FISH_API_KEY`.
-- **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:<speaker_port>/audio` from another machine to test the TTS endpoint independently. (4) Watch the serial log for HTTP status codes — `404` means `tts_node` hasn't generated audio yet. (5) Mute first! Speaker volume defaults to max.
+- **Purpose:** Complement to `seeker_tts`: long-polls `http://<AGENT_IP>:8383/audio_out` for PCM audio and plays it over I²S via `SpeakerSubsystem`.
+- **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host. For Fish Audio TTS set `FISH_API_KEY` and publish text to `/audio_tts_input` (`ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once`). For local WAV playback, publish a file path on `/audio_play_file` (`ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once`). Both share the same `/audio_out` HTTP stream.
+- **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:8383/audio_out` from another machine to test the endpoint independently — it should stay open and deliver a chunked stream whenever new text is published. (4) 404 from the endpoint means the path is wrong — the `tts_node` only serves `/audio_out`. (5) Mute first! Speaker volume defaults to max.
 
 ### `test_sub_ble_debug`
 
@@ -171,6 +219,12 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Purpose:** Raw PDM I²S stream over HTTP on port 80 without `MicSubsystem`. 16 kHz, 16-bit PCM.
 - **Debug tips:** Same as `test_sub_mic`, but useful to rule out a subsystem bug vs a hardware bug.
 
+### `test_raw_oled`
+
+- **Board env:** bare (no WiFi / no micro-ROS)
+- **Purpose:** Runs the upstream `lexus2k/ssd1306` demo sketch (`ssd1306_demo.cpp` + `sova.*`) directly against the SSD1306 128×64, with no `OledSubsystem` abstraction. Good sanity check when `test_sub_oled` misbehaves and you need to rule out everything above the bare driver.
+- **Debug tips:** (1) Uses the ssd1306 library's own I²C init — don't share a bus with other subsystems without disabling them first. (2) If the display flickers, lower the I²C clock. (3) If the bitmap renders inverted, the column remap is wrong for your particular panel revision.
+
 ### `test_fast_led_raw`
 
 - **Board env:** bare (no WiFi, no micro-ROS)
@@ -185,6 +239,16 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 
 - **Board env:** bare
 - **Purpose:** Minimal `ThreadedSubsystem` smoke test. Spawns a `BlinkSubsystem` FreeRTOS task and verifies the board runs pinned threads. Use this on any brand-new ESP32 to confirm FreeRTOS threading and board pin assignments are sane before layering anything on.
+
+### `build_microros`
+
+- **Board env:** inherits all from `platformio.ini`
+- **Purpose:** Placeholder sketch used only to pre-build the micro-ROS PlatformIO library without compiling any real application code. Contains an empty `setup()`/`loop()`. Run `pio run` from this directory to cache the micro-ROS library build so subsequent sketch builds are faster.
+
+### `test_bridge_media`
+
+- **Board env:** inherits all from `platformio.ini`
+- **Purpose:** Placeholder for a media bridge test (speaker + OLED over HTTP). Currently has only a `platformio.ini` — **no source files yet**. When implemented, it will test the speaker + OLED pipeline in isolation (without the sensor bridge).
 
 ### `main`
 

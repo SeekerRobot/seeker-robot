@@ -75,18 +75,19 @@ find mcu_ws ros2_ws \
 | Pattern | Meaning |
 |---|---|
 | `test_sub_*` | Single subsystem in isolation. Usually serial-only (no micro-ROS), although a few (`test_sub_cam`, `test_sub_cam_mic`, `test_sub_mic`, `test_sub_speaker`, `test_sub_wifi`, `test_sub_heartbeat`) do need WiFi because the subsystem itself does. |
-| `test_bridge_*` | Exercises the full micro-ROS stack over WiFi. `test_bridge_all` publishes all enabled bridge topics; `test_bridge_gait` subscribes to `/cmd_vel`. |
+| `test_bridge_*` | Exercises WiFi connectivity. `test_bridge_all` publishes all enabled bridge topics + speaker + OLED; `test_bridge_gait` subscribes to `/cmd_vel`; `test_bridge_oled` tests OLED HTTP streaming (no micro-ROS). |
 | `test_raw_*` | Low-level hardware tests with no subsystem abstraction (e.g. `test_raw_cam`, `test_raw_mic`). |
 | `test_all` | Full integration: all publishers **plus** camera + mic HTTP servers running on one board. |
 | `test_threaded_blink` | `ThreadedSubsystem` / FreeRTOS smoke test. |
 | `test_fast_led_raw` | FastLED blink bypassing `LedSubsystem`. |
+| `build_microros` | Placeholder sketch for pre-building the micro-ROS library. |
 | `main` | Placeholder for the final integration firmware (currently empty). |
 
 Serial-only sketches must **exclude** `libs_external/esp32` from `lib_extra_dirs` in their own `platformio.ini` to avoid pulling in micro-ROS.
 
 ### ROS 2 packages (`ros2_ws/src/<name>/`)
 
-- `seeker_*` — all runtime packages for the robot. One package = one concern (description, gazebo sim, navigation, sim stub, tts).
+- `seeker_*` — all runtime packages for the robot. One package = one concern (description, display, gazebo sim, media, navigation, sim stub, tts, vision).
 - `mcu_msgs` — the only package **not** prefixed `seeker_`, because it's a pure interface package shared with the firmware.
 - `test_package` — CI-sanity only.
 

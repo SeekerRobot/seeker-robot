@@ -12,7 +12,7 @@ colcon build --symlink-install --packages-select <pkg> # symlink so Python edits
 source install/setup.bash
 ```
 
-`--symlink-install` is especially handy for the Python packages (`seeker_navigation`, `seeker_sim`, `seeker_tts`) because you don't need to rebuild for every edit.
+`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`) because you don't need to rebuild for every edit.
 
 ---
 
@@ -24,7 +24,8 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 
 **Messages** (`msg/`):
 
-- `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner.
+- `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT` / `DANCE`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner or the vision node (DANCE on target detection).
+- `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, page-major, 8 pages) framebuffer for the onboard OLED. Used by `seeker_display` and `seeker_media` to generate frames; the ESP32 receives them via plain HTTP (`GET /lcd_out` on port 8384), not via micro-ROS.
 - `ExampleMsg.msg` — scaffolding example.
 
 **Services** (`srv/`):
@@ -35,6 +36,33 @@ Any change here **must** be rebuilt in both workspaces — see [Architecture →
 
 ```bash
 colcon build --packages-select mcu_msgs
+```
+
+---
+
+## `seeker_display`
+
+**Build type:** `ament_python`
+
+OLED display nodes and the shared HTTP LCD server used by `seeker_media`. The ESP32 `OledSubsystem` connects as an HTTP client to `GET /lcd_out` on port 8384 and reads 1024-byte SSD1306 framebuffers continuously — no micro-ROS agent required.
+
+**Nodes:**
+
+- `oled_sine` (`seeker_display/oled_sine_node.py`) — generates an animated sine wave at 10 Hz and serves it via the LCD HTTP server. Good for verifying the OLED HTTP pipeline end-to-end.
+
+**Modules:**
+
+- `lcd_http_server` (`seeker_display/lcd_http_server.py`) — shared helper: starts a daemon-thread HTTP server on `0.0.0.0:<port>` serving `GET /lcd_out` as a persistent raw byte stream of 1024-byte framebuffers. Used by both `oled_sine_node` and `seeker_media/mp4_player_node`.
+
+**Parameters** (on `oled_sine`):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `lcd_serve_port` | `8384` | HTTP port for the LCD stream |
+
+```bash
+colcon build --packages-select seeker_display
+ros2 run seeker_display oled_sine
 ```
 
 ---
@@ -101,6 +129,44 @@ ros2 launch seeker_gazebo sim_teleop.launch.py
 
 ---
 
+## `seeker_media`
+
+**Build type:** `ament_python`
+
+MP4 media player node. Decodes video to 128×64 SSD1306 framebuffers served over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync. Depends on `seeker_display` (uses `lcd_http_server`).
+
+**Nodes:**
+
+- `mp4_player` (`seeker_media/mp4_player_node.py`) — subscribes to `/media/play` (`std_msgs/String`, absolute file path) to trigger playback and `/media/stop` (`std_msgs/Empty`) to abort. Video frames are dithered to 1-bit and served via the LCD HTTP server on port 8384. Audio is extracted via `ffmpeg`, optionally EQ'd with a low-shelf filter, and served on port 8383 (same port as `seeker_tts` — don't run both simultaneously). The video pipeline blocks until the ESP32 audio client connects so the first frame and first audio byte arrive together.
+
+**Parameters:**
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `serve_port` | `8383` | HTTP port for audio (shared with `seeker_tts`) |
+| `lcd_serve_port` | `8384` | HTTP port for OLED LCD stream |
+| `threshold` | `127` | Greyscale → 1-bit cutoff (0–255) |
+| `audio_lead_ms` | `0` | ms to delay video after audio connects (compensates for I2S DMA latency) |
+| `eq_bass_hz` | `300.0` | Low-shelf EQ corner frequency |
+| `eq_bass_db` | `0.0` | Low-shelf EQ gain (negative = cut bass) |
+
+**Launch:**
+
+- `launch/media.launch.py` — starts `mp4_player` with `audio_lead_ms=200`.
+
+**Video files** (`video/`):
+
+- `badapple.mp4`, `badapple.mov` — demo media (stored via Git LFS).
+
+```bash
+colcon build --packages-select seeker_display seeker_media
+ros2 launch seeker_media media.launch.py
+# in another terminal:
+ros2 topic pub /media/play std_msgs/String "data: '/path/to/video.mp4'" --once
+```
+
+---
+
 ## `seeker_navigation`
 
 **Build type:** `ament_python`
@@ -162,18 +228,22 @@ Stand-in for the ESP32 MCU when running in Gazebo. Gets pulled in automatically 
 
 **Nodes:**
 
-- `fake_mcu_node` (`seeker_sim/fake_mcu_node.py`) — subscribes to `/cmd_vel` (`geometry_msgs/Twist`), runs a Python tripod gait (no inverse kinematics), publishes:
-  - `/mcu/joint_states` at ~100 Hz (12 joints across 6 legs)
-  - `/mcu/imu` at ~200 Hz
-  - Per-joint `std_msgs/Float64` commands to Gazebo's joint position controllers.
+- `fake_mcu_node` (`seeker_sim/fake_mcu_node.py`) — subscribes to `/cmd_vel` (`geometry_msgs/Twist`), runs a joint-space tripod gait (no inverse kinematics — locomotion comes from sweeping the hip). At ~100 Hz it publishes:
+  - `/mcu/joint_states` — 12-joint `sensor_msgs/JointState` (hip + knee × 6 legs)
+  - Per-joint `std_msgs/Float64` position commands to the 12 `/seeker/joint/leg_*_{hip,knee}/cmd_pos` topics that the `ros_gz_bridge` forwards to Gazebo's `JointPositionController`.
+
+It does **not** publish `/mcu/imu` or `/mcu/scan` — those are bridged from Gazebo sensor plugins in `seeker_gazebo/config/bridge.yaml`. Body height is adjustable at runtime via `linear.z` (the `t` / `b` keys in `teleop_twist_keyboard`), which walks `NEUTRAL_KNEE` within safe limits.
 
 Tuning constants at the top of the file:
 
 | Constant | Default | Effect |
 |---|---|---|
-| `STEP_HEIGHT` | 0.020 m | Foot lift height during swing |
-| `CYCLE_TIME` | 1.0 s | Full tripod cycle duration |
-| `STEP_SCALE` | 1.0 | Step-reach multiplier vs commanded velocity |
+| `CYCLE_TIME` | 0.8 s | Full tripod cycle duration |
+| `STRIDE_HIP` | 45° | Max hip sweep amplitude per side |
+| `NEUTRAL_KNEE` | 30° | Standing knee angle (body height) |
+| `LIFT_KNEE` | 88° | Peak knee angle during swing (foot clearance) |
+| `VX_MAX` | 0.4 m/s | Speed that maps to full `STRIDE_HIP` |
+| `WZ_MAX` | 1.2 rad/s | Yaw rate that maps to half `STRIDE_HIP` turn amplitude |
 
 ```bash
 colcon build --packages-select seeker_sim
@@ -187,15 +257,33 @@ You should not normally run this node standalone — use a `seeker_gazebo` launc
 
 **Build type:** `ament_python`
 
-Text-to-speech bridge. Reads transcribed text off a ROS topic, calls the Fish Audio TTS API, and re-serves the resulting PCM audio over an HTTP endpoint that the ESP32 `SpeakerSubsystem` long-polls.
+Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS and local WAV file playback — and re-serves both as a persistent chunked HTTP PCM stream that the ESP32 `SpeakerSubsystem` long-polls.
 
 **Nodes:**
 
-- `tts_node` (`seeker_tts/tts_node.py`) — subscribes to `/audio_transcription` (`std_msgs/String`), calls Fish Audio, caches the response, and serves it on an HTTP endpoint (see launch parameters).
+- `tts_node` (`seeker_tts/tts_node.py`) — maintains an internal single-slot queue of PCM audio clips, drained by an HTTP server on `http://<host>:<serve_port>/audio_out`. Subscribes to:
+  - `/audio_tts_input` (`std_msgs/String`) — text gets POSTed to `https://api.fish.audio/v1/tts` with `format=pcm` and the returned PCM bytes land on the queue. Has priority over file playback (TTS blocks the executor during the API call).
+  - `/audio_play_file` (`std_msgs/String`) — value is a path to a `.wav` file on the host; the file is decoded with `wave` and enqueued as PCM. Drops if the queue is full (TTS has priority).
+
+**Parameters** (declared in the node, overridable via the launch file):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `fish_api_key` | `""` | Falls back to the `FISH_API_KEY` env var. |
+| `fish_reference_id` | `""` | Falls back to the `FISH_REFERENCE_ID` env var. |
+| `fish_model` | `"s2-pro"` | Fish Audio model name. |
+| `serve_port` | `8383` | HTTP port for the `/audio_out` endpoint. |
+| `sample_rate` | `16000` | Passed to the Fish Audio request. |
+| `eq_bass_hz` | `300.0` | Low-shelf EQ corner frequency. |
+| `eq_bass_db` | `0.0` | Low-shelf EQ gain (negative = cut bass). |
 
 **Launch:**
 
-- `launch/tts.launch.py` — starts `tts_node` with `speaker_url`, `sample_rate`, and `fish_model` parameters.
+- `launch/tts.launch.py` — starts `tts_node` with `sample_rate` and `fish_model` overrides.
+
+**Bundled sounds** (`sounds/`):
+
+- `intro.wav` — startup jingle. Play with: `ros2 topic pub /audio_play_file std_msgs/String "data: '<install_path>/sounds/intro.wav'" --once`
 
 **Environment variables** (set in `docker/.env`):
 
@@ -208,6 +296,49 @@ ros2 launch seeker_tts tts.launch.py
 ```
 
 The ESP32-side consumer is the `test_sub_speaker` sketch — see **[MCU Sketches](MCU-Sketches.md)**.
+
+---
+
+## `seeker_vision`
+
+**Build type:** `ament_python`
+
+Camera-based perception: YOLO object detection, DeepFace emotion recognition, and an MJPEG camera proxy that bridges the ESP32's HTTP camera stream to `localhost` so OpenCV can consume it from inside the container. The Dockerfile's `base` stage pre-installs `ultralytics`, `deepface`, and `tensorflow[and-cuda]`, so the package works out of the box on GPU-equipped hosts.
+
+**Nodes:**
+
+- `vision_node` (`seeker_vision/vision_core.py`) — opens an MJPEG or V4L2 video source, runs YOLOv8-nano (`yolo26n.pt`, bundled) at ~30 fps, and publishes:
+  - `/object_found` (`std_msgs/Bool`) — `true` when the target object (default: `"teddy bear"`) is in frame.
+  - `/detection_detail` (`std_msgs/Float32MultiArray`) — `[area, center_x, frame_width]` for the target bounding box (zeros when not found).
+  - `/mcu/hexapod_cmd` (`mcu_msgs/HexapodCmd`) — sends `MODE_DANCE` when the target is detected.
+- `gazebo_vision_node` (`seeker_vision/gazebo_vision_core.py`) — same detection pipeline, but subscribes to `/camera/image` (`sensor_msgs/Image`) instead of opening an HTTP stream. Use this in Gazebo simulation.
+- `cam_proxy` (`seeker_vision/cam_proxy.py`) — standalone MJPEG proxy. Fetches the ESP32 camera stream (default `http://192.168.8.50/cam`) and re-serves it at `http://localhost:8080/stream`. Needed because the container may not have a direct route to the ESP32's IP.
+- `emotion_node` (`seeker_vision/emotion_node.py`) — Haar-cascade face localisation + DeepFace emotion analysis at ~10 fps. Publishes the dominant emotion to `/emotion_detail` (`std_msgs/String`).
+
+**Parameters** (on `vision_node` / `emotion_node`):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `video_source` | `http://localhost:8080/stream` | MJPEG URL or V4L2 device path (e.g. `/dev/video0`) |
+
+**Launch files:**
+
+| Launch | What it starts | Camera source |
+|---|---|---|
+| `mcu_cam.launch.py` | `cam_proxy` + `vision_node` (2 s delay) | ESP32 camera via proxy |
+| `gazebo_cam.launch.py` | `gazebo_vision_node` | Gazebo `/camera/image` topic |
+| `local_cam.launch.py` | `vision_node` | Host webcam (`/dev/video0`) |
+
+**Model:**
+
+- `model/yolo26n.pt` — YOLOv8-nano weights (stored via Git LFS). Detects 80 COCO classes; the node filters for a configurable target name.
+
+```bash
+colcon build --packages-select mcu_msgs seeker_vision
+ros2 launch seeker_vision mcu_cam.launch.py       # real ESP32 camera
+ros2 launch seeker_vision gazebo_cam.launch.py     # Gazebo simulation
+ros2 launch seeker_vision local_cam.launch.py      # host webcam
+```
 
 ---
 
@@ -229,7 +360,9 @@ ros2 launch test_package test_node.launch.py
 ```
 seeker_gazebo ──► seeker_description
 seeker_gazebo ──► seeker_sim
+seeker_media  ──► seeker_display
 seeker_navigation ──► seeker_description
+seeker_vision ──► mcu_msgs
 every ROS node importing HexapodCmd ──► mcu_msgs
 ```
 

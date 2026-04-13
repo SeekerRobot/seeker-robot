@@ -2,7 +2,7 @@
 
 **Seeker Robot** is a six-legged autonomous robot built on **ROS 2 Jazzy** and an **ESP32-S3** firmware stack talking to the host through **micro-ROS** over WiFi. The entire development environment lives inside a single multi-stage Docker image, so you can go from clone to running simulation (or flashing firmware) with the same five commands on Linux, macOS, or Windows.
 
-The robot maps its environment with a 360° LiDAR and a BNO085 IMU, navigates with Nav2 + SLAM Toolbox, and hunts for a red ball using frontier exploration plus HSV-thresholded camera detection. A Fish Audio-backed TTS node closes the loop for voice feedback.
+The robot maps its environment with a 360° LiDAR and a BNO085 IMU, navigates with Nav2 + SLAM Toolbox, and hunts for objects using YOLO-based camera detection and frontier exploration. A Fish Audio-backed TTS node closes the loop for voice feedback.
 
 ---
 
@@ -57,16 +57,19 @@ seeker-robot/
 │       ├── mcu_msgs/           # Shared .msg/.srv between ROS 2 and micro-ROS
 │       ├── seeker_description/ # URDF + robot_state_publisher
 │       ├── seeker_gazebo/      # Gazebo Harmonic simulation launches
+│       ├── seeker_display/     # OLED display nodes (HTTP LCD server + demos)
+│       ├── seeker_media/       # MP4 player (video → OLED + audio → speaker)
 │       ├── seeker_navigation/  # Nav2 + SLAM + EKF + ball_searcher
 │       ├── seeker_sim/         # fake_mcu_node (tripod gait sim)
 │       ├── seeker_tts/         # Fish Audio TTS bridge
+│       ├── seeker_vision/     # YOLO object detection + emotion detection + camera proxy
 │       └── test_package/       # Minimal CI sanity package
 ├── mcu_ws/            # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared base platformio.ini + network_config.ini
 │   ├── src/                    # Per-sketch PlatformIO projects
 │   ├── lib/                    # Shared C++ libraries (subsystems, bridge, kinematics...)
 │   ├── libs_external/          # Pre-vendored micro-ROS PlatformIO library
-│   └── extra_packages/         # mcu_msgs bind-mounted from ros2_ws for micro-ROS builds
+│   └── platformio/extra_packages/ # mcu_msgs bind-mounted from ros2_ws for micro-ROS builds
 ├── docker/            # Multi-stage Dockerfile + compose + init-bootstrap
 ├── doc/               # Hardware docs (PCB design files live here)
 └── scripts/           # Utility scripts (bind-mounted into the container at ~/scripts)
