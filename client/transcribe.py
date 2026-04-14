@@ -13,7 +13,7 @@ print("Loading Whisper model...")
 model = WhisperModel("tiny.en", device = "cpu", compute_type = "int8")
 
 text = ''
-ingest = False
+translate = False
 
 def transcribe():
     audio_buffer = np.array([], dtype = np.float32)
@@ -39,7 +39,7 @@ def transcribe():
                     for segment in segments:
                         if segment.text.strip():
                             text: str = segment.text.strip()
-                            ingest = True
+                            translate = True
                             
                     audio_buffer = np.array([], dtype = np.float32)
     

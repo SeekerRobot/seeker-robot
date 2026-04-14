@@ -1,14 +1,16 @@
-# from transcribe import text, ingest
+from transcribe import text, translate
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from enum import Enum
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel
 import json
 
 from google import genai
 from google.genai import types
+
+import time
 
 class Input(BaseModel):
     user_command: str
@@ -39,53 +41,64 @@ left', 'move right', 'spin', 'dance', 'find the object', 'NONE OF THE ABOVE'].
 You may be lenient because your result will be verified by a human.
 """
     
-text = "hey hatsune you are facing north and i want you to move west over"
+text: str = "hey hatsune you are facing north and i want you to move west over"
     
-client = genai.Client()
+client: genai.Client = genai.Client()
 
 command: list[str] = []
-translated_command = ''
+command_ready: str = ''
+translated_command: str = ''
+verify: bool = False
 
-if 'hey hatsune' in text.lower():
-    # while 'over' not in text:
-    #     if ingest == True:
-    #         ingest = False
+while True:
+    if 'hey hatsune' in text.lower():
+        while 'over' not in text:
+            if translate == True:
+                translate = False
 
-    #         command.append(text)
+                command.append(text)
+                
+            else:
+                time.sleep(0.5)
+
+
+        command.append(text)
+        
+        command_ready = ' '.join(command)
+        if 'over' in command_ready:
+            command_ready = command_ready.split('over')[0] + 'over'
             
-    #     else:
-    #         time.sleep(0.5)
-
-
-    command.append(text)
-    
-    injected_prompt: str = f"""
-    <user_command>
-    {' '.join(command)}
-    </user_command>
-    """
-    
-    try:
-        response = client.models.generate_content(
-            model = 'gemini-2.5-flash',
-            contents = injected_prompt,
-            config = types.GenerateContentConfig(
-                system_instruction = instruction,
-                response_mime_type = 'application/json',
-                response_schema = Output
+        print(command_ready)
+        
+        injected_prompt: str = f"""
+        <user_command>
+        {' '.join(command)}
+        </user_command>
+        """
+        
+        try:
+            response = client.models.generate_content(
+                model = 'gemini-2.5-flash',
+                contents = injected_prompt,
+                config = types.GenerateContentConfig(
+                    system_instruction = instruction,
+                    response_mime_type = 'application/json',
+                    response_schema = Output
+                )
             )
-        )
-        
-        full_response_obj = Output(**json.loads(response.text))
-    
-        translated_command = full_response_obj.translated_command
-        
-        print(translated_command)
-        
-        
-    except Exception as e:
-        print(f'Error: {e}')
             
-    command = []
-    
-    
+            full_response_obj = Output(**json.loads(response.text))
+        
+            translated_command = full_response_obj.translated_command
+            
+            print(translated_command)
+            
+            
+        except Exception as e:
+            print(f'Error: {e}')
+                
+        command = []
+        
+    time.sleep(.1)
+        
+        
