@@ -93,6 +93,30 @@ while True:
             
             print(translated_command)
             
+            publish_to_tts: str = f"""
+I have received the command '{command_ready}' and I have translated it into
+'{translated_command}'. Would you like to proceed? Say 'Yes' or 'No'.
+"""
+
+            while 'over' not in text:
+                if translate == True:
+                    translate = False
+                    
+                    command.append(text)
+                    
+                else:
+                    time.sleep(.5)
+                    
+            command.append(text)
+            
+            validation_response = ' '.join(command).lower()
+            
+            if 'no' in validation_response:
+                publish_to_tts = 'Abandoning command'
+            
+            elif 'yes' in validation_response:
+                publish_to_tts = f'Proceeding with the command \'{command_ready}\''
+                # pubilsh {command_ready} to whatever makes the robot perform actions
             
         except Exception as e:
             print(f'Error: {e}')
