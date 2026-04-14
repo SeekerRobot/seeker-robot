@@ -1,16 +1,14 @@
-from transcribe import text, ingest
+# from transcribe import text, ingest
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 import json
 
 from google import genai
 from google.genai import types
-
-import time
 
 class Input(BaseModel):
     user_command: str
@@ -40,21 +38,23 @@ task. The predefined set of tasks is: ['move forward', 'move backward', 'move
 left', 'move right', 'spin', 'dance', 'find the object', 'NONE OF THE ABOVE'].
 You may be lenient because your result will be verified by a human.
 """
-        
+    
+text = "hey hatsune you are facing north and i want you to move west over"
+    
 client = genai.Client()
 
 command: list[str] = []
 translated_command = ''
 
 if 'hey hatsune' in text.lower():
-    while 'over' not in text:
-        if ingest == True:
-            ingest = False
+    # while 'over' not in text:
+    #     if ingest == True:
+    #         ingest = False
 
-            command.append(text)
+    #         command.append(text)
             
-        else:
-            time.sleep(0.5)
+    #     else:
+    #         time.sleep(0.5)
 
 
     command.append(text)
