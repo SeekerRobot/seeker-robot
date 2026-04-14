@@ -1,9 +1,13 @@
 from transcribe import text, ingest
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from enum import Enum
 from pydantic import BaseModel, Field, ValidationError
 import json
 
+from google import genai
 from google.genai import types
 
 import time
@@ -24,16 +28,19 @@ class RobotAction(str, Enum):
 class Output(BaseModel):
     translated_command: RobotAction
     
-instruction: str = 'You are a robot named Hatsune. You are given a command by \
-    a user that may represent a task from a predefined set of tasks. \
-    Unfortunately, the given command will not always be exactly any task. Therefore, \
-    you must guess which task the user intented to command. If you do not believe that \
-    the command accurately represents any task, opt not to pick any task. The \
-    predefined set of tasks is: [\'move forward\', \'move backward\', \'move \
-    left\', \'move right\', \'spin\', \'dance\', \'find the object\', \'dance\'\
-    \'NONE OF THE ABOVE\']'
-    
-    
+instruction: str = f"""
+You are a robot named Hatsune. You are given a command by a user that may
+represent a task from a predefined set of tasks. The command will take place
+between the key phrases 'hey hastune' [COMMAND] 'over'. Unfortunately, the
+given command will not always be exactly any task. Additionally, the command
+may be interrupted by other words picked up from other people. Therefore, you
+must guess which task the user intended for you to command. If you do not 
+believe that the command accurately represents any task, opt not to pick any 
+task. The predefined set of tasks is: ['move forward', 'move backward', 'move
+left', 'move right', 'spin', 'dance', 'find the object', 'NONE OF THE ABOVE'].
+You may be lenient because your result will be verified by a human.
+"""
+        
 client = genai.Client()
 
 command: list[str] = []
@@ -73,6 +80,7 @@ if 'hey hatsune' in text.lower():
     
         translated_command = full_response_obj.translated_command
         
+        print(translated_command)
         
         
     except Exception as e:
