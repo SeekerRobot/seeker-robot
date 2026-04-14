@@ -96,6 +96,9 @@ void ESP32WifiSubsystem::update() {
     }
 
     case WifiState::CONNECTED:
+#if ENABLE_ARDUINO_OTA
+      ArduinoOTA.handle();
+#endif
       if (now - last_health_check_ms_ >= kHealthCheckIntervalMs) {
         last_health_check_ms_ = now;
         if (WiFi.status() != WL_CONNECTED) {
@@ -120,6 +123,9 @@ void ESP32WifiSubsystem::reset() {
   consecutive_failures_ = 0;
   event_disconnected_ = false;
   event_got_ip_ = false;
+#if ENABLE_ARDUINO_OTA
+  ota_started_ = false;
+#endif
   transitionTo(WifiState::DISCONNECTED);
 }
 
@@ -171,9 +177,15 @@ void ESP32WifiSubsystem::handleConnected() {
   consecutive_failures_ = 0;
   last_health_check_ms_ = millis();
   transitionTo(WifiState::CONNECTED);
+#if ENABLE_ARDUINO_OTA
+  setupOTA();
+#endif
 }
 
 void ESP32WifiSubsystem::handleDisconnected() {
+#if ENABLE_ARDUINO_OTA
+  ota_started_ = false;
+#endif
   if (state_ == WifiState::CONNECTED) {
     retry_count_ = 0;
     transitionTo(WifiState::RECONNECTING);
@@ -188,6 +200,15 @@ void ESP32WifiSubsystem::powerCycleRadio() {
   WiFi.mode(WIFI_STA);
   applyStaticIP();
 }
+
+#if ENABLE_ARDUINO_OTA
+void ESP32WifiSubsystem::setupOTA() {
+  if (ota_started_) return;
+  ArduinoOTA.setHostname(setup_.getId());
+  ArduinoOTA.begin();
+  ota_started_ = true;
+}
+#endif
 
 }  // namespace Subsystem
 

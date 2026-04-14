@@ -36,16 +36,30 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_GYRO
   if (!setup_.gyro) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[Bridge] BRIDGE_ENABLE_GYRO=1 but gyro pointer is null");
-    ok = false;
+    Debug::printf(
+        Debug::Level::WARN,
+        "[Bridge] BRIDGE_ENABLE_GYRO=1 but gyro pointer is null — skipping");
   } else {
     // __init allocates the frame_id string buffer; plain {} leaves data=nullptr
     // which micro-CDR dereferences during serialisation → crash.
     sensor_msgs__msg__Imu__init(&gyro_.msg);
-    gyro_.msg.orientation_covariance[0] = -1.0;
-    gyro_.msg.angular_velocity_covariance[0] = -1.0;
-    gyro_.msg.linear_acceleration_covariance[0] = -1.0;
+    // Wire frame_id to our pre-allocated buffer (same pattern as LiDAR).
+    gyro_.msg.header.frame_id.data = gyro_.frame_id_buf;
+    gyro_.msg.header.frame_id.size = 9;  // strlen("base_link")
+    gyro_.msg.header.frame_id.capacity = sizeof(gyro_.frame_id_buf);
+    // Diagonal covariance matrices (row-major 3x3, indices 0/4/8 are xx/yy/zz).
+    // BNO085 game rotation vector: ~1° RMS → 0.0003 rad² per axis.
+    gyro_.msg.orientation_covariance[0] = 0.0003;
+    gyro_.msg.orientation_covariance[4] = 0.0003;
+    gyro_.msg.orientation_covariance[8] = 0.0003;
+    // Gyroscope: ~0.01 rad/s RMS → 0.0001 (rad/s)² per axis.
+    gyro_.msg.angular_velocity_covariance[0] = 0.0001;
+    gyro_.msg.angular_velocity_covariance[4] = 0.0001;
+    gyro_.msg.angular_velocity_covariance[8] = 0.0001;
+    // Linear acceleration: ~0.1 m/s² RMS → 0.01 (m/s²)² per axis.
+    gyro_.msg.linear_acceleration_covariance[0] = 0.01;
+    gyro_.msg.linear_acceleration_covariance[4] = 0.01;
+    gyro_.msg.linear_acceleration_covariance[8] = 0.01;
 
     rcl_ret_t rc = ctx.createPublisherBestEffort(
         &gyro_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
@@ -63,10 +77,9 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_BATTERY
   if (!setup_.battery) {
-    Debug::printf(
-        Debug::Level::ERROR,
-        "[Bridge] BRIDGE_ENABLE_BATTERY=1 but battery pointer is null");
-    ok = false;
+    Debug::printf(Debug::Level::WARN,
+                  "[Bridge] BRIDGE_ENABLE_BATTERY=1 but battery pointer is "
+                  "null — skipping");
   } else {
     battery_.msg.data = 0.0f;
     rcl_ret_t rc = ctx.createPublisherBestEffort(
@@ -90,9 +103,9 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
 
 #if BRIDGE_ENABLE_LIDAR
   if (!setup_.lidar) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[Bridge] BRIDGE_ENABLE_LIDAR=1 but lidar pointer is null");
-    ok = false;
+    Debug::printf(
+        Debug::Level::WARN,
+        "[Bridge] BRIDGE_ENABLE_LIDAR=1 but lidar pointer is null — skipping");
   } else {
     // Without __init(), header.frame_id.data is nullptr → micro-CDR crash on
     // publish.
@@ -100,7 +113,7 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     // Wire frame_id to our pre-allocated buffer (__init allocates 1 byte; we
     // override before any publish so __fini never sees our pointer).
     lidar_.msg.header.frame_id.data = lidar_.frame_id_buf;
-    lidar_.msg.header.frame_id.size = 5;  // strlen("laser")
+    lidar_.msg.header.frame_id.size = 10;  // strlen("lidar_link")
     lidar_.msg.header.frame_id.capacity = sizeof(lidar_.frame_id_buf);
     // Wire pre-allocated buffers so __fini() never frees them.
     lidar_.msg.ranges.data = lidar_.ranges_buf;
@@ -163,6 +176,11 @@ void MicroRosBridge::onDestroy() {
 #endif
 #if BRIDGE_ENABLE_GYRO
   gyro_.pub = rcl_get_zero_initialized_publisher();
+  // Null backing pointer before __fini() to prevent free() of our struct
+  // buffer.
+  gyro_.msg.header.frame_id.data = nullptr;
+  gyro_.msg.header.frame_id.size = 0;
+  gyro_.msg.header.frame_id.capacity = 0;
   sensor_msgs__msg__Imu__fini(&gyro_.msg);
 #endif
 #if BRIDGE_ENABLE_BATTERY
@@ -235,6 +253,10 @@ void MicroRosBridge::publishAll() {
     gyro_.msg.linear_acceleration.y = d.linearAcceleration.y;
     gyro_.msg.linear_acceleration.z = d.linearAcceleration.z;
 
+    int64_t now_ns = rmw_uros_epoch_nanos();
+    gyro_.msg.header.stamp.sec = (int32_t)(now_ns / 1000000000LL);
+    gyro_.msg.header.stamp.nanosec = (uint32_t)(now_ns % 1000000000LL);
+
     rcl_ret_t rc = rcl_publish(&gyro_.pub, &gyro_.msg, nullptr);
     if (rc != RCL_RET_OK) {
       Debug::printf(Debug::Level::WARN, "[Bridge] IMU publish failed (%d)",
@@ -298,9 +320,9 @@ void MicroRosBridge::publishAll() {
       lidar_.msg.ranges.size = n_out;
       lidar_.msg.intensities.size = n_out;
 
-      uint64_t now_us = micros();
-      lidar_.msg.header.stamp.sec = now_us / 1000000ULL;
-      lidar_.msg.header.stamp.nanosec = (now_us % 1000000ULL) * 1000ULL;
+      int64_t now_ns = rmw_uros_epoch_nanos();
+      lidar_.msg.header.stamp.sec = (int32_t)(now_ns / 1000000000LL);
+      lidar_.msg.header.stamp.nanosec = (uint32_t)(now_ns % 1000000000LL);
 
       rcl_ret_t rc = rcl_publish(&lidar_.pub, &lidar_.msg, nullptr);
       if (rc != RCL_RET_OK) {

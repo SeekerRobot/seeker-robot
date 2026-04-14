@@ -28,13 +28,23 @@ Visualization Manager:
       Alpha: 0.7
       Color Scheme: map
     - Class: rviz_default_plugins/LaserScan
-      Name: LaserScan
+      Name: LaserScan (sim)
       Enabled: true
       Topic:
         Value: /lidar/scan
+        Reliability Policy: Best Effort
       Size (m): 0.03
       Color Transformer: FlatColor
       Color: 255; 0; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan (mcu)
+      Enabled: false
+      Topic:
+        Value: /mcu/scan
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Color Transformer: FlatColor
+      Color: 0; 0; 255
     - Class: rviz_default_plugins/Image
       Name: Camera Image
       Enabled: true

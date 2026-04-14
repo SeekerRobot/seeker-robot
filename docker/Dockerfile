@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     yq \
     git-lfs \
     pipx \
+    ffmpeg \
     # Qt/X11 runtime dependencies
     libxcb1 \
     libx11-xcb1 \
@@ -114,6 +115,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-serial \
         python3-requests && \
     rm -rf /var/lib/apt/lists/*
+
+# Vision dependencies (ultralytics/YOLO + deepface emotion detection)
+# tensorflow[and-cuda] bundles CUDA runtime + cuDNN so the GPU is available
+# without a separate CUDA toolkit install in the image.
+RUN pip install --break-system-packages \
+    "numpy<2" \
+    "tensorflow[and-cuda]" \
+    ultralytics \
+    deepface \
+    tf-keras
+
+COPY scripts/register_cuda_libs.py /tmp/register_cuda_libs.py
+RUN python3 /tmp/register_cuda_libs.py && ldconfig
 
 FROM base AS dev
 

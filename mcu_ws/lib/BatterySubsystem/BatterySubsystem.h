@@ -101,12 +101,15 @@ class BatterySubsystem : public Subsystem::ThreadedSubsystem {
   explicit BatterySubsystem(const BatterySetup& setup)
       : ThreadedSubsystem(setup), setup_(setup) {}
 
+  static constexpr uint32_t kLogIntervalMs = 1000;
+
   const BatterySetup setup_;
   mutable Threads::Mutex data_mutex_;
 
   float voltage_ = 0.0f;
   uint16_t raw_adc_ = 0;
   bool initialized_ = false;
+  uint32_t last_log_ms_ = 0;
 };
 
 }  // namespace Subsystem

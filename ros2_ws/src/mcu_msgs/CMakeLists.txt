@@ -39,6 +39,7 @@ find_package(geometry_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ExampleMsg.msg"
   "msg/HexapodCmd.msg"
+  "msg/OledFrame.msg"
   "srv/ExampleSrv.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )

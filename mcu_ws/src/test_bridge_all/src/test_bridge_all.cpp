@@ -3,12 +3,15 @@
  * @author Aldem Pido
  * @date 4/3/2026
  * @brief Integration test: WiFi micro-ROS + MicroRosBridge with all features
- * enabled (heartbeat, gyro, battery, lidar, debug log).
+ * enabled (heartbeat, gyro, battery, lidar, debug log) + I2S speaker + OLED.
  *
  * WiFi transport: ESP32WifiSubsystem brings up the network connection before
  * the micro-ROS manager starts. All Debug::printf output is forwarded to
  * /mcu/log via DEBUG_TRANSPORT_MICROROS once the agent is connected.
  * Serial is free for pre-connect debug output (DEBUG_TRANSPORT_SERIAL).
+ *
+ * OLED display fetches 1024-byte framebuffers over HTTP from the host
+ * (AGENT_IP:8384/lcd_out). micro-ROS agent is NOT required for OLED.
  *
  * Build flags (set in this sketch's platformio.ini):
  *   -DDEBUG_TRANSPORT_SERIAL
@@ -26,6 +29,16 @@
  *   ros2 topic echo /mcu/battery_voltage
  *   ros2 topic hz   /mcu/scan       # ~6 Hz
  *   ros2 topic echo /mcu/log
+ *
+ * OLED (no micro_ros_agent needed):
+ *   ros2 run seeker_display oled_sine_node
+ *   # or: ros2 run seeker_media mp4_player_node
+ *
+ * Speaker / TTS (seeker_tts node on host, port 8383):
+ *   FISH_API_KEY=xxx ros2 run seeker_tts tts_node
+ *   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
+ *   ros2 topic pub /audio_play_file std_msgs/String "data:
+ * '/path/to/sound.wav'" --once
  */
 #include <Arduino.h>
 #include <BatterySubsystem.h>
@@ -35,7 +48,9 @@
 #include <GyroSubsystem.h>
 #include <LidarSubsystem.h>
 #include <MicroRosBridge.h>
+#include <OledSubsystem.h>
 #include <RobotConfig.h>
+#include <SpeakerSubsystem.h>
 #include <Wire.h>
 #include <hal_thread.h>
 #include <microros_manager_robot.h>
@@ -43,6 +58,7 @@
 static IPAddress static_ip STATIC_IP;
 static IPAddress gateway GATEWAY;
 static IPAddress subnet SUBNET;
+static IPAddress agent_ip(AGENT_IP);
 
 static constexpr Subsystem::BatteryCalibration kBattCalibration(
     /*raw_lo=*/1862, /*volt_lo=*/3.0f,
@@ -57,6 +73,7 @@ static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
+static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8384);
 
 // LidarSetup holds a HardwareSerial& — Serial2 is a global object, safe here.
 static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
@@ -108,6 +125,32 @@ void setup() {
   }
   lidar.beginThreadedPinned(6144, 4, 1, 0);
   Debug::printf(Debug::Level::INFO, "[Main] Lidar started");
+
+  // --- Speaker — fetches PCM from seeker_tts on host (AGENT_IP:8383) ---
+  // Uses I2S_NUM_1, pinned to Core 1. No mic present here; update() retries
+  // gracefully until WiFi is up and the TTS server is running.
+  static Subsystem::SpeakerSetup speaker_setup(
+      I2S_NUM_1, 16000, Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
+      agent_ip, 8383, 2048, nullptr);
+  auto& spk = Subsystem::SpeakerSubsystem::getInstance(speaker_setup);
+  if (!spk.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] Speaker init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  spk.beginThreadedPinned(8192, 2, 100, 1);
+  Debug::printf(Debug::Level::INFO, "[Main] Speaker started");
+
+  // --- OLED display --- core 1 | priority 2 | 100 ms (10 Hz)
+  auto& oled = Subsystem::OledSubsystem::getInstance(oled_setup);
+  if (!oled.init()) {
+    Debug::printf(Debug::Level::ERROR, "[Main] OLED init FAILED — halting");
+    while (true) vTaskDelay(portMAX_DELAY);
+  }
+  oled.beginThreadedPinned(4096, 2, 100, 1);
+  oled.setFrame("boot");
+  oled.setOverlay(0, 4, 40, "bridge_all");
+  oled.setOverlay(1, 4, 52, "connecting...");
+  Debug::printf(Debug::Level::INFO, "[Main] OLED started");
 
   static Subsystem::MicroRosBridgeSetup bridge_setup;
   bridge_setup.gyro = &gyro;

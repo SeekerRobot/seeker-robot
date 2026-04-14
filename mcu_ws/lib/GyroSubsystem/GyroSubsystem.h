@@ -81,7 +81,7 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   /// Protects imu_data_ between the gyro task (writer) and any reader task.
   mutable Threads::Mutex data_mutex_;
 
-  static constexpr unsigned long kLogIntervalMs = 500;
+  static constexpr unsigned long kLogIntervalMs = 1000;
 
   Adafruit_BNO08x bno08x_;
   ImuData imu_data_ = {};
@@ -92,6 +92,14 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
 
   /// @brief Set the BNO085 reports.
   void setReports();
+  /// @brief Write the mounting-orientation quaternion to the BNO085 FRS so
+  ///        all sensor outputs are in ROS REP 103 (X=fwd, Y=left, Z=up).
+  ///        Must be called once after begin_I2C() and reset().
+  ///        The value persists in flash through soft resets.
+  void setReorientation();
+  /// @brief Zero the yaw to the robot's current heading while leaving
+  ///        pitch/roll gravity-referenced. Safe to call any time after init().
+  void tareYaw();
   /// @brief Log IMU data.
   void logImuData();
 };
