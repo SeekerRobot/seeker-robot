@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from enum import Enum
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel
 import json
 
 from google import genai
