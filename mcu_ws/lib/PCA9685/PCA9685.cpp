@@ -65,7 +65,10 @@ void PCA9685::update() {
     all_dirty_ = false;
   }
 
-  // Per-channel overrides (or standalone set() calls)
+  // Per-channel overrides (or standalone set() calls).
+  // Phase-stagger each channel by (ch * 4096 / 16) = ch * 256 ticks so
+  // pulses don't all start at tick 0 simultaneously, which would cause a
+  // large current spike at the top of every PWM cycle.
   while (dirty_) {
     uint8_t ch = __builtin_ctz(dirty_);
     uint16_t d = duty_[ch];
@@ -74,7 +77,9 @@ void PCA9685::update() {
     } else if (d >= kMaxDuty) {
       writeChannel(ch, kMaxDuty + 1, 0);  // full on via bit 12
     } else {
-      writeChannel(ch, 0, d);
+      uint16_t on_val  = static_cast<uint16_t>(ch) * (4096u / kNumChannels);
+      uint16_t off_val = (on_val + d) & 0x0FFFu;
+      writeChannel(ch, on_val, off_val);
     }
     dirty_ &= ~(1u << ch);
   }

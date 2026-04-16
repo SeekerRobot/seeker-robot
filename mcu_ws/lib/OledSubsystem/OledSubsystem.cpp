@@ -178,11 +178,11 @@ void OledSubsystem::fetchFrames() {
   cfg.timeout_ms = kHttpTimeoutMs;
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
-  if (!client) return false;
+  if (!client) return;
 
   if (esp_http_client_open(client, 0) != ESP_OK) {
     esp_http_client_cleanup(client);
-    return false;
+    return;
   }
 
   esp_http_client_fetch_headers(client);
@@ -190,7 +190,7 @@ void OledSubsystem::fetchFrames() {
   if (status != 200) {
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
-    return false;
+    return;
   }
 
   Debug::printf(Debug::Level::INFO, "[OLED] LCD stream connected");

@@ -149,20 +149,17 @@ constexpr float kReachTolerance = 5.0f;
 // ============================================================================
 
 /// Maximum angular velocity per servo (deg/s).
-/// MG90S datasheet: ~600°/s at no load. Use 300–400 for smooth motion.
-constexpr float kHipMaxVel = 300.0f;
-constexpr float kKneeMaxVel = 300.0f;
+constexpr float kHipMaxVel = 2000.0f;
+constexpr float kKneeMaxVel = 2000.0f;
 
 /// Maximum angular acceleration per servo (deg/s²).
-constexpr float kHipMaxAccel = 600.0f;
-constexpr float kKneeMaxAccel = 600.0f;
+constexpr float kHipMaxAccel = 3000.0f;
+constexpr float kKneeMaxAccel = 3000.0f;
 
 /// Total angular velocity budget across ALL 12 servos (deg/s).
 /// ServoSubsystem scales all velocities proportionally when this is exceeded,
 /// preventing current spikes from moving many servos simultaneously.
-/// With 12 servos at 300 deg/s each the unconstrained max is 3600; start at
-/// half to protect the power supply.
-constexpr float kServoBudget = 1800.0f;
+constexpr float kServoBudget = 10000.0f;
 
 /// PCA9685 PWM frequency (Hz). 50 Hz is standard for analogue servos.
 constexpr float kPwmFreqHz = 50.0f;
@@ -173,27 +170,31 @@ constexpr float kPwmFreqHz = 50.0f;
 // Use Config::mPort(N) — N is the number printed on the PCB silkscreen.
 // ============================================================================
 
-constexpr uint8_t kServoFL_Hip = Config::mPort(7);    // Leg 0 FL hip
-constexpr uint8_t kServoFL_Knee = Config::mPort(6);   // Leg 0 FL knee
-constexpr uint8_t kServoFR_Hip = Config::mPort(5);    // Leg 1 FR hip
-constexpr uint8_t kServoFR_Knee = Config::mPort(4);   // Leg 1 FR knee
-constexpr uint8_t kServoML_Hip = Config::mPort(3);    // Leg 2 ML hip
-constexpr uint8_t kServoML_Knee = Config::mPort(2);   // Leg 2 ML knee
-constexpr uint8_t kServoMR_Hip = Config::mPort(1);    // Leg 3 MR hip
-constexpr uint8_t kServoMR_Knee = Config::mPort(13);  // Leg 3 MR knee
-constexpr uint8_t kServoRL_Hip = Config::mPort(12);   // Leg 4 RL hip
-constexpr uint8_t kServoRL_Knee = Config::mPort(11);  // Leg 4 RL knee
-constexpr uint8_t kServoRR_Hip = Config::mPort(10);   // Leg 5 RR hip
-constexpr uint8_t kServoRR_Knee = Config::mPort(9);   // Leg 5 RR knee
+constexpr uint8_t kServoFL_Hip = Config::mPort(1);    // Leg 0 FL hip
+constexpr uint8_t kServoFL_Knee = Config::mPort(8);   // Leg 0 FL knee
+constexpr uint8_t kServoFR_Hip = Config::mPort(6);    // Leg 1 FR hip
+constexpr uint8_t kServoFR_Knee = Config::mPort(12);   // Leg 1 FR knee
+constexpr uint8_t kServoML_Hip = Config::mPort(2);    // Leg 2 ML hip
+constexpr uint8_t kServoML_Knee = Config::mPort(9);   // Leg 2 ML knee
+constexpr uint8_t kServoMR_Hip = Config::mPort(5);    // Leg 3 MR hip
+constexpr uint8_t kServoMR_Knee = Config::mPort(11);  // Leg 3 MR knee
+constexpr uint8_t kServoRL_Hip = Config::mPort(3);   // Leg 4 RL hip
+constexpr uint8_t kServoRL_Knee = Config::mPort(10);  // Leg 4 RL knee
+constexpr uint8_t kServoRR_Hip = Config::mPort(4);   // Leg 5 RR hip
+constexpr uint8_t kServoRR_Knee = Config::mPort(7);   // Leg 5 RR knee
 
 // ============================================================================
 // Servo configurations — ordered leg 0..5, hip then knee.
 // The kServoConfigs array is indexed 0..11 and passed to ServoSubsystem.
 // GaitConfig leg_servo_hip/knee use these INDICES, not channel numbers.
 //
-// min_pwm / max_pwm: 12-bit values at min_angle / max_angle KINEMATIC degrees.
-// All values below are PLACEHOLDERS (center ≈ 307, range ≈ 205–410).
-// Calibrate per the procedure in the file header.
+// min_pwm / max_pwm: 12-bit values at min_angle / max_angle (kinematic °).
+// Re-calibrate per the procedure in the file header if servos are swapped.
+//
+// total_angle_deg: the servo's full physical travel (180 for standard MG90S /
+//   SG90). min_pwm/max_pwm map to the kinematic limits, not the physical
+//   endpoints; this field documents the servo's hardware capability and is
+//   used by test tooling to validate PWM ranges.
 //
 // inverted: set true if the servo moves in the wrong physical direction.
 //           Typically one side of the body needs inverted hips relative to
@@ -206,141 +207,153 @@ const Subsystem::ServoConfig kServoConfigs[12] = {
   // ── Index 0: Leg 0 FL hip ─────────────────────────────────────────────────
   // 0° = femur pointing 60° CCW from body +X. Positive = sweeps toward front.
   {
-    .channel      = kServoFL_Hip,
-    .min_angle    = kHipMin,
-    .max_angle    = kHipMax,
-    .min_pwm      = 205,    // CALIBRATE: PWM at kHipMin (most-rearward)
-    .max_pwm      = 410,    // CALIBRATE: PWM at kHipMax (most-forward)
-    .inverted     = false,  // VERIFY
-    .max_velocity = kHipMaxVel,
-    .max_accel    = kHipMaxAccel,
+    .channel         = kServoFL_Hip,
+    .min_angle       = kHipMin,
+    .max_angle       = kHipMax,
+    .min_pwm         = 198,    // PWM at kHipMin (most-rearward)
+    .max_pwm         = 512,    // PWM at kHipMax (most-forward)
+    .inverted        = false,
+    .max_velocity    = kHipMaxVel,
+    .max_accel       = kHipMaxAccel,
+    .total_angle_deg = 180.0f,
   },
   // ── Index 1: Leg 0 FL knee ────────────────────────────────────────────────
   // 0° = lower leg horizontal. Positive = foot drops below hip.
   {
-    .channel      = kServoFL_Knee,
-    .min_angle    = kKneeMin,
-    .max_angle    = kKneeMax,
-    .min_pwm      = 205,    // CALIBRATE: PWM at 0° (horizontal reference)
-    .max_pwm      = 410,    // CALIBRATE: PWM at 90° (straight down)
-    .inverted     = false,  // VERIFY
-    .max_velocity = kKneeMaxVel,
-    .max_accel    = kKneeMaxAccel,
+    .channel         = kServoFL_Knee,
+    .min_angle       = kKneeMin,
+    .max_angle       = kKneeMax,
+    .min_pwm         = 110,    // PWM at 0° (horizontal reference)
+    .max_pwm         = 355,    // PWM at 90° (straight down)
+    .inverted        = true,
+    .max_velocity    = kKneeMaxVel,
+    .max_accel       = kKneeMaxAccel,
+    .total_angle_deg = 180.0f,
   },
 
   // ── Index 2: Leg 1 FR hip ─────────────────────────────────────────────────
   {
-    .channel      = kServoFR_Hip,
-    .min_angle    = kHipMin,
-    .max_angle    = kHipMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = true,   // VERIFY: right-side hips are often mirrored
-    .max_velocity = kHipMaxVel,
-    .max_accel    = kHipMaxAccel,
+    .channel         = kServoFR_Hip,
+    .min_angle       = kHipMin,
+    .max_angle       = kHipMax,
+    .min_pwm         = 198,
+    .max_pwm         = 512,
+    .inverted        = true,
+    .max_velocity    = kHipMaxVel,
+    .max_accel       = kHipMaxAccel,
+    .total_angle_deg = 180.0f,
   },
   // ── Index 3: Leg 1 FR knee ────────────────────────────────────────────────
   {
-    .channel      = kServoFR_Knee,
-    .min_angle    = kKneeMin,
-    .max_angle    = kKneeMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = true,   // VERIFY: right-side knees are often mirrored
-    .max_velocity = kKneeMaxVel,
-    .max_accel    = kKneeMaxAccel,
+    .channel         = kServoFR_Knee,
+    .min_angle       = kKneeMin,
+    .max_angle       = kKneeMax,
+    .min_pwm         = 355,
+    .max_pwm         = 605,
+    .inverted        = false,
+    .max_velocity    = kKneeMaxVel,
+    .max_accel       = kKneeMaxAccel,
+    .total_angle_deg = 180.0f,
   },
 
   // ── Index 4: Leg 2 ML hip ─────────────────────────────────────────────────
   {
-    .channel      = kServoML_Hip,
-    .min_angle    = kHipMin,
-    .max_angle    = kHipMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = false,  // VERIFY
-    .max_velocity = kHipMaxVel,
-    .max_accel    = kHipMaxAccel,
+    .channel         = kServoML_Hip,
+    .min_angle       = kHipMin,
+    .max_angle       = kHipMax,
+    .min_pwm         = 198,
+    .max_pwm         = 512,
+    .inverted        = true,
+    .max_velocity    = kHipMaxVel,
+    .max_accel       = kHipMaxAccel,
+    .total_angle_deg = 180.0f,
   },
   // ── Index 5: Leg 2 ML knee ────────────────────────────────────────────────
   {
-    .channel      = kServoML_Knee,
-    .min_angle    = kKneeMin,
-    .max_angle    = kKneeMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = false,  // VERIFY
-    .max_velocity = kKneeMaxVel,
-    .max_accel    = kKneeMaxAccel,
+    .channel         = kServoML_Knee,
+    .min_angle       = kKneeMin,
+    .max_angle       = kKneeMax,
+    .min_pwm         = 355,
+    .max_pwm         = 580,
+    .inverted        = false,
+    .max_velocity    = kKneeMaxVel,
+    .max_accel       = kKneeMaxAccel,
+    .total_angle_deg = 180.0f,
   },
 
   // ── Index 6: Leg 3 MR hip ─────────────────────────────────────────────────
   {
-    .channel      = kServoMR_Hip,
-    .min_angle    = kHipMin,
-    .max_angle    = kHipMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = true,   // VERIFY
-    .max_velocity = kHipMaxVel,
-    .max_accel    = kHipMaxAccel,
+    .channel         = kServoMR_Hip,
+    .min_angle       = kHipMin,
+    .max_angle       = kHipMax,
+    .min_pwm         = 198,
+    .max_pwm         = 512,
+    .inverted        = false,
+    .max_velocity    = kHipMaxVel,
+    .max_accel       = kHipMaxAccel,
+    .total_angle_deg = 180.0f,
   },
   // ── Index 7: Leg 3 MR knee ────────────────────────────────────────────────
   {
-    .channel      = kServoMR_Knee,
-    .min_angle    = kKneeMin,
-    .max_angle    = kKneeMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = true,   // VERIFY
-    .max_velocity = kKneeMaxVel,
-    .max_accel    = kKneeMaxAccel,
+    .channel         = kServoMR_Knee,
+    .min_angle       = kKneeMin,
+    .max_angle       = kKneeMax,
+    .min_pwm         = 110,
+    .max_pwm         = 355,
+    .inverted        = true,
+    .max_velocity    = kKneeMaxVel,
+    .max_accel       = kKneeMaxAccel,
+    .total_angle_deg = 180.0f,
   },
 
   // ── Index 8: Leg 4 RL hip ─────────────────────────────────────────────────
   {
-    .channel      = kServoRL_Hip,
-    .min_angle    = kHipMin,
-    .max_angle    = kHipMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = false,  // VERIFY
-    .max_velocity = kHipMaxVel,
-    .max_accel    = kHipMaxAccel,
+    .channel         = kServoRL_Hip,
+    .min_angle       = kHipMin,
+    .max_angle       = kHipMax,
+    .min_pwm         = 198,
+    .max_pwm         = 512,
+    .inverted        = true,
+    .max_velocity    = kHipMaxVel,
+    .max_accel       = kHipMaxAccel,
+    .total_angle_deg = 180.0f,
   },
   // ── Index 9: Leg 4 RL knee ────────────────────────────────────────────────
   {
-    .channel      = kServoRL_Knee,
-    .min_angle    = kKneeMin,
-    .max_angle    = kKneeMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = false,  // VERIFY
-    .max_velocity = kKneeMaxVel,
-    .max_accel    = kKneeMaxAccel,
+    .channel         = kServoRL_Knee,
+    .min_angle       = kKneeMin,
+    .max_angle       = kKneeMax,
+    .min_pwm         = 355,
+    .max_pwm         = 580,
+    .inverted        = false,
+    .max_velocity    = kKneeMaxVel,
+    .max_accel       = kKneeMaxAccel,
+    .total_angle_deg = 180.0f,
   },
 
   // ── Index 10: Leg 5 RR hip ────────────────────────────────────────────────
   {
-    .channel      = kServoRR_Hip,
-    .min_angle    = kHipMin,
-    .max_angle    = kHipMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = true,   // VERIFY
-    .max_velocity = kHipMaxVel,
-    .max_accel    = kHipMaxAccel,
+    .channel         = kServoRR_Hip,
+    .min_angle       = kHipMin,
+    .max_angle       = kHipMax,
+    .min_pwm         = 198,
+    .max_pwm         = 512,
+    .inverted        = false,
+    .max_velocity    = kHipMaxVel,
+    .max_accel       = kHipMaxAccel,
+    .total_angle_deg = 180.0f,
   },
   // ── Index 11: Leg 5 RR knee ───────────────────────────────────────────────
   {
-    .channel      = kServoRR_Knee,
-    .min_angle    = kKneeMin,
-    .max_angle    = kKneeMax,
-    .min_pwm      = 205,    // CALIBRATE
-    .max_pwm      = 410,    // CALIBRATE
-    .inverted     = true,   // VERIFY
-    .max_velocity = kKneeMaxVel,
-    .max_accel    = kKneeMaxAccel,
+    .channel         = kServoRR_Knee,
+    .min_angle       = kKneeMin,
+    .max_angle       = kKneeMax,
+    .min_pwm         = 120,
+    .max_pwm         = 355,
+    .inverted        = true,
+    .max_velocity    = kKneeMaxVel,
+    .max_accel       = kKneeMaxAccel,
+    .total_angle_deg = 180.0f,
   },
 };
 // clang-format on

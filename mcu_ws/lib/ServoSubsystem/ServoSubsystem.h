@@ -30,16 +30,24 @@
 namespace Subsystem {
 
 static constexpr uint8_t kMaxServos = 16;
+/// Delay (ms) between zeroing servo PWM outputs and disabling OE on disarm.
+/// Gives servos time to react to the zero-pulse before power is cut.
+static constexpr uint32_t kDisarmDelayMs = 200;
 
 struct ServoConfig {
-  uint8_t channel;     // PCA9685 channel (0–15)
-  float min_angle;     // lower angle limit (degrees)
-  float max_angle;     // upper angle limit (degrees)
-  uint16_t min_pwm;    // 12-bit PCA9685 value at min_angle
-  uint16_t max_pwm;    // 12-bit PCA9685 value at max_angle
-  bool inverted;       // true → PWM mapping is reversed
-  float max_velocity;  // degrees per second
-  float max_accel;     // degrees per second^2
+  uint8_t channel;       // PCA9685 channel (0–15)
+  float min_angle;       // lower angle limit (degrees)
+  float max_angle;       // upper angle limit (degrees)
+  uint16_t min_pwm;      // 12-bit PCA9685 value at min_angle
+  uint16_t max_pwm;      // 12-bit PCA9685 value at max_angle
+  bool inverted;         // true → PWM mapping is reversed
+  float max_velocity;    // degrees per second
+  float max_accel;       // degrees per second^2
+  /// Servo's full physical travel range (degrees). 180 for standard servos,
+  /// 270 for wide-range servos. min_pwm/max_pwm correspond to min_angle/
+  /// max_angle — this field documents what fraction of the physical range the
+  /// software window occupies and is used by test tooling to set safe defaults.
+  float total_angle_deg;
 };
 
 class ServoSetup : public Classes::BaseSetup {
