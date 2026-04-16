@@ -116,59 +116,57 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-requests && \
     rm -rf /var/lib/apt/lists/*
 
-# Vision dependencies (ultralytics/YOLO + deepface emotion detection)
-# tensorflow[and-cuda] bundles CUDA runtime + cuDNN so the GPU is available
-# without a separate CUDA toolkit install in the image.
+USER $USER_NAME
+
+# ---------------------------------------------------------------------------
+# vision — adds ultralytics/YOLO + deepface + tensorflow[and-cuda] on top of
+# base. Kept in its own stage so MCU-only workflows (BUILD_TARGET=dev|prod)
+# don't pay the ~5 GB cost of the CUDA/tensorflow install.
+# ---------------------------------------------------------------------------
+FROM base AS vision
+USER root
 RUN pip install --break-system-packages \
     "numpy<2" \
     "tensorflow[and-cuda]" \
     ultralytics \
     deepface \
     tf-keras
-
 COPY scripts/register_cuda_libs.py /tmp/register_cuda_libs.py
 RUN python3 /tmp/register_cuda_libs.py && ldconfig
+USER $USER_NAME
 
+# ---------------------------------------------------------------------------
+# dev / dev-vision — add Gazebo Harmonic, RViz, Nav2, SLAM Toolbox, and teleop
+# tools. `dev` sits on the lean base; `dev-vision` layers the same tooling on
+# top of the vision stage. The install commands are identical, so they live in
+# docker/install-sim-tools.sh to avoid drift.
+# ---------------------------------------------------------------------------
 FROM base AS dev
-
-# Switch to root to install Gazebo Harmonic and required tools, then switch back
 USER root
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-$ROS_DISTRO-ros-gz \
-    ros-$ROS_DISTRO-rviz2 \
-    ros-$ROS_DISTRO-gz-ros2-control \
-    curl \
-    lsb-release \
-    gnupg \
-    ca-certificates && \
-    # Fetch and install OSRF package signing key
-    curl -fsSL https://packages.osrfoundation.org/gazebo.gpg -o /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg && \
-    # Add Gazebo (OSRF) apt repository for the current distro
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] https://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" > /etc/apt/sources.list.d/gazebo-stable.list && \
-    apt-get update && \
-    # Install Gazebo harmonic and needed Qt/X11/XCB/OpenGL libs to support GUI
-    apt-get install -y --no-install-recommends \
-    gz-harmonic && \
-    # Cleanup apt caches
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-    # Install rqt graph, teleop tools, and Nav2 navigation stack
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-$ROS_DISTRO-rqt-graph \
-    ros-$ROS_DISTRO-teleop-twist-keyboard \
-    ros-$ROS_DISTRO-teleop-twist-joy \
-    ros-$ROS_DISTRO-navigation2 \
-    ros-$ROS_DISTRO-nav2-bringup \
-    ros-$ROS_DISTRO-slam-toolbox && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
+COPY docker/install-sim-tools.sh /tmp/install-sim-tools.sh
+RUN bash /tmp/install-sim-tools.sh && rm /tmp/install-sim-tools.sh
 USER $USER_NAME
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
 
-FROM base AS prod
+FROM vision AS dev-vision
+USER root
+COPY docker/install-sim-tools.sh /tmp/install-sim-tools.sh
+RUN bash /tmp/install-sim-tools.sh && rm /tmp/install-sim-tools.sh
+USER $USER_NAME
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
 
+# ---------------------------------------------------------------------------
+# prod / prod-vision — runtime images. prod is the lean base; prod-vision
+# carries the YOLO/deepface stack for on-robot inference.
+# ---------------------------------------------------------------------------
+FROM base AS prod
+USER $USER_NAME
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
+
+FROM vision AS prod-vision
 USER $USER_NAME
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]

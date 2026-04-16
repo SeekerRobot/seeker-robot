@@ -87,7 +87,7 @@ cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config
 | Key | What to set |
 |---|---|
 | `COMPOSE_PROJECT_NAME` | Unique per worktree so containers/volumes don't collide (e.g. `seeker-robot-main`, `seeker-robot-feature-x`). |
-| `BUILD_TARGET` | `dev` includes Gazebo/RViz/Nav2/SLAM Toolbox tooling. `prod` is headless, runtime-only. Pick `dev` unless you're deploying to a fleet. |
+| `BUILD_TARGET` | `dev` / `prod` are lean. Append `-vision` (`dev-vision`, `prod-vision`) only if you need the YOLO/deepface stack — it pulls `tensorflow[and-cuda]` and adds ~5 GB. Pick `dev` for MCU-only work, `dev-vision` when running `seeker_vision` nodes. |
 | `DISPLAY_CONFIG` / `NETWORK_MODE_CONFIG` | Uncomment and fill in the block for your OS (see §1). |
 | `FISH_API_KEY`, `FISH_REFERENCE_ID` | Optional — only needed if you plan to run the `seeker_tts` node. |
 

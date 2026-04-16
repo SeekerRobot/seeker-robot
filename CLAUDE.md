@@ -27,10 +27,10 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `libs_external/esp32/micro_ros_platformio/` — micro-ROS PlatformIO library (pre-vendored).
   - `platformio/extra_packages/` — Extra ROS packages (including `mcu_msgs`) needed at micro-ROS build time.
 - **`docker/`** — Containerized dev environment:
-  - `Dockerfile` — Multi-stage build (`base` → `dev`/`prod`). Base installs micro-ROS agent, PlatformIO, ROS 2 Jazzy, and vision dependencies (ultralytics, deepface, tensorflow+CUDA). `dev` adds Gazebo Harmonic, RViz, rqt.
+  - `Dockerfile` — Multi-stage build. `base` installs micro-ROS agent, PlatformIO, ROS 2 Jazzy. `vision` layers `tensorflow[and-cuda]` + ultralytics + deepface on top (~5 GB, opt-in). Final targets: `dev` / `prod` (lean) and `dev-vision` / `prod-vision` (with vision stack). `dev*` stages also install Gazebo Harmonic, RViz, Nav2, SLAM Toolbox via `docker/install-sim-tools.sh`.
   - `Dockerfile.init-bootstrap` — One-shot init container that chowns named volumes and seeds `libs_external` into the `mcu_lib_external` volume.
   - `docker-compose.yml` — Defines `ros2` (main dev container), `init-bootstrap` (one-shot volume init), and GPU-enabled profile services `ros2-nvidia` (NVIDIA) and `ros2-amd` (AMD). `COMPOSE_PROJECT_NAME` in `.env` isolates containers/volumes per worktree.
-  - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|prod`, and display/network config for your OS.
+  - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|dev-vision|prod|prod-vision`, and display/network config for your OS.
 
 ## Docker / Build Commands
 
