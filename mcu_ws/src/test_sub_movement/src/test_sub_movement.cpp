@@ -90,6 +90,10 @@ static constexpr char kPrefsStepHKey[]   = "g_step_h";
 static constexpr char kPrefsCycleKey[]   = "g_cycle";
 static constexpr char kPrefsScaleKey[]   = "g_scale";
 static constexpr char kPrefsHeightKey[]  = "m_height";
+static constexpr char kPrefsMaxVxKey[]   = "m_maxvx";
+static constexpr char kPrefsMaxVyKey[]   = "m_maxvy";
+static constexpr char kPrefsMaxWzKey[]   = "m_maxwz";
+static constexpr char kPrefsMaxHvelKey[] = "m_maxhvel";
 
 static Preferences prefs;
 
@@ -114,6 +118,14 @@ static Subsystem::BatterySubsystem*   battery    = nullptr;
 
 // Current desired body height (mm). Applied whenever gait is IDLE.
 static float body_height_mm = 0.0f;
+
+// Velocity caps applied to every gait setVelocity() call. max_hvel additionally
+// limits the combined |(vx, vy)| magnitude — if the requested horizontal vector
+// exceeds it, both components are scaled down proportionally.
+static float max_vx   = 0.15f;  // m/s
+static float max_vy   = 0.15f;  // m/s
+static float max_wz   = 1.00f;  // rad/s
+static float max_hvel = 0.15f;  // m/s — combined |vx,vy| cap
 
 // ---------------------------------------------------------------------------
 // Line buffers — one per source so interleaved bytes cannot corrupt commands.
@@ -209,50 +221,54 @@ static bool parseU16(const char* tok, uint16_t& out) {
 // ---------------------------------------------------------------------------
 // Help
 // ---------------------------------------------------------------------------
-// printAll has a 256-byte stack buffer, so long help text would be truncated.
-// Split into chunks, each well under 256 bytes.
+// printAll has a 256-byte stack buffer; emitting one line per call keeps every
+// description intact regardless of length.
 static void printHelp() {
-  printAll("\r\n===== Movement Console =====\r\n"
-           "-- servo (carry-over from test_sub_servo) --\r\n"
-           "help | ?                  Show this help\r\n"
-           "status [M]                Show all M-ports or one\r\n"
-           "attach <M>                Attach servo on M\r\n"
-           "attachall                 Attach M1-M12 (skip M13)\r\n"
-           "detach <M>                Detach servo on M\r\n");
-  printAll("angle <M> <deg>           Set target angle\r\n"
-           "vel <M> <deg/s>           Set max velocity\r\n"
-           "accel <M> <deg/s^2>       Set max acceleration\r\n"
-           "invert <M> <0|1>          Set inverted flag\r\n"
-           "minangle <M> <deg>        Set min angle limit\r\n"
-           "maxangle <M> <deg>        Set max angle limit\r\n");
-  printAll("minpwm <M> <val>          Set min PWM (0-4095)\r\n"
-           "maxpwm <M> <val>          Set max PWM (0-4095)\r\n"
-           "freq <hz>                 Set PWM frequency\r\n"
-           "budget <deg/s>            Set total rate budget\r\n"
-           "neutral                   Move attached servos to neutral pose\r\n");
-  printAll("hips <deg>                Set all attached hips\r\n"
-           "knees <deg>               Set all attached knees\r\n"
-           "flat                      Lay flat (hips=0, knees=0)\r\n"
-           "standing                  Stand (kinematics neutral pose)\r\n"
-           "arm | disarm              OE on / off\r\n");
-  printAll("-- movement --\r\n"
-           "height <mm>               Set body height (IDLE only)\r\n"
-           "walk                      Start tripod gait\r\n"
-           "idle                      Clean stop (legs finish landing)\r\n"
-           "stop                      Immediate snap to neutral\r\n"
-           "forward <m/s>             Walk forward\r\n"
-           "back <m/s>                Walk backward\r\n");
-  printAll("strafe <m/s>              Sideways (positive = left)\r\n"
-           "turn <deg/s>              Yaw rate\r\n"
-           "move <vx> <vy> <wz>       Full velocity (m/s, m/s, rad/s)\r\n"
-           "gait_step <mm>            Set swing-arc height\r\n"
-           "gait_cycle <s>            Set tripod cycle time\r\n"
-           "gait_scale <x>            Set step-reach multiplier\r\n"
-           "gait_status               Print gait state + tuning\r\n");
-  printAll("-- persistence --\r\n"
-           "save                      Save all tunings to NVS\r\n"
-           "clearprefs                Clear NVS (defaults next boot)\r\n"
-           "============================\r\n");
+  printAll("\r\n===== Movement Console =====\r\n");
+  printAll("-- servo (carry-over from test_sub_servo) --\r\n");
+  printAll("help | ?                  Show this help\r\n");
+  printAll("status [M]                Show all M-ports or one\r\n");
+  printAll("attach <M>                Attach servo on M\r\n");
+  printAll("attachall                 Attach M1-M12 (skip M13)\r\n");
+  printAll("detach <M>                Detach servo on M\r\n");
+  printAll("angle <M> <deg>           Set target angle\r\n");
+  printAll("vel <M> <deg/s>           Set max velocity\r\n");
+  printAll("accel <M> <deg/s^2>       Set max acceleration\r\n");
+  printAll("velall <deg/s>            Set max velocity on ALL servos\r\n");
+  printAll("accelall <deg/s^2>        Set max accel on ALL servos\r\n");
+  printAll("invert <M> <0|1>          Set inverted flag\r\n");
+  printAll("minangle <M> <deg>        Set min angle limit\r\n");
+  printAll("maxangle <M> <deg>        Set max angle limit\r\n");
+  printAll("minpwm <M> <val>          Set min PWM (0-4095)\r\n");
+  printAll("maxpwm <M> <val>          Set max PWM (0-4095)\r\n");
+  printAll("freq <hz>                 Set PWM frequency\r\n");
+  printAll("budget <deg/s>            Set total rate budget\r\n");
+  printAll("neutral                   Move attached servos to neutral pose\r\n");
+  printAll("hips <deg>                Set all attached hips\r\n");
+  printAll("knees <deg>               Set all attached knees\r\n");
+  printAll("flat                      Lay flat (hips=0, knees=0)\r\n");
+  printAll("standing                  Stand (kinematics neutral pose)\r\n");
+  printAll("arm | disarm              OE on / off\r\n");
+  printAll("-- movement --\r\n");
+  printAll("height <mm>               Set body height (IDLE only)\r\n");
+  printAll("walk                      Start tripod gait\r\n");
+  printAll("idle                      Clean stop (legs finish landing)\r\n");
+  printAll("stop                      Immediate snap to neutral\r\n");
+  printAll("forward <m/s>             Walk forward (vx > 0)\r\n");
+  printAll("back <m/s>                Walk backward (vx < 0)\r\n");
+  printAll("strafe <m/s>              Sideways (positive = left, vy)\r\n");
+  printAll("turn <deg/s>              Yaw rate\r\n");
+  printAll("move <vx> <vy> <wz>       Full velocity (m/s, m/s, rad/s)\r\n");
+  printAll("max_velocities <vx> <vy> <wz>  Per-axis caps (m/s, m/s, rad/s)\r\n");
+  printAll("max_hvel <m/s>            Combined |vx,vy| cap\r\n");
+  printAll("gait_step <mm>            Set swing-arc height\r\n");
+  printAll("gait_cycle <s>            Set tripod cycle time\r\n");
+  printAll("gait_scale <x>            Set step-reach multiplier\r\n");
+  printAll("gait_status               Print gait state + tuning\r\n");
+  printAll("-- persistence --\r\n");
+  printAll("save                      Save all tunings to NVS\r\n");
+  printAll("clearprefs                Clear NVS (defaults next boot)\r\n");
+  printAll("============================\r\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +300,11 @@ static void cmdStatus() {
   Gait::VelocityCommand vel = gait->getVelocity();
   printAll("Movement: %s | vx=%+.3f vy=%+.3f wz=%+.3f | height=%.1f mm\r\n",
            stateName(gait->getState()), vel.vx, vel.vy, vel.wz, body_height_mm);
+  Gait::GaitConfig gc = gait->getGaitConfig();
+  printAll("Gait:     step=%.2f mm | cycle=%.3f s | scale=%.3f\r\n",
+           gc.step_height_mm, gc.cycle_time_s, gc.step_scale);
+  printAll("Caps:     max_vx=%.3f | max_vy=%.3f | max_wz=%.3f | max_hvel=%.3f\r\n",
+           max_vx, max_vy, max_wz, max_hvel);
   if (num_tokens >= 2) {
     uint8_t idx;
     if (parseIndex(tokens[1], idx)) printServoStatus(idx);
@@ -346,6 +367,24 @@ static void cmdAccel() {
   if (a <= 0.0f) { printErr("acceleration must be > 0"); return; }
   servos->setMaxAccel(idx, a);
   printAll("OK: M%u max_accel = %.2f deg/s^2\r\n", idx + 1, a);
+}
+
+static void cmdVelAll() {
+  if (!requireArgs(2)) return;
+  float v;
+  if (!parseFloat(tokens[1], v)) return;
+  if (v <= 0.0f) { printErr("velocity must be > 0"); return; }
+  for (uint8_t i = 0; i < 13; i++) servos->setMaxVelocity(i, v);
+  printAll("OK: all max_velocity = %.2f deg/s\r\n", v);
+}
+
+static void cmdAccelAll() {
+  if (!requireArgs(2)) return;
+  float a;
+  if (!parseFloat(tokens[1], a)) return;
+  if (a <= 0.0f) { printErr("acceleration must be > 0"); return; }
+  for (uint8_t i = 0; i < 13; i++) servos->setMaxAccel(i, a);
+  printAll("OK: all max_accel = %.2f deg/s^2\r\n", a);
 }
 
 static void cmdInvert() {
@@ -554,37 +593,65 @@ static void cmdIdle() {
   printOk("disable requested — STOPPING (legs will finish landing)");
 }
 
+// Clamp each axis to its cap, then scale (vx, vy) down jointly if their
+// magnitude exceeds max_hvel. Reports any clamping to the caller via flag.
+static bool applyVelClamp(float& vx, float& vy, float& wz) {
+  bool clamped = false;
+  if (vx >  max_vx) { vx =  max_vx; clamped = true; }
+  if (vx < -max_vx) { vx = -max_vx; clamped = true; }
+  if (vy >  max_vy) { vy =  max_vy; clamped = true; }
+  if (vy < -max_vy) { vy = -max_vy; clamped = true; }
+  if (wz >  max_wz) { wz =  max_wz; clamped = true; }
+  if (wz < -max_wz) { wz = -max_wz; clamped = true; }
+  float mag = sqrtf(vx * vx + vy * vy);
+  if (mag > max_hvel && mag > 0.0f) {
+    float k = max_hvel / mag;
+    vx *= k;
+    vy *= k;
+    clamped = true;
+  }
+  return clamped;
+}
+
 static void cmdForward() {
   if (!requireArgs(2)) return;
   float v;
   if (!parseFloat(tokens[1], v)) return;
-  gait->setVelocity(v, 0.0f, 0.0f);
-  printAll("OK: vx=%+.3f m/s\r\n", v);
+  float vx = v, vy = 0.0f, wz = 0.0f;
+  bool clamped = applyVelClamp(vx, vy, wz);
+  gait->setVelocity(vx, vy, wz);
+  printAll("OK: vx=%+.3f m/s%s\r\n", vx, clamped ? " (clamped)" : "");
 }
 
 static void cmdBack() {
   if (!requireArgs(2)) return;
   float v;
   if (!parseFloat(tokens[1], v)) return;
-  gait->setVelocity(-v, 0.0f, 0.0f);
-  printAll("OK: vx=%+.3f m/s (back)\r\n", -v);
+  float vx = -v, vy = 0.0f, wz = 0.0f;
+  bool clamped = applyVelClamp(vx, vy, wz);
+  gait->setVelocity(vx, vy, wz);
+  printAll("OK: vx=%+.3f m/s (back)%s\r\n", vx, clamped ? " (clamped)" : "");
 }
 
 static void cmdStrafe() {
   if (!requireArgs(2)) return;
   float v;
   if (!parseFloat(tokens[1], v)) return;
-  gait->setVelocity(0.0f, v, 0.0f);
-  printAll("OK: vy=%+.3f m/s\r\n", v);
+  float vx = 0.0f, vy = v, wz = 0.0f;
+  bool clamped = applyVelClamp(vx, vy, wz);
+  gait->setVelocity(vx, vy, wz);
+  printAll("OK: vy=%+.3f m/s%s\r\n", vy, clamped ? " (clamped)" : "");
 }
 
 static void cmdTurn() {
   if (!requireArgs(2)) return;
   float deg_s;
   if (!parseFloat(tokens[1], deg_s)) return;
-  float wz = deg_s * 0.017453292519943f;
-  gait->setVelocity(0.0f, 0.0f, wz);
-  printAll("OK: wz=%+.3f rad/s (%.1f deg/s)\r\n", wz, deg_s);
+  float vx = 0.0f, vy = 0.0f, wz = deg_s * 0.017453292519943f;
+  bool clamped = applyVelClamp(vx, vy, wz);
+  printAll("OK: wz=%+.3f rad/s (%.1f deg/s)%s\r\n",
+           wz, wz * 57.295779513082f, clamped ? " (clamped)" : "");
+  gait->setVelocity(vx, vy, wz);
 }
 
 static void cmdMove() {
@@ -593,8 +660,35 @@ static void cmdMove() {
   if (!parseFloat(tokens[1], vx)) return;
   if (!parseFloat(tokens[2], vy)) return;
   if (!parseFloat(tokens[3], wz)) return;
+  bool clamped = applyVelClamp(vx, vy, wz);
   gait->setVelocity(vx, vy, wz);
-  printAll("OK: vx=%+.3f vy=%+.3f wz=%+.3f\r\n", vx, vy, wz);
+  printAll("OK: vx=%+.3f vy=%+.3f wz=%+.3f%s\r\n",
+           vx, vy, wz, clamped ? " (clamped)" : "");
+}
+
+static void cmdMaxVelocities() {
+  if (!requireArgs(4)) return;
+  float vx, vy, wz;
+  if (!parseFloat(tokens[1], vx)) return;
+  if (!parseFloat(tokens[2], vy)) return;
+  if (!parseFloat(tokens[3], wz)) return;
+  if (vx <= 0.0f || vy <= 0.0f || wz <= 0.0f) {
+    printErr("max_velocities: all caps must be > 0");
+    return;
+  }
+  max_vx = vx;
+  max_vy = vy;
+  max_wz = wz;
+  printAll("OK: max_vx=%.3f max_vy=%.3f max_wz=%.3f\r\n", max_vx, max_vy, max_wz);
+}
+
+static void cmdMaxHvel() {
+  if (!requireArgs(2)) return;
+  float v;
+  if (!parseFloat(tokens[1], v)) return;
+  if (v <= 0.0f) { printErr("max_hvel must be > 0"); return; }
+  max_hvel = v;
+  printAll("OK: max_hvel=%.3f m/s\r\n", max_hvel);
 }
 
 static void cmdGaitStep() {
@@ -659,9 +753,13 @@ static void cmdSave() {
   prefs.putFloat(kPrefsStepHKey,  gc.step_height_mm);
   prefs.putFloat(kPrefsCycleKey,  gc.cycle_time_s);
   prefs.putFloat(kPrefsScaleKey,  gc.step_scale);
-  prefs.putFloat(kPrefsHeightKey, body_height_mm);
+  prefs.putFloat(kPrefsHeightKey,  body_height_mm);
+  prefs.putFloat(kPrefsMaxVxKey,   max_vx);
+  prefs.putFloat(kPrefsMaxVyKey,   max_vy);
+  prefs.putFloat(kPrefsMaxWzKey,   max_wz);
+  prefs.putFloat(kPrefsMaxHvelKey, max_hvel);
   prefs.end();
-  printOk("config + gait + height saved to NVS");
+  printOk("config + gait + height + velocity caps saved to NVS");
 }
 
 static void cmdClearPrefs() {
@@ -692,6 +790,8 @@ static void dispatch(char* line) {
   else if (strcmp(cmd, "angle") == 0)                                  cmdAngle();
   else if (strcmp(cmd, "vel") == 0)                                    cmdVel();
   else if (strcmp(cmd, "accel") == 0)                                  cmdAccel();
+  else if (strcmp(cmd, "velall") == 0)                                 cmdVelAll();
+  else if (strcmp(cmd, "accelall") == 0)                               cmdAccelAll();
   else if (strcmp(cmd, "invert") == 0)                                 cmdInvert();
   else if (strcmp(cmd, "minangle") == 0)                               cmdMinAngle();
   else if (strcmp(cmd, "maxangle") == 0)                               cmdMaxAngle();
@@ -715,6 +815,8 @@ static void dispatch(char* line) {
   else if (strcmp(cmd, "strafe") == 0)                                 cmdStrafe();
   else if (strcmp(cmd, "turn") == 0)                                   cmdTurn();
   else if (strcmp(cmd, "move") == 0)                                   cmdMove();
+  else if (strcmp(cmd, "max_velocities") == 0)                         cmdMaxVelocities();
+  else if (strcmp(cmd, "max_hvel") == 0)                               cmdMaxHvel();
   else if (strcmp(cmd, "gait_step") == 0)                              cmdGaitStep();
   else if (strcmp(cmd, "gait_cycle") == 0)                             cmdGaitCycle();
   else if (strcmp(cmd, "gait_scale") == 0)                             cmdGaitScale();
@@ -818,6 +920,10 @@ static bool loadFromPrefs(float& budget_out, Gait::GaitConfig& gc_out,
   gc_out.cycle_time_s   = prefs.getFloat(kPrefsCycleKey, gc_out.cycle_time_s);
   gc_out.step_scale     = prefs.getFloat(kPrefsScaleKey, gc_out.step_scale);
   height_out            = prefs.getFloat(kPrefsHeightKey, 0.0f);
+  max_vx                = prefs.getFloat(kPrefsMaxVxKey,   max_vx);
+  max_vy                = prefs.getFloat(kPrefsMaxVyKey,   max_vy);
+  max_wz                = prefs.getFloat(kPrefsMaxWzKey,   max_wz);
+  max_hvel              = prefs.getFloat(kPrefsMaxHvelKey, max_hvel);
 
   prefs.end();
   return have_cfg;
