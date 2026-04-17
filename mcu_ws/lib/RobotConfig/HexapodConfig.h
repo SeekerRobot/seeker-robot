@@ -102,10 +102,10 @@ namespace HexapodConfig {
 // ============================================================================
 
 /// Femur length: center of hip joint shaft → center of knee joint shaft (mm).
-constexpr float kL1 = 50.0f;  // MEASURE
+constexpr float kL1 = 45.0f;  // MEASURE
 
 /// Lower leg length: center of knee joint shaft → foot tip (mm).
-constexpr float kL2 = 80.0f;  // MEASURE
+constexpr float kL2 = 50.0f;  // MEASURE
 
 /// Hip joint X-offset from body center to front/rear leg mounts (mm).
 constexpr float kBodyHalfLength = 60.0f;  // MEASURE
@@ -212,7 +212,7 @@ const Subsystem::ServoConfig kServoConfigs[12] = {
     .max_angle       = kHipMax,
     .min_pwm         = 198,    // PWM at kHipMin (most-rearward)
     .max_pwm         = 512,    // PWM at kHipMax (most-forward)
-    .inverted        = false,
+    .inverted        = true,
     .max_velocity    = kHipMaxVel,
     .max_accel       = kHipMaxAccel,
     .total_angle_deg = 180.0f,
@@ -238,7 +238,7 @@ const Subsystem::ServoConfig kServoConfigs[12] = {
     .max_angle       = kHipMax,
     .min_pwm         = 198,
     .max_pwm         = 512,
-    .inverted        = true,
+    .inverted        = false,
     .max_velocity    = kHipMaxVel,
     .max_accel       = kHipMaxAccel,
     .total_angle_deg = 180.0f,
@@ -257,12 +257,14 @@ const Subsystem::ServoConfig kServoConfigs[12] = {
   },
 
   // ── Index 4: Leg 2 ML hip ─────────────────────────────────────────────────
+  // Asymmetric forward sweep: mechanical bind past +30° limits this servo's
+  // usable range to [-60°, +30°]. PWM endpoints scaled to match the new max.
   {
     .channel         = kServoML_Hip,
     .min_angle       = kHipMin,
-    .max_angle       = kHipMax,
+    .max_angle       = 30.0f,
     .min_pwm         = 198,
-    .max_pwm         = 512,
+    .max_pwm         = 433,
     .inverted        = true,
     .max_velocity    = kHipMaxVel,
     .max_accel       = kHipMaxAccel,
@@ -282,12 +284,14 @@ const Subsystem::ServoConfig kServoConfigs[12] = {
   },
 
   // ── Index 6: Leg 3 MR hip ─────────────────────────────────────────────────
+  // Asymmetric forward sweep: mechanical bind past +30° limits this servo's
+  // usable range to [-60°, +30°]. PWM endpoints scaled to match the new max.
   {
     .channel         = kServoMR_Hip,
     .min_angle       = kHipMin,
-    .max_angle       = kHipMax,
+    .max_angle       = 30.0f,
     .min_pwm         = 198,
-    .max_pwm         = 512,
+    .max_pwm         = 433,
     .inverted        = false,
     .max_velocity    = kHipMaxVel,
     .max_accel       = kHipMaxAccel,
@@ -390,27 +394,27 @@ const Kinematics::LegConfig kLegConfigs[Gait::kNumLegs] = {
     .neutral_knee_deg = kNeutralKnee,
     .reach_tolerance  = kReachTolerance,
   },
-  // Leg 2 — ML (mid-left)
+  // Leg 2 — ML (mid-left). Hip sweep is asymmetric: forward bind at +30°.
   {
     .mount_pos        = { 0.0f,  kBodyHalfWidth, 0.0f },
     .mount_angle_deg  =  90.0f,
     .L1               = kL1,
     .L2               = kL2,
     .hip_min_deg      = kHipMin,
-    .hip_max_deg      = kHipMax,
+    .hip_max_deg      = 30.0f,
     .knee_min_deg     = kKneeMin,
     .knee_max_deg     = kKneeMax,
     .neutral_knee_deg = kNeutralKnee,
     .reach_tolerance  = kReachTolerance,
   },
-  // Leg 3 — MR (mid-right)
+  // Leg 3 — MR (mid-right). Hip sweep is asymmetric: forward bind at +30°.
   {
     .mount_pos        = { 0.0f, -kBodyHalfWidth, 0.0f },
     .mount_angle_deg  = -90.0f,
     .L1               = kL1,
     .L2               = kL2,
     .hip_min_deg      = kHipMin,
-    .hip_max_deg      = kHipMax,
+    .hip_max_deg      = 30.0f,
     .knee_min_deg     = kKneeMin,
     .knee_max_deg     = kKneeMax,
     .neutral_knee_deg = kNeutralKnee,

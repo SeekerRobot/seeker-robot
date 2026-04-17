@@ -66,9 +66,34 @@ void BleDebugSubsystem::update() {
     }
   }
 
-  // Drain any RX data from the client to prevent its ring buffer overflow.
+  // Accumulate RX bytes into line_assembly_; on '\r'/'\n', commit the line
+  // into line_ready_ for the main loop to consume via tryGetLine(). Dropping
+  // the drain here is safe because completed lines (and oversized lines) both
+  // reset the assembly cursor, so the client's ring buffer is still consumed
+  // fully even when nobody calls tryGetLine().
   while (bleStream_.available()) {
-    if (bleStream_.read() < 0) break;
+    int b = bleStream_.read();
+    if (b < 0) break;
+    char c = static_cast<char>(b);
+    if (c == '\r' || c == '\n') {
+      if (line_assembly_pos_ > 0) {
+        line_assembly_[line_assembly_pos_] = '\0';
+        Threads::Scope lock(line_mutex_);
+        if (!line_ready_has_) {
+          strncpy(line_ready_, line_assembly_, kLineBufSize - 1);
+          line_ready_[kLineBufSize - 1] = '\0';
+          line_ready_has_ = true;
+        }
+        // If a line is already pending, drop this one — main loop hasn't
+        // caught up. Preferable to blocking the BLE task.
+        line_assembly_pos_ = 0;
+      }
+    } else if (line_assembly_pos_ < kLineBufSize - 1) {
+      line_assembly_[line_assembly_pos_++] = c;
+    } else {
+      // Line too long — reset assembly; the current line is discarded.
+      line_assembly_pos_ = 0;
+    }
   }
 }
 
@@ -80,6 +105,19 @@ void BleDebugSubsystem::writeIfReady(const char* buf) {
   msg.text[kMsgLen - 1] = '\0';
   // Non-blocking: drop if queue is full rather than stalling the caller.
   xQueueSendToBack(instance_->msgQueue_, &msg, 0);
+}
+
+// static
+bool BleDebugSubsystem::tryGetLine(char* out, size_t max_len) {
+  if (!instance_ || !instance_->initSuccess_ || !out || max_len == 0) {
+    return false;
+  }
+  Threads::Scope lock(instance_->line_mutex_);
+  if (!instance_->line_ready_has_) return false;
+  strncpy(out, instance_->line_ready_, max_len - 1);
+  out[max_len - 1] = '\0';
+  instance_->line_ready_has_ = false;
+  return true;
 }
 
 void BleDebugSubsystem::ServerCallbacks::onConnect(NimBLEServer* pServer,

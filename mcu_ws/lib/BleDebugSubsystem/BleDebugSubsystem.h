@@ -11,6 +11,7 @@
 #include <NimBLEDevice.h>
 #include <ThreadedSubsystem.h>
 #include <freertos/queue.h>
+#include <hal_thread.h>
 
 namespace Subsystem {
 
@@ -54,6 +55,14 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
   /// full. Actual write happens in update() on the BLE task.
   static void writeIfReady(const char* buf);
 
+  /// @brief Retrieve the next complete line received over BLE RX. Lines are
+  /// assembled in update() on the BLE task, split on '\r' or '\n'. Returns
+  /// false if no line is ready. On success, copies the NUL-terminated line
+  /// (without the terminator) into out and clears the slot.
+  static bool tryGetLine(char* out, size_t max_len);
+
+  static constexpr size_t kLineBufSize = 128;
+
  private:
   explicit BleDebugSubsystem(const BleDebugSetup& setup)
       : ThreadedSubsystem(setup), setup_(setup) {
@@ -63,6 +72,17 @@ class BleDebugSubsystem : public Subsystem::ThreadedSubsystem {
   const BleDebugSetup setup_;
   NimBLEStreamServer bleStream_;
   QueueHandle_t msgQueue_ = nullptr;
+
+  // Line-assembly scratch — only touched by the BLE task (in update()).
+  char line_assembly_[kLineBufSize] = {};
+  size_t line_assembly_pos_ = 0;
+
+  // Ready-slot — a single completed line awaiting consumption by the main
+  // loop. Protected by line_mutex_ because producer (BLE task) and consumer
+  // (main loop) run on different cores.
+  char line_ready_[kLineBufSize] = {};
+  bool line_ready_has_ = false;
+  Threads::Mutex line_mutex_;
 
   static BleDebugSubsystem* instance_;
 

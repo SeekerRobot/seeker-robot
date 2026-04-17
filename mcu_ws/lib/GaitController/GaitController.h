@@ -155,10 +155,28 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   /// @brief Immediate halt: snap all legs to neutral standing position.
   void stop();
 
+  // --- Runtime gait tuning (thread-safe) ---
+
+  /// @brief Set the swing-arc peak height (mm). Takes effect on the next
+  ///        flight entry.
+  void setStepHeight(float mm);
+
+  /// @brief Set the tripod cycle duration (seconds). Takes effect immediately
+  ///        on the next update() tick (phase_inc recomputes each cycle).
+  void setCycleTime(float s);
+
+  /// @brief Set the step-reach multiplier. Takes effect on the next flight
+  ///        entry (where step targets are computed).
+  void setStepScale(float x);
+
   // --- Queries (thread-safe) ---
 
   GaitState getState() const;
   VelocityCommand getVelocity() const;
+
+  /// @brief Snapshot of current gait tuning fields (step_height_mm,
+  ///        cycle_time_s, step_scale).
+  GaitConfig getGaitConfig() const;
 
   /// @brief Read-only access to per-leg gait state (not mutex-protected).
   ///        Safe to read from the same thread as update().

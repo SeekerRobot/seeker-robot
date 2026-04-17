@@ -226,6 +226,26 @@ VelocityCommand GaitController::getVelocity() const {
   return cmd_;
 }
 
+void GaitController::setStepHeight(float mm) {
+  Threads::Scope lock(cmd_mutex_);
+  setup_.gait.step_height_mm = mm;
+}
+
+void GaitController::setCycleTime(float s) {
+  Threads::Scope lock(cmd_mutex_);
+  setup_.gait.cycle_time_s = s;
+}
+
+void GaitController::setStepScale(float x) {
+  Threads::Scope lock(cmd_mutex_);
+  setup_.gait.step_scale = x;
+}
+
+GaitConfig GaitController::getGaitConfig() const {
+  Threads::Scope lock(cmd_mutex_);
+  return setup_.gait;
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
@@ -238,8 +258,12 @@ void GaitController::initPhases() {
   }
   for (uint8_t leg : kGroupB) {
     leg_state_[leg].phase_t = 0.5f;
-    leg_state_[leg].was_flying =
-        true;  // will detect stance entry on first tick
+    // was_flying=false so the first tick fires the flight-entry block and
+    // captures lift_start / swing_target from the neutral stance. Setting it
+    // true here skips that init and leaves those fields zero → swingArc
+    // interpolates between (0,0,0) and (0,0,0), IK fails, and the leg stays
+    // stuck at neutral forever.
+    leg_state_[leg].was_flying = false;
     leg_state_[leg].frozen = false;
   }
 }
@@ -253,8 +277,10 @@ void GaitController::pushLegAngles(uint8_t leg,
 Kinematics::Vec3 GaitController::computeStepTarget(uint8_t leg,
                                                    const VelocityCommand& vel) {
   // Neutral foot position in body frame → transform to world frame at current
-  // body pose so we have a stable reference for the step offset.
-  Kinematics::Vec3 neutral_body = kin_->leg(leg).neutralPos();
+  // body pose so we have a stable reference for the step offset. Uses the
+  // active stand-height neutral (not the leg's built-in default) so step
+  // targets track the configured body height.
+  Kinematics::Vec3 neutral_body = kin_->neutralFootBody(leg);
   float cos_yaw = cosf(body_yaw_ * kDegToRad);
   float sin_yaw = sinf(body_yaw_ * kDegToRad);
 
