@@ -1,0 +1,20 @@
+# Goal — ask the robot to locate a specific COCO class and approach it.
+string  class_name          # e.g. "teddy bear", "sports ball"
+float32 timeout_sec 0.0     # 0 = no timeout
+---
+# Result — sent when the goal terminates.
+bool                    success
+geometry_msgs/Point     final_position   # robot pose in map frame at success/abort
+string                  message
+---
+# Feedback — published at ~10 Hz while the goal is active.
+uint8 STATE_WAITING_FOR_NAV2 = 0
+uint8 STATE_INITIAL_ROTATION = 1
+uint8 STATE_FRONTIER_NAV     = 2
+uint8 STATE_COVERAGE_NAV     = 3
+uint8 STATE_APPROACHING      = 4
+
+uint8   state
+float32 last_bbox_area    # pixels² of best recent match, 0 if nothing seen
+float32 last_bearing      # radians (positive = target to the left)
+uint32  nav2_goal_count

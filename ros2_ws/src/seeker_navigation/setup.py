@@ -24,6 +24,9 @@ setup(
     entry_points={
         "console_scripts": [
             "ball_searcher = seeker_navigation.ball_searcher:main",
+            "object_seeker = seeker_navigation.object_seeker:main",
+            "scan_tilt_filter = seeker_navigation.scan_tilt_filter:main",
+            "find = seeker_navigation.find:main",
         ],
     },
 )

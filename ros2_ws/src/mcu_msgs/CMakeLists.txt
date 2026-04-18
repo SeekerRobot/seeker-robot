@@ -35,13 +35,18 @@ endif()
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ExampleMsg.msg"
   "msg/HexapodCmd.msg"
   "msg/OledFrame.msg"
+  "msg/DetectedObject.msg"
+  "msg/DetectedObjectArray.msg"
   "srv/ExampleSrv.srv"
-  DEPENDENCIES std_msgs geometry_msgs
+  "srv/PerformMove.srv"
+  "action/SeekObject.action"
+  DEPENDENCIES std_msgs geometry_msgs action_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)
