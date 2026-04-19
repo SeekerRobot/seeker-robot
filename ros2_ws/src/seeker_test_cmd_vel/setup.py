@@ -1,8 +1,7 @@
 from glob import glob
-
 from setuptools import find_packages, setup
 
-package_name = "seeker_voice"
+package_name = "seeker_test_cmd"
 
 setup(
     name=package_name,
@@ -17,13 +16,11 @@ setup(
     zip_safe=True,
     maintainer="seeker",
     maintainer_email="todo@todo.com",
-    description="Voice command pipeline: ESP32/local mic → Whisper transcription → Gemini intent classification → TTS",
+    description="Testing node to translate AI intents into cmd_vel commands",
     license="Apache-2.0",
     entry_points={
         "console_scripts": [
-            "transcription_node = seeker_voice.transcription_node:main",
-            "command_node = seeker_voice.command_node:main",
-            "velocity_node = seeker_voice.velocity_node:main",
+            "velocity_node = seeker_test_cmd.velocity_node:main",
         ],
     },
 )
