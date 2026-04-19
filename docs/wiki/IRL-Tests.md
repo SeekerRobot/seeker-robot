@@ -223,7 +223,7 @@ When something misbehaves on the full stack, bisect with the `test_sub_*` sketch
 | LiDAR returning 0 points / wrong frequency | `test_sub_lidar` |
 | Battery voltage looks flat | `test_sub_battery` |
 | Specific servo leg twitches | `test_sub_servo` |
-| Whole gait is wrong | `test_sub_gait` |
+| Whole gait is wrong | `test_sub_gait`, or `test_sub_movement` for combined servo+gait+IK tuning with NVS persistence |
 | Camera feed dead | `test_sub_cam`, then `test_raw_cam` |
 | YOLO detection not working | Verify cam proxy: `curl -s http://localhost:8080/stream > /dev/null`; then `ros2 launch seeker_vision mcu_cam.launch.py` |
 | Mic silent or crackling | `test_sub_mic`, then `test_raw_mic` |

@@ -158,6 +158,7 @@ seeker-robot/
 | `test_sub_servo` | PCA9685 servo motion profiling in isolation |
 | `test_sub_battery` | Battery ADC calibration check |
 | `test_sub_gait` | Gait kinematics smoke test (no ROS, no hardware) |
+| `test_sub_movement` | Serial + BLE hexapod movement console: servo control + IK + tripod gait + NVS persistence. Superset of `test_sub_servo` and `test_sub_gait`. |
 | `test_sub_cam` | Camera stream test (OV2640 MJPEG) |
 | `test_sub_cam_mic` | Camera + microphone integration test |
 | `test_sub_heartbeat` | micro-ROS heartbeat publisher test |

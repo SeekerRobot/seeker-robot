@@ -197,6 +197,37 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host. For Fish Audio TTS set `FISH_API_KEY` and publish text to `/audio_tts_input` (`ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once`). For local WAV playback, publish a file path on `/audio_play_file` (`ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once`). Both share the same `/audio_out` HTTP stream.
 - **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:8383/audio_out` from another machine to test the endpoint independently — it should stay open and deliver a chunked stream whenever new text is published. (4) 404 from the endpoint means the path is wrong — the `tts_node` only serves `/audio_out`. (5) Mute first! Speaker volume defaults to max.
 
+### `test_sub_movement`
+
+- **Board env:** `esp32s3sense` / `esp32dev` / **Transport:** Serial + BLE (no micro-ROS agent required)
+- **Purpose:** Comprehensive hexapod movement console that combines servo control, inverse kinematics, and tripod gait into a single dual-transport REPL (USB Serial + BLE Nordic UART). A command from either transport produces a response on **both**. Superset of `test_sub_servo` and `test_sub_gait` — carries over the full servo command set (`attach`, `detach`, `angle`, `vel`, `accel`, `invert`, `minpwm`/`maxpwm`, `arm`/`disarm`, `budget`, `freq`, `neutral`, `hips`, `knees`, `flat`, `standing`) and adds movement commands (`walk`, `stop`, `idle`, `forward`, `back`, `strafe`, `turn`, `move`), body height control (`height`), velocity caps (`max_velocities`, `max_hvel`), and gait tuning (`gait_step`, `gait_cycle`, `gait_scale`, `gait_status`). All tunings — servo calibration, gait parameters, body height, velocity caps — can be saved to NVS via `save` and auto-load on boot. Shares the NVS namespace `srvtest` with `test_sub_servo`, so servo calibration carries over between the two sketches. Also includes battery voltage readout and a heartbeat blink task.
+- **Prereq:** Servos wired via PCA9685, battery connected (optional — status will omit voltage if init fails).
+- **Build/flash:** `pio run -e esp32s3sense -t upload`
+- **Serial output:** Banner showing transport status (Serial + BLE), config source (NVS or defaults), gait tuning, and body height. Then an interactive command prompt.
+- **Typical workflow:**
+  ```
+  > attachall           (attach M1–M12)
+  > arm                 (enable OE)
+  > standing            (kinematics neutral pose)
+  > height 50           (body 50 mm above ground)
+  > walk                (start tripod gait)
+  > forward 0.05        (walk forward at 50 mm/s)
+  > turn 30             (yaw 30 deg/s)
+  > stop                (snap to neutral)
+  > save                (persist all tunings to NVS)
+  ```
+- **Commands:** Type `help` for the full list. Key additions over `test_sub_servo`:
+  - `walk` / `stop` / `idle` — start, snap-stop, or graceful-stop the gait
+  - `forward <m/s>` / `back <m/s>` / `strafe <m/s>` / `turn <deg/s>` — single-axis velocity
+  - `move <vx> <vy> <wz>` — full velocity command (m/s, m/s, rad/s)
+  - `height <mm>` — set body height (IDLE only)
+  - `max_velocities <vx> <vy> <wz>` — per-axis velocity caps
+  - `max_hvel <m/s>` — combined horizontal velocity cap
+  - `gait_step <mm>` / `gait_cycle <s>` / `gait_scale <x>` — tune gait parameters
+  - `gait_status` — print current gait state and tuning
+  - `save` / `clearprefs` — NVS persistence
+- **Debug tips:** (1) If servos don't respond, check `arm` and `attachall` first. (2) `height` only works in IDLE — issue `stop` before changing it. (3) Velocity caps are applied silently; `status` shows the current caps. (4) `clearprefs` resets to HexapodConfig defaults on next boot. (5) BLE transport advertises as `"SeekerMovement"` — use nRF Connect or Bluefruit Connect to send commands wirelessly. (6) The debug level is reduced to 2 (INFO) to avoid flooding from battery samples.
+
 ### `test_sub_ble_debug`
 
 - **Board env:** no micro-ROS; BLE only

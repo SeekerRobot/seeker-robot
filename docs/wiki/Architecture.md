@@ -103,7 +103,7 @@ seeker-robot/
 │   │   ├── platformio.ini               # Shared base config (board envs, lib_base)
 │   │   ├── network_config.ini           # WiFi creds + agent IP (gitignored)
 │   │   └── network_config.example.ini   # Template
-│   ├── src/                             # 26 per-sketch PlatformIO projects
+│   ├── src/                             # 27 per-sketch PlatformIO projects
 │   ├── lib/                             # Shared subsystems (see below)
 │   ├── libs_external/esp32/             # Pre-vendored micro-ROS PlatformIO lib
 │   └── platformio/extra_packages/mcu_msgs/ # Bind-mounted from ros2_ws/src/mcu_msgs
