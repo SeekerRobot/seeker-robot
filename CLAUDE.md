@@ -29,8 +29,8 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
 - **`docker/`** — Containerized dev environment:
   - `Dockerfile` — Multi-stage build (`base` → `dev`/`prod`). Base installs micro-ROS agent, PlatformIO, ROS 2 Jazzy, and vision dependencies (ultralytics, deepface, tensorflow+CUDA). `dev` adds Gazebo Harmonic, RViz, rqt.
   - `Dockerfile.init-bootstrap` — One-shot init container that chowns named volumes and seeds `libs_external` into the `mcu_lib_external` volume.
-  - `docker-compose.yml` — Defines `ros2` (main dev container), `init-bootstrap` (one-shot volume init), and GPU-enabled profile services `ros2-nvidia` (NVIDIA) and `ros2-amd` (AMD). `COMPOSE_PROJECT_NAME` in `.env` isolates containers/volumes per worktree.
-  - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|prod`, and display/network config for your OS.
+  - `docker-compose.yml` — Defines `ros2` (main dev container, `cpu` profile), `init-bootstrap` (one-shot volume init), and GPU-enabled profile services `ros2-nvidia` (`nvidia` profile) and `ros2-amd` (`amd` profile). Set `COMPOSE_PROFILES=cpu` (or `nvidia`/`amd`) in `.env` so all `docker compose` commands pick up the correct service. `COMPOSE_PROJECT_NAME` in `.env` isolates containers/volumes per worktree.
+  - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|prod`, `COMPOSE_PROFILES=cpu|nvidia|amd`, and display/network config for your OS.
 
 ## Docker / Build Commands
 
@@ -95,7 +95,7 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
 | `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | Source code (bind mount) |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | MCU firmware (bind mount) |
 | `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | Bind mount for micro-ROS build |
-| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | Network config (read-only) |
+| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | Network config (via parent mcu_ws mount) |
 | `scripts/` | `~/scripts/` | Utility scripts (bind mount) |
 | Named volumes | `~/ros2_workspaces/{build,install,log}` | colcon artifacts |
 | Named volume | `~/.platformio` | PlatformIO cache |
@@ -147,5 +147,5 @@ Each publisher is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEART
 - **Commit messages**: Conventional Commits enforced via commitlint (`@commitlint/config-conventional`). Use prefixes like `feat:`, `fix:`, `docs:`, `chore:`, etc.
 - **ROS 2 distro**: Jazzy (matches micro-ROS distro setting in `platformio.ini`).
 - **`mcu_msgs` is shared**: Any changes to message definitions in `ros2_ws/src/mcu_msgs/` must be rebuilt on both the ROS 2 side (`colcon build --packages-select mcu_msgs`) and the MCU side (`pio run` — the bind-mount at `platformio/extra_packages/mcu_msgs` picks up changes automatically).
-- **Board environments**: `esp32s3sense` (Seeed XIAO ESP32-S3, default) and `esp32dev` (generic ESP32-WROOM-32). Pin definitions are in `mcu_ws/lib/RobotConfig/RobotConfig.h`, gated by `ENV_ESP32S3SENSE` / `ENV_ESP32DEV` macros set by the board's build flags.
+- **Board environments**: `esp32s3sense` (Seeed XIAO ESP32-S3, default), `esp32dev` (generic ESP32-WROOM-32), and `esp32cam` (AI-Thinker ESP32-CAM). Pin definitions are in `mcu_ws/lib/RobotConfig/RobotConfig.h`, gated by `ENV_ESP32S3SENSE` / `ENV_ESP32DEV` / `ENV_ESP32CAM` macros set by the board's build flags.
 - **`test_sub_*` sketches** exclude `libs_external/esp32` from `lib_extra_dirs` to avoid pulling in micro-ROS; they set their own minimal `platformio.ini` env blocks with only `${common.lib_base}` and `../../lib/`.

@@ -88,6 +88,7 @@ cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config
 |---|---|
 | `COMPOSE_PROJECT_NAME` | Unique per worktree so containers/volumes don't collide (e.g. `seeker-robot-main`, `seeker-robot-feature-x`). |
 | `BUILD_TARGET` | `dev` includes Gazebo/RViz/Nav2/SLAM Toolbox tooling. `prod` is headless, runtime-only. Pick `dev` unless you're deploying to a fleet. |
+| `COMPOSE_PROFILES` | Which Docker Compose service to use: `cpu` (the default `ros2` service), `nvidia` (GPU via `nvidia-container-toolkit`), or `amd` (GPU via DRI passthrough). **Must be set** — without it, `docker compose up -d ros2` won't find the service. |
 | `DISPLAY_CONFIG` / `NETWORK_MODE_CONFIG` | Uncomment and fill in the block for your OS (see §1). |
 | `FISH_API_KEY`, `FISH_REFERENCE_ID` | Optional — only needed if you plan to run the `seeker_tts` node. |
 
@@ -199,7 +200,7 @@ See **[Simulation](Simulation.md)** for all the launch modes.
 | Symptom | Fix |
 |---|---|
 | `init-bootstrap` errors about permissions | Rerun `docker compose build --no-cache init-bootstrap && docker compose up init-bootstrap`. It idempotently chowns every named volume to UID 1000 (`ubuntu`). |
-| `ros2` container exits immediately after `up` | Check `docker compose logs ros2`. The most common cause is a failing bind mount — make sure `mcu_ws/platformio/network_config.ini` actually exists (it's mounted read-only, Docker errors out if it doesn't). |
+| `ros2` container exits immediately after `up` | Check `docker compose logs ros2`. Make sure `COMPOSE_PROFILES` is set in `docker/.env` (e.g. `cpu`). Also verify `mcu_ws/platformio/network_config.ini` exists — the entire `mcu_ws/` tree is bind-mounted into the container. |
 | *stale volumes from an old worktree* | Set a unique `COMPOSE_PROJECT_NAME` per worktree in `docker/.env`, or `docker compose down -v` to nuke the old volumes. |
 
 ### X server / display
