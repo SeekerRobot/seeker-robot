@@ -173,14 +173,14 @@ constexpr float kPwmFreqHz = 50.0f;
 constexpr uint8_t kServoFL_Hip = Config::mPort(1);    // Leg 0 FL hip
 constexpr uint8_t kServoFL_Knee = Config::mPort(8);   // Leg 0 FL knee
 constexpr uint8_t kServoFR_Hip = Config::mPort(6);    // Leg 1 FR hip
-constexpr uint8_t kServoFR_Knee = Config::mPort(12);   // Leg 1 FR knee
+constexpr uint8_t kServoFR_Knee = Config::mPort(12);  // Leg 1 FR knee
 constexpr uint8_t kServoML_Hip = Config::mPort(2);    // Leg 2 ML hip
 constexpr uint8_t kServoML_Knee = Config::mPort(9);   // Leg 2 ML knee
 constexpr uint8_t kServoMR_Hip = Config::mPort(5);    // Leg 3 MR hip
 constexpr uint8_t kServoMR_Knee = Config::mPort(11);  // Leg 3 MR knee
-constexpr uint8_t kServoRL_Hip = Config::mPort(3);   // Leg 4 RL hip
+constexpr uint8_t kServoRL_Hip = Config::mPort(3);    // Leg 4 RL hip
 constexpr uint8_t kServoRL_Knee = Config::mPort(10);  // Leg 4 RL knee
-constexpr uint8_t kServoRR_Hip = Config::mPort(4);   // Leg 5 RR hip
+constexpr uint8_t kServoRR_Hip = Config::mPort(4);    // Leg 5 RR hip
 constexpr uint8_t kServoRR_Knee = Config::mPort(7);   // Leg 5 RR knee
 
 // ============================================================================

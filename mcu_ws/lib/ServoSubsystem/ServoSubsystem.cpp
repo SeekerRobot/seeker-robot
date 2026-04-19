@@ -101,7 +101,8 @@ void ServoSubsystem::update() {
       // profiler from oscillating around intermediate positions.
       float cur = state_[i].current_angle;
       float tgt = state_[i].target_angle;
-      if ((cur <= tgt && new_angle >= tgt) || (cur >= tgt && new_angle <= tgt)) {
+      if ((cur <= tgt && new_angle >= tgt) ||
+          (cur >= tgt && new_angle <= tgt)) {
         new_angle = tgt;
         state_[i].velocity = 0.0f;
       }

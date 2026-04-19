@@ -39,13 +39,13 @@
 // ---------------------------------------------------------------------------
 // Defaults (mirror test_sub_servo)
 // ---------------------------------------------------------------------------
-static constexpr uint16_t kDefaultMinPwm     = 120;
-static constexpr uint16_t kDefaultMaxPwm     = 590;
-static constexpr float    kDefaultVelocity   = 720.0f;
-static constexpr float    kDefaultAccel      = 1000.0f;
-static constexpr float    kDefaultBudget     = 10000.0f;
-static constexpr float    kDefaultFreqHz     = 50.0f;
-static constexpr float    kDefaultTotalAngle = 180.0f;
+static constexpr uint16_t kDefaultMinPwm = 120;
+static constexpr uint16_t kDefaultMaxPwm = 590;
+static constexpr float kDefaultVelocity = 720.0f;
+static constexpr float kDefaultAccel = 1000.0f;
+static constexpr float kDefaultBudget = 10000.0f;
+static constexpr float kDefaultFreqHz = 50.0f;
+static constexpr float kDefaultTotalAngle = 180.0f;
 
 // Battery calibration — lifted verbatim from test_all/main.cpp.
 static constexpr Subsystem::BatteryCalibration kBattCalibration(
@@ -77,22 +77,24 @@ static constexpr uint8_t kMPortToHexIdx[14] = {
 // 12-entry HexapodConfig::kServoConfigs layout, but ServoSubsystem here is
 // populated in M-port order (M1..M13 → index 0..12). Values derived from
 // kMPortToHexIdx by inversion.
-static constexpr uint8_t kLegServoHip[6]  = {0, 5, 1, 4, 2, 3};   // M1, M6, M2, M5, M3, M4
-static constexpr uint8_t kLegServoKnee[6] = {7, 11, 8, 10, 9, 6}; // M8, M12, M9, M11, M10, M7
+static constexpr uint8_t kLegServoHip[6] = {0, 5, 1,
+                                            4, 2, 3};  // M1, M6, M2, M5, M3, M4
+static constexpr uint8_t kLegServoKnee[6] = {
+    7, 11, 8, 10, 9, 6};  // M8, M12, M9, M11, M10, M7
 
 // ---------------------------------------------------------------------------
 // NVS Preferences
 // ---------------------------------------------------------------------------
-static constexpr char kPrefsNs[]         = "srvtest";
-static constexpr char kPrefsCfgKey[]     = "cfg";
-static constexpr char kPrefsBudgetKey[]  = "budget";
-static constexpr char kPrefsStepHKey[]   = "g_step_h";
-static constexpr char kPrefsCycleKey[]   = "g_cycle";
-static constexpr char kPrefsScaleKey[]   = "g_scale";
-static constexpr char kPrefsHeightKey[]  = "m_height";
-static constexpr char kPrefsMaxVxKey[]   = "m_maxvx";
-static constexpr char kPrefsMaxVyKey[]   = "m_maxvy";
-static constexpr char kPrefsMaxWzKey[]   = "m_maxwz";
+static constexpr char kPrefsNs[] = "srvtest";
+static constexpr char kPrefsCfgKey[] = "cfg";
+static constexpr char kPrefsBudgetKey[] = "budget";
+static constexpr char kPrefsStepHKey[] = "g_step_h";
+static constexpr char kPrefsCycleKey[] = "g_cycle";
+static constexpr char kPrefsScaleKey[] = "g_scale";
+static constexpr char kPrefsHeightKey[] = "m_height";
+static constexpr char kPrefsMaxVxKey[] = "m_maxvx";
+static constexpr char kPrefsMaxVyKey[] = "m_maxvy";
+static constexpr char kPrefsMaxWzKey[] = "m_maxwz";
 static constexpr char kPrefsMaxHvelKey[] = "m_maxhvel";
 
 static Preferences prefs;
@@ -111,10 +113,10 @@ static Subsystem::BleDebugSetup ble_setup("SeekerMovement");
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
 
-static Subsystem::ServoSubsystem*     servos     = nullptr;
+static Subsystem::ServoSubsystem* servos = nullptr;
 static Kinematics::HexapodKinematics* kinematics = nullptr;
-static Gait::GaitController*          gait       = nullptr;
-static Subsystem::BatterySubsystem*   battery    = nullptr;
+static Gait::GaitController* gait = nullptr;
+static Subsystem::BatterySubsystem* battery = nullptr;
 
 // Current desired body height (mm). Applied whenever gait is IDLE.
 static float body_height_mm = 0.0f;
@@ -122,23 +124,23 @@ static float body_height_mm = 0.0f;
 // Velocity caps applied to every gait setVelocity() call. max_hvel additionally
 // limits the combined |(vx, vy)| magnitude — if the requested horizontal vector
 // exceeds it, both components are scaled down proportionally.
-static float max_vx   = 0.15f;  // m/s
-static float max_vy   = 0.15f;  // m/s
-static float max_wz   = 1.00f;  // rad/s
+static float max_vx = 0.15f;    // m/s
+static float max_vy = 0.15f;    // m/s
+static float max_wz = 1.00f;    // rad/s
 static float max_hvel = 0.15f;  // m/s — combined |vx,vy| cap
 
 // ---------------------------------------------------------------------------
 // Line buffers — one per source so interleaved bytes cannot corrupt commands.
 // ---------------------------------------------------------------------------
 static constexpr size_t kLineBufSize = 128;
-static char     serial_line_buf[kLineBufSize];
-static uint8_t  serial_line_pos = 0;
-static char     ble_line_buf[kLineBufSize];
+static char serial_line_buf[kLineBufSize];
+static uint8_t serial_line_pos = 0;
+static char ble_line_buf[kLineBufSize];
 
 // Token buffer
 static constexpr uint8_t kMaxTokens = 6;
-static char*    tokens[kMaxTokens];
-static uint8_t  num_tokens = 0;
+static char* tokens[kMaxTokens];
+static uint8_t num_tokens = 0;
 
 // ---------------------------------------------------------------------------
 // Dual-transport printing
@@ -154,7 +156,7 @@ static void printAll(const char* fmt, ...) {
   Subsystem::BleDebugSubsystem::writeIfReady(buf);
 }
 
-static void printOk(const char* msg)  { printAll("OK: %s\r\n", msg); }
+static void printOk(const char* msg) { printAll("OK: %s\r\n", msg); }
 static void printErr(const char* msg) { printAll("ERR: %s\r\n", msg); }
 
 // ---------------------------------------------------------------------------
@@ -174,8 +176,8 @@ static void tokenize(char* line) {
 
 static bool requireArgs(uint8_t n) {
   if (num_tokens < n) {
-    printAll("ERR: expected %u arg(s), got %u. Type 'help'.\r\n",
-             n - 1, num_tokens - 1);
+    printAll("ERR: expected %u arg(s), got %u. Type 'help'.\r\n", n - 1,
+             num_tokens - 1);
     return false;
   }
   return true;
@@ -243,7 +245,8 @@ static void printHelp() {
   printAll("maxpwm <M> <val>          Set max PWM (0-4095)\r\n");
   printAll("freq <hz>                 Set PWM frequency\r\n");
   printAll("budget <deg/s>            Set total rate budget\r\n");
-  printAll("neutral                   Move attached servos to neutral pose\r\n");
+  printAll(
+      "neutral                   Move attached servos to neutral pose\r\n");
   printAll("hips <deg>                Set all attached hips\r\n");
   printAll("knees <deg>               Set all attached knees\r\n");
   printAll("flat                      Lay flat (hips=0, knees=0)\r\n");
@@ -259,7 +262,8 @@ static void printHelp() {
   printAll("strafe <m/s>              Sideways (positive = left, vy)\r\n");
   printAll("turn <deg/s>              Yaw rate\r\n");
   printAll("move <vx> <vy> <wz>       Full velocity (m/s, m/s, rad/s)\r\n");
-  printAll("max_velocities <vx> <vy> <wz>  Per-axis caps (m/s, m/s, rad/s)\r\n");
+  printAll(
+      "max_velocities <vx> <vy> <wz>  Per-axis caps (m/s, m/s, rad/s)\r\n");
   printAll("max_hvel <m/s>            Combined |vx,vy| cap\r\n");
   printAll("gait_step <mm>            Set swing-arc height\r\n");
   printAll("gait_cycle <s>            Set tripod cycle time\r\n");
@@ -294,8 +298,8 @@ static void cmdStatus() {
   printAll("Armed: %s | Budget: %.0f deg/s\r\n",
            servos->isArmed() ? "YES" : "NO", servos->getTotalRateBudget());
   if (battery) {
-    printAll("Battery: %.2f V (raw %u)\r\n",
-             battery->getVoltage(), battery->getRawAdc());
+    printAll("Battery: %.2f V (raw %u)\r\n", battery->getVoltage(),
+             battery->getRawAdc());
   }
   Gait::VelocityCommand vel = gait->getVelocity();
   printAll("Movement: %s | vx=%+.3f vy=%+.3f wz=%+.3f | height=%.1f mm\r\n",
@@ -303,8 +307,9 @@ static void cmdStatus() {
   Gait::GaitConfig gc = gait->getGaitConfig();
   printAll("Gait:     step=%.2f mm | cycle=%.3f s | scale=%.3f\r\n",
            gc.step_height_mm, gc.cycle_time_s, gc.step_scale);
-  printAll("Caps:     max_vx=%.3f | max_vy=%.3f | max_wz=%.3f | max_hvel=%.3f\r\n",
-           max_vx, max_vy, max_wz, max_hvel);
+  printAll(
+      "Caps:     max_vx=%.3f | max_vy=%.3f | max_wz=%.3f | max_hvel=%.3f\r\n",
+      max_vx, max_vy, max_wz, max_hvel);
   if (num_tokens >= 2) {
     uint8_t idx;
     if (parseIndex(tokens[1], idx)) printServoStatus(idx);
@@ -318,7 +323,8 @@ static void cmdAttach() {
   uint8_t idx;
   if (!parseIndex(tokens[1], idx)) return;
   servos->attach(idx);
-  printAll("OK: M%u attached (ch%u)\r\n", idx + 1, servos->getConfig(idx).channel);
+  printAll("OK: M%u attached (ch%u)\r\n", idx + 1,
+           servos->getConfig(idx).channel);
 }
 
 static void cmdAttachAll() {
@@ -334,7 +340,8 @@ static void cmdDetach() {
   uint8_t idx;
   if (!parseIndex(tokens[1], idx)) return;
   servos->detach(idx);
-  printAll("OK: M%u detached (ch%u)\r\n", idx + 1, servos->getConfig(idx).channel);
+  printAll("OK: M%u detached (ch%u)\r\n", idx + 1,
+           servos->getConfig(idx).channel);
 }
 
 static void cmdAngle() {
@@ -353,7 +360,10 @@ static void cmdVel() {
   float v;
   if (!parseIndex(tokens[1], idx)) return;
   if (!parseFloat(tokens[2], v)) return;
-  if (v <= 0.0f) { printErr("velocity must be > 0"); return; }
+  if (v <= 0.0f) {
+    printErr("velocity must be > 0");
+    return;
+  }
   servos->setMaxVelocity(idx, v);
   printAll("OK: M%u max_velocity = %.2f deg/s\r\n", idx + 1, v);
 }
@@ -364,7 +374,10 @@ static void cmdAccel() {
   float a;
   if (!parseIndex(tokens[1], idx)) return;
   if (!parseFloat(tokens[2], a)) return;
-  if (a <= 0.0f) { printErr("acceleration must be > 0"); return; }
+  if (a <= 0.0f) {
+    printErr("acceleration must be > 0");
+    return;
+  }
   servos->setMaxAccel(idx, a);
   printAll("OK: M%u max_accel = %.2f deg/s^2\r\n", idx + 1, a);
 }
@@ -373,7 +386,10 @@ static void cmdVelAll() {
   if (!requireArgs(2)) return;
   float v;
   if (!parseFloat(tokens[1], v)) return;
-  if (v <= 0.0f) { printErr("velocity must be > 0"); return; }
+  if (v <= 0.0f) {
+    printErr("velocity must be > 0");
+    return;
+  }
   for (uint8_t i = 0; i < 13; i++) servos->setMaxVelocity(i, v);
   printAll("OK: all max_velocity = %.2f deg/s\r\n", v);
 }
@@ -382,7 +398,10 @@ static void cmdAccelAll() {
   if (!requireArgs(2)) return;
   float a;
   if (!parseFloat(tokens[1], a)) return;
-  if (a <= 0.0f) { printErr("acceleration must be > 0"); return; }
+  if (a <= 0.0f) {
+    printErr("acceleration must be > 0");
+    return;
+  }
   for (uint8_t i = 0; i < 13; i++) servos->setMaxAccel(i, a);
   printAll("OK: all max_accel = %.2f deg/s^2\r\n", a);
 }
@@ -392,7 +411,10 @@ static void cmdInvert() {
   uint8_t idx;
   if (!parseIndex(tokens[1], idx)) return;
   long v = strtol(tokens[2], nullptr, 10);
-  if (v != 0 && v != 1) { printErr("invert must be 0 or 1"); return; }
+  if (v != 0 && v != 1) {
+    printErr("invert must be 0 or 1");
+    return;
+  }
   servos->setInverted(idx, v == 1);
   printAll("OK: M%u inverted = %s\r\n", idx + 1, v ? "true" : "false");
 }
@@ -404,7 +426,10 @@ static void cmdMinAngle() {
   if (!parseIndex(tokens[1], idx)) return;
   if (!parseFloat(tokens[2], deg)) return;
   const auto& cfg = servos->getConfig(idx);
-  if (deg >= cfg.max_angle) { printErr("min_angle must be < max_angle"); return; }
+  if (deg >= cfg.max_angle) {
+    printErr("min_angle must be < max_angle");
+    return;
+  }
   servos->setAngleLimits(idx, deg, cfg.max_angle);
   printAll("OK: M%u min_angle = %.2f\r\n", idx + 1, deg);
 }
@@ -416,7 +441,10 @@ static void cmdMaxAngle() {
   if (!parseIndex(tokens[1], idx)) return;
   if (!parseFloat(tokens[2], deg)) return;
   const auto& cfg = servos->getConfig(idx);
-  if (deg <= cfg.min_angle) { printErr("max_angle must be > min_angle"); return; }
+  if (deg <= cfg.min_angle) {
+    printErr("max_angle must be > min_angle");
+    return;
+  }
   servos->setAngleLimits(idx, cfg.min_angle, deg);
   printAll("OK: M%u max_angle = %.2f\r\n", idx + 1, deg);
 }
@@ -428,7 +456,10 @@ static void cmdMinPwm() {
   if (!parseIndex(tokens[1], idx)) return;
   if (!parseU16(tokens[2], val)) return;
   const auto& cfg = servos->getConfig(idx);
-  if (val >= cfg.max_pwm) { printErr("min_pwm must be < max_pwm"); return; }
+  if (val >= cfg.max_pwm) {
+    printErr("min_pwm must be < max_pwm");
+    return;
+  }
   servos->setPwmLimits(idx, val, cfg.max_pwm);
   printAll("OK: M%u min_pwm = %u\r\n", idx + 1, val);
 }
@@ -440,7 +471,10 @@ static void cmdMaxPwm() {
   if (!parseIndex(tokens[1], idx)) return;
   if (!parseU16(tokens[2], val)) return;
   const auto& cfg = servos->getConfig(idx);
-  if (val <= cfg.min_pwm) { printErr("max_pwm must be > min_pwm"); return; }
+  if (val <= cfg.min_pwm) {
+    printErr("max_pwm must be > min_pwm");
+    return;
+  }
   servos->setPwmLimits(idx, cfg.min_pwm, val);
   printAll("OK: M%u max_pwm = %u\r\n", idx + 1, val);
 }
@@ -449,7 +483,10 @@ static void cmdFreq() {
   if (!requireArgs(2)) return;
   float hz;
   if (!parseFloat(tokens[1], hz)) return;
-  if (hz < 24.0f || hz > 1526.0f) { printErr("frequency must be 24..1526 Hz"); return; }
+  if (hz < 24.0f || hz > 1526.0f) {
+    printErr("frequency must be 24..1526 Hz");
+    return;
+  }
   servos->setPwmFrequency(hz);
   printAll("OK: PWM frequency = %.1f Hz\r\n", hz);
 }
@@ -458,7 +495,10 @@ static void cmdBudget() {
   if (!requireArgs(2)) return;
   float b;
   if (!parseFloat(tokens[1], b)) return;
-  if (b <= 0.0f) { printErr("budget must be > 0"); return; }
+  if (b <= 0.0f) {
+    printErr("budget must be > 0");
+    return;
+  }
   servos->setTotalRateBudget(b);
   printAll("OK: total rate budget = %.1f deg/s\r\n", b);
 }
@@ -469,9 +509,12 @@ static void cmdNeutral() {
     if (!servos->isAttached(idx)) continue;
     uint8_t hi = kMPortToHexIdx[m];
     float target;
-    if (hi == 255)            target = 0.0f;
-    else if (hi % 2 == 0)     target = 0.0f;
-    else                      target = HexapodConfig::kNeutralKnee;
+    if (hi == 255)
+      target = 0.0f;
+    else if (hi % 2 == 0)
+      target = 0.0f;
+    else
+      target = HexapodConfig::kNeutralKnee;
     servos->setAngle(idx, target);
   }
   printAll("OK: neutral (hips=0, knees=%.1f)\r\n", HexapodConfig::kNeutralKnee);
@@ -522,8 +565,11 @@ static void cmdStanding() {
   Kinematics::SolveResult r = kinematics->standNeutral();
   uint8_t bad = 0;
   for (uint8_t i = 0; i < Gait::kNumLegs; i++) {
-    if (!r.valid[i]) { bad++; continue; }
-    servos->setAngle(kLegServoHip[i],  r.legs[i].hip);
+    if (!r.valid[i]) {
+      bad++;
+      continue;
+    }
+    servos->setAngle(kLegServoHip[i], r.legs[i].hip);
     servos->setAngle(kLegServoKnee[i], r.legs[i].knee);
   }
   if (bad) printAll("WARN: %u legs unreachable at neutral\r\n", bad);
@@ -531,8 +577,10 @@ static void cmdStanding() {
 }
 
 static void cmdArm() {
-  if (servos->arm()) printOk("armed — OE enabled");
-  else               printErr("arm failed — ensure attached servos have had setAngle() called");
+  if (servos->arm())
+    printOk("armed — OE enabled");
+  else
+    printErr("arm failed — ensure attached servos have had setAngle() called");
 }
 
 static void cmdDisarm() {
@@ -566,13 +614,18 @@ static void cmdHeight() {
   Kinematics::SolveResult r = kinematics->standNeutral();
   uint8_t bad = 0;
   for (uint8_t i = 0; i < Gait::kNumLegs; i++) {
-    if (!r.valid[i]) { bad++; continue; }
-    servos->setAngle(kLegServoHip[i],  r.legs[i].hip);
+    if (!r.valid[i]) {
+      bad++;
+      continue;
+    }
+    servos->setAngle(kLegServoHip[i], r.legs[i].hip);
     servos->setAngle(kLegServoKnee[i], r.legs[i].knee);
   }
   if (bad) {
-    printAll("WARN: %u legs unreachable at height %.1f mm — pose partially applied\r\n",
-             bad, h);
+    printAll(
+        "WARN: %u legs unreachable at height %.1f mm — pose partially "
+        "applied\r\n",
+        bad, h);
   }
   body_height_mm = h;
   printAll("OK: height = %.1f mm\r\n", h);
@@ -597,12 +650,30 @@ static void cmdIdle() {
 // magnitude exceeds max_hvel. Reports any clamping to the caller via flag.
 static bool applyVelClamp(float& vx, float& vy, float& wz) {
   bool clamped = false;
-  if (vx >  max_vx) { vx =  max_vx; clamped = true; }
-  if (vx < -max_vx) { vx = -max_vx; clamped = true; }
-  if (vy >  max_vy) { vy =  max_vy; clamped = true; }
-  if (vy < -max_vy) { vy = -max_vy; clamped = true; }
-  if (wz >  max_wz) { wz =  max_wz; clamped = true; }
-  if (wz < -max_wz) { wz = -max_wz; clamped = true; }
+  if (vx > max_vx) {
+    vx = max_vx;
+    clamped = true;
+  }
+  if (vx < -max_vx) {
+    vx = -max_vx;
+    clamped = true;
+  }
+  if (vy > max_vy) {
+    vy = max_vy;
+    clamped = true;
+  }
+  if (vy < -max_vy) {
+    vy = -max_vy;
+    clamped = true;
+  }
+  if (wz > max_wz) {
+    wz = max_wz;
+    clamped = true;
+  }
+  if (wz < -max_wz) {
+    wz = -max_wz;
+    clamped = true;
+  }
   float mag = sqrtf(vx * vx + vy * vy);
   if (mag > max_hvel && mag > 0.0f) {
     float k = max_hvel / mag;
@@ -649,8 +720,8 @@ static void cmdTurn() {
   if (!parseFloat(tokens[1], deg_s)) return;
   float vx = 0.0f, vy = 0.0f, wz = deg_s * 0.017453292519943f;
   bool clamped = applyVelClamp(vx, vy, wz);
-  printAll("OK: wz=%+.3f rad/s (%.1f deg/s)%s\r\n",
-           wz, wz * 57.295779513082f, clamped ? " (clamped)" : "");
+  printAll("OK: wz=%+.3f rad/s (%.1f deg/s)%s\r\n", wz, wz * 57.295779513082f,
+           clamped ? " (clamped)" : "");
   gait->setVelocity(vx, vy, wz);
 }
 
@@ -662,8 +733,8 @@ static void cmdMove() {
   if (!parseFloat(tokens[3], wz)) return;
   bool clamped = applyVelClamp(vx, vy, wz);
   gait->setVelocity(vx, vy, wz);
-  printAll("OK: vx=%+.3f vy=%+.3f wz=%+.3f%s\r\n",
-           vx, vy, wz, clamped ? " (clamped)" : "");
+  printAll("OK: vx=%+.3f vy=%+.3f wz=%+.3f%s\r\n", vx, vy, wz,
+           clamped ? " (clamped)" : "");
 }
 
 static void cmdMaxVelocities() {
@@ -679,14 +750,18 @@ static void cmdMaxVelocities() {
   max_vx = vx;
   max_vy = vy;
   max_wz = wz;
-  printAll("OK: max_vx=%.3f max_vy=%.3f max_wz=%.3f\r\n", max_vx, max_vy, max_wz);
+  printAll("OK: max_vx=%.3f max_vy=%.3f max_wz=%.3f\r\n", max_vx, max_vy,
+           max_wz);
 }
 
 static void cmdMaxHvel() {
   if (!requireArgs(2)) return;
   float v;
   if (!parseFloat(tokens[1], v)) return;
-  if (v <= 0.0f) { printErr("max_hvel must be > 0"); return; }
+  if (v <= 0.0f) {
+    printErr("max_hvel must be > 0");
+    return;
+  }
   max_hvel = v;
   printAll("OK: max_hvel=%.3f m/s\r\n", max_hvel);
 }
@@ -695,7 +770,10 @@ static void cmdGaitStep() {
   if (!requireArgs(2)) return;
   float mm;
   if (!parseFloat(tokens[1], mm)) return;
-  if (mm <= 0.0f) { printErr("step height must be > 0"); return; }
+  if (mm <= 0.0f) {
+    printErr("step height must be > 0");
+    return;
+  }
   gait->setStepHeight(mm);
   printAll("OK: gait step_height = %.2f mm\r\n", mm);
 }
@@ -704,7 +782,10 @@ static void cmdGaitCycle() {
   if (!requireArgs(2)) return;
   float s;
   if (!parseFloat(tokens[1], s)) return;
-  if (s <= 0.05f) { printErr("cycle time must be > 0.05 s"); return; }
+  if (s <= 0.05f) {
+    printErr("cycle time must be > 0.05 s");
+    return;
+  }
   gait->setCycleTime(s);
   printAll("OK: gait cycle_time = %.3f s\r\n", s);
 }
@@ -713,17 +794,24 @@ static void cmdGaitScale() {
   if (!requireArgs(2)) return;
   float x;
   if (!parseFloat(tokens[1], x)) return;
-  if (x <= 0.0f) { printErr("scale must be > 0"); return; }
+  if (x <= 0.0f) {
+    printErr("scale must be > 0");
+    return;
+  }
   gait->setStepScale(x);
   printAll("OK: gait step_scale = %.3f\r\n", x);
 }
 
 static const char* stateName(Gait::GaitState s) {
   switch (s) {
-    case Gait::GaitState::IDLE:     return "IDLE";
-    case Gait::GaitState::WALKING:  return "WALKING";
-    case Gait::GaitState::STOPPING: return "STOPPING";
-    default:                        return "UNKNOWN";
+    case Gait::GaitState::IDLE:
+      return "IDLE";
+    case Gait::GaitState::WALKING:
+      return "WALKING";
+    case Gait::GaitState::STOPPING:
+      return "STOPPING";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -750,13 +838,13 @@ static void cmdSave() {
   prefs.begin(kPrefsNs, /*readOnly=*/false);
   prefs.putBytes(kPrefsCfgKey, saved, sizeof(saved));
   prefs.putFloat(kPrefsBudgetKey, servos->getTotalRateBudget());
-  prefs.putFloat(kPrefsStepHKey,  gc.step_height_mm);
-  prefs.putFloat(kPrefsCycleKey,  gc.cycle_time_s);
-  prefs.putFloat(kPrefsScaleKey,  gc.step_scale);
-  prefs.putFloat(kPrefsHeightKey,  body_height_mm);
-  prefs.putFloat(kPrefsMaxVxKey,   max_vx);
-  prefs.putFloat(kPrefsMaxVyKey,   max_vy);
-  prefs.putFloat(kPrefsMaxWzKey,   max_wz);
+  prefs.putFloat(kPrefsStepHKey, gc.step_height_mm);
+  prefs.putFloat(kPrefsCycleKey, gc.cycle_time_s);
+  prefs.putFloat(kPrefsScaleKey, gc.step_scale);
+  prefs.putFloat(kPrefsHeightKey, body_height_mm);
+  prefs.putFloat(kPrefsMaxVxKey, max_vx);
+  prefs.putFloat(kPrefsMaxVyKey, max_vy);
+  prefs.putFloat(kPrefsMaxWzKey, max_wz);
   prefs.putFloat(kPrefsMaxHvelKey, max_hvel);
   prefs.end();
   printOk("config + gait + height + velocity caps saved to NVS");
@@ -782,48 +870,90 @@ static void dispatch(char* line) {
   }
   const char* cmd = tokens[0];
 
-  if      (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0)          printHelp();
-  else if (strcmp(cmd, "status") == 0 || strcmp(cmd, "s") == 0)        cmdStatus();
-  else if (strcmp(cmd, "attach") == 0)                                 cmdAttach();
-  else if (strcmp(cmd, "attachall") == 0)                              cmdAttachAll();
-  else if (strcmp(cmd, "detach") == 0)                                 cmdDetach();
-  else if (strcmp(cmd, "angle") == 0)                                  cmdAngle();
-  else if (strcmp(cmd, "vel") == 0)                                    cmdVel();
-  else if (strcmp(cmd, "accel") == 0)                                  cmdAccel();
-  else if (strcmp(cmd, "velall") == 0)                                 cmdVelAll();
-  else if (strcmp(cmd, "accelall") == 0)                               cmdAccelAll();
-  else if (strcmp(cmd, "invert") == 0)                                 cmdInvert();
-  else if (strcmp(cmd, "minangle") == 0)                               cmdMinAngle();
-  else if (strcmp(cmd, "maxangle") == 0)                               cmdMaxAngle();
-  else if (strcmp(cmd, "minpwm") == 0)                                 cmdMinPwm();
-  else if (strcmp(cmd, "maxpwm") == 0)                                 cmdMaxPwm();
-  else if (strcmp(cmd, "freq") == 0)                                   cmdFreq();
-  else if (strcmp(cmd, "budget") == 0)                                 cmdBudget();
-  else if (strcmp(cmd, "neutral") == 0)                                cmdNeutral();
-  else if (strcmp(cmd, "hips") == 0)                                   cmdHips();
-  else if (strcmp(cmd, "knees") == 0)                                  cmdKnees();
-  else if (strcmp(cmd, "flat") == 0)                                   cmdFlat();
-  else if (strcmp(cmd, "standing") == 0 || strcmp(cmd, "stand") == 0)  cmdStanding();
-  else if (strcmp(cmd, "arm") == 0)                                    cmdArm();
-  else if (strcmp(cmd, "disarm") == 0)                                 cmdDisarm();
-  else if (strcmp(cmd, "height") == 0)                                 cmdHeight();
-  else if (strcmp(cmd, "walk") == 0)                                   cmdWalk();
-  else if (strcmp(cmd, "stop") == 0)                                   cmdStop();
-  else if (strcmp(cmd, "idle") == 0)                                   cmdIdle();
-  else if (strcmp(cmd, "forward") == 0 || strcmp(cmd, "fwd") == 0)     cmdForward();
-  else if (strcmp(cmd, "back") == 0   || strcmp(cmd, "bwd") == 0)      cmdBack();
-  else if (strcmp(cmd, "strafe") == 0)                                 cmdStrafe();
-  else if (strcmp(cmd, "turn") == 0)                                   cmdTurn();
-  else if (strcmp(cmd, "move") == 0)                                   cmdMove();
-  else if (strcmp(cmd, "max_velocities") == 0)                         cmdMaxVelocities();
-  else if (strcmp(cmd, "max_hvel") == 0)                               cmdMaxHvel();
-  else if (strcmp(cmd, "gait_step") == 0)                              cmdGaitStep();
-  else if (strcmp(cmd, "gait_cycle") == 0)                             cmdGaitCycle();
-  else if (strcmp(cmd, "gait_scale") == 0)                             cmdGaitScale();
-  else if (strcmp(cmd, "gait_status") == 0)                            cmdGaitStatus();
-  else if (strcmp(cmd, "save") == 0)                                   cmdSave();
-  else if (strcmp(cmd, "clearprefs") == 0)                             cmdClearPrefs();
-  else                                                                 printAll("ERR: unknown command '%s'. Type 'help'.\r\n", cmd);
+  if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0)
+    printHelp();
+  else if (strcmp(cmd, "status") == 0 || strcmp(cmd, "s") == 0)
+    cmdStatus();
+  else if (strcmp(cmd, "attach") == 0)
+    cmdAttach();
+  else if (strcmp(cmd, "attachall") == 0)
+    cmdAttachAll();
+  else if (strcmp(cmd, "detach") == 0)
+    cmdDetach();
+  else if (strcmp(cmd, "angle") == 0)
+    cmdAngle();
+  else if (strcmp(cmd, "vel") == 0)
+    cmdVel();
+  else if (strcmp(cmd, "accel") == 0)
+    cmdAccel();
+  else if (strcmp(cmd, "velall") == 0)
+    cmdVelAll();
+  else if (strcmp(cmd, "accelall") == 0)
+    cmdAccelAll();
+  else if (strcmp(cmd, "invert") == 0)
+    cmdInvert();
+  else if (strcmp(cmd, "minangle") == 0)
+    cmdMinAngle();
+  else if (strcmp(cmd, "maxangle") == 0)
+    cmdMaxAngle();
+  else if (strcmp(cmd, "minpwm") == 0)
+    cmdMinPwm();
+  else if (strcmp(cmd, "maxpwm") == 0)
+    cmdMaxPwm();
+  else if (strcmp(cmd, "freq") == 0)
+    cmdFreq();
+  else if (strcmp(cmd, "budget") == 0)
+    cmdBudget();
+  else if (strcmp(cmd, "neutral") == 0)
+    cmdNeutral();
+  else if (strcmp(cmd, "hips") == 0)
+    cmdHips();
+  else if (strcmp(cmd, "knees") == 0)
+    cmdKnees();
+  else if (strcmp(cmd, "flat") == 0)
+    cmdFlat();
+  else if (strcmp(cmd, "standing") == 0 || strcmp(cmd, "stand") == 0)
+    cmdStanding();
+  else if (strcmp(cmd, "arm") == 0)
+    cmdArm();
+  else if (strcmp(cmd, "disarm") == 0)
+    cmdDisarm();
+  else if (strcmp(cmd, "height") == 0)
+    cmdHeight();
+  else if (strcmp(cmd, "walk") == 0)
+    cmdWalk();
+  else if (strcmp(cmd, "stop") == 0)
+    cmdStop();
+  else if (strcmp(cmd, "idle") == 0)
+    cmdIdle();
+  else if (strcmp(cmd, "forward") == 0 || strcmp(cmd, "fwd") == 0)
+    cmdForward();
+  else if (strcmp(cmd, "back") == 0 || strcmp(cmd, "bwd") == 0)
+    cmdBack();
+  else if (strcmp(cmd, "strafe") == 0)
+    cmdStrafe();
+  else if (strcmp(cmd, "turn") == 0)
+    cmdTurn();
+  else if (strcmp(cmd, "move") == 0)
+    cmdMove();
+  else if (strcmp(cmd, "max_velocities") == 0)
+    cmdMaxVelocities();
+  else if (strcmp(cmd, "max_hvel") == 0)
+    cmdMaxHvel();
+  else if (strcmp(cmd, "gait_step") == 0)
+    cmdGaitStep();
+  else if (strcmp(cmd, "gait_cycle") == 0)
+    cmdGaitCycle();
+  else if (strcmp(cmd, "gait_scale") == 0)
+    cmdGaitScale();
+  else if (strcmp(cmd, "gait_status") == 0)
+    cmdGaitStatus();
+  else if (strcmp(cmd, "save") == 0)
+    cmdSave();
+  else if (strcmp(cmd, "clearprefs") == 0)
+    cmdClearPrefs();
+  else
+    printAll("ERR: unknown command '%s'. Type 'help'.\r\n", cmd);
 }
 
 // ---------------------------------------------------------------------------
@@ -871,21 +1001,21 @@ static void buildDefaults(float& budget_out, Gait::GaitConfig& gc_out,
         servo_configs[m - 1].max_pwm =
             (uint16_t)roundf(center + servo_configs[m - 1].max_angle * scale);
       } else {
-        servo_configs[m - 1].min_pwm =
-            (uint16_t)roundf(kDefaultMinPwm + servo_configs[m - 1].min_angle * scale);
-        servo_configs[m - 1].max_pwm =
-            (uint16_t)roundf(kDefaultMinPwm + servo_configs[m - 1].max_angle * scale);
+        servo_configs[m - 1].min_pwm = (uint16_t)roundf(
+            kDefaultMinPwm + servo_configs[m - 1].min_angle * scale);
+        servo_configs[m - 1].max_pwm = (uint16_t)roundf(
+            kDefaultMinPwm + servo_configs[m - 1].max_angle * scale);
       }
     } else {
       servo_configs[m - 1] = {
-          .channel         = Config::mPort(m),
-          .min_angle       = 0.0f,
-          .max_angle       = kDefaultTotalAngle,
-          .min_pwm         = kDefaultMinPwm,
-          .max_pwm         = kDefaultMaxPwm,
-          .inverted        = false,
-          .max_velocity    = kDefaultVelocity,
-          .max_accel       = kDefaultAccel,
+          .channel = Config::mPort(m),
+          .min_angle = 0.0f,
+          .max_angle = kDefaultTotalAngle,
+          .min_pwm = kDefaultMinPwm,
+          .max_pwm = kDefaultMaxPwm,
+          .inverted = false,
+          .max_velocity = kDefaultVelocity,
+          .max_accel = kDefaultAccel,
           .total_angle_deg = kDefaultTotalAngle,
       };
     }
@@ -894,7 +1024,7 @@ static void buildDefaults(float& budget_out, Gait::GaitConfig& gc_out,
   gc_out = HexapodConfig::kGaitConfig;
   // Override leg_servo_*[] to index into the 13-entry M-port layout.
   for (uint8_t i = 0; i < 6; i++) {
-    gc_out.leg_servo_hip[i]  = kLegServoHip[i];
+    gc_out.leg_servo_hip[i] = kLegServoHip[i];
     gc_out.leg_servo_knee[i] = kLegServoKnee[i];
   }
 
@@ -909,7 +1039,8 @@ static bool loadFromPrefs(float& budget_out, Gait::GaitConfig& gc_out,
 
   bool have_cfg = prefs.isKey(kPrefsCfgKey);
   if (have_cfg) {
-    size_t n = prefs.getBytes(kPrefsCfgKey, servo_configs, sizeof(servo_configs));
+    size_t n =
+        prefs.getBytes(kPrefsCfgKey, servo_configs, sizeof(servo_configs));
     if (n != sizeof(servo_configs)) have_cfg = false;
   }
   if (have_cfg) {
@@ -917,13 +1048,13 @@ static bool loadFromPrefs(float& budget_out, Gait::GaitConfig& gc_out,
   }
 
   gc_out.step_height_mm = prefs.getFloat(kPrefsStepHKey, gc_out.step_height_mm);
-  gc_out.cycle_time_s   = prefs.getFloat(kPrefsCycleKey, gc_out.cycle_time_s);
-  gc_out.step_scale     = prefs.getFloat(kPrefsScaleKey, gc_out.step_scale);
-  height_out            = prefs.getFloat(kPrefsHeightKey, 0.0f);
-  max_vx                = prefs.getFloat(kPrefsMaxVxKey,   max_vx);
-  max_vy                = prefs.getFloat(kPrefsMaxVyKey,   max_vy);
-  max_wz                = prefs.getFloat(kPrefsMaxWzKey,   max_wz);
-  max_hvel              = prefs.getFloat(kPrefsMaxHvelKey, max_hvel);
+  gc_out.cycle_time_s = prefs.getFloat(kPrefsCycleKey, gc_out.cycle_time_s);
+  gc_out.step_scale = prefs.getFloat(kPrefsScaleKey, gc_out.step_scale);
+  height_out = prefs.getFloat(kPrefsHeightKey, 0.0f);
+  max_vx = prefs.getFloat(kPrefsMaxVxKey, max_vx);
+  max_vy = prefs.getFloat(kPrefsMaxVyKey, max_vy);
+  max_wz = prefs.getFloat(kPrefsMaxWzKey, max_wz);
+  max_hvel = prefs.getFloat(kPrefsMaxHvelKey, max_hvel);
 
   prefs.end();
   return have_cfg;
@@ -964,9 +1095,9 @@ void setup() {
   }
 
   // Servo subsystem
-  static Subsystem::ServoSetup servo_setup(
-      Wire, Config::pca_addr, Config::servo_en,
-      servo_configs, 13, budget, kDefaultFreqHz);
+  static Subsystem::ServoSetup servo_setup(Wire, Config::pca_addr,
+                                           Config::servo_en, servo_configs, 13,
+                                           budget, kDefaultFreqHz);
   auto& srv = Subsystem::ServoSubsystem::getInstance(servo_setup, i2c_mutex);
   // Pre-attach all 12 hexapod servos so gait standNeutral/arm can succeed.
   for (uint8_t m = 1; m <= 12; m++) srv.attach(m - 1);
@@ -1000,7 +1131,7 @@ void setup() {
       Kinematics::SolveResult r = kinematics->standNeutral();
       for (uint8_t i = 0; i < Gait::kNumLegs; i++) {
         if (!r.valid[i]) continue;
-        servos->setAngle(kLegServoHip[i],  r.legs[i].hip);
+        servos->setAngle(kLegServoHip[i], r.legs[i].hip);
         servos->setAngle(kLegServoKnee[i], r.legs[i].knee);
       }
     }
@@ -1011,7 +1142,8 @@ void setup() {
   printAll("\r\n=== Movement Console ===\r\n");
   printAll("Transports: Serial @921600 | BLE \"%s\" %s\r\n",
            ble_setup.deviceName, ble_ok ? "(advertising)" : "(OFFLINE)");
-  printAll("Config: %s\r\n", cfg_from_prefs ? "LOADED FROM NVS (srvtest)" : "defaults");
+  printAll("Config: %s\r\n",
+           cfg_from_prefs ? "LOADED FROM NVS (srvtest)" : "defaults");
   printAll("Gait: step=%.1f mm  cycle=%.2f s  scale=%.2f\r\n",
            gc.step_height_mm, gc.cycle_time_s, gc.step_scale);
   printAll("Body height: %.1f mm\r\n", body_height_mm);

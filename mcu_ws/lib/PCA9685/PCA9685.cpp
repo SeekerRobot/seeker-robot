@@ -77,7 +77,7 @@ void PCA9685::update() {
     } else if (d >= kMaxDuty) {
       writeChannel(ch, kMaxDuty + 1, 0);  // full on via bit 12
     } else {
-      uint16_t on_val  = static_cast<uint16_t>(ch) * (4096u / kNumChannels);
+      uint16_t on_val = static_cast<uint16_t>(ch) * (4096u / kNumChannels);
       uint16_t off_val = (on_val + d) & 0x0FFFu;
       writeChannel(ch, on_val, off_val);
     }

@@ -26,13 +26,13 @@
 // ---------------------------------------------------------------------------
 // Defaults (restored from original test sketch)
 // ---------------------------------------------------------------------------
-static constexpr uint16_t kDefaultMinPwm     = 120;    // ~500 µs @ 50 Hz
-static constexpr uint16_t kDefaultMaxPwm     = 590;    // ~2500 µs @ 50 Hz
-static constexpr float    kDefaultVelocity   = 720.0f; // deg/s
-static constexpr float    kDefaultAccel      = 1000.0f;// deg/s²
-static constexpr float    kDefaultBudget     = 10000.0f;// total deg/s budget
-static constexpr float    kDefaultFreqHz     = 50.0f;
-static constexpr float    kDefaultTotalAngle = 180.0f; // physical travel (°)
+static constexpr uint16_t kDefaultMinPwm = 120;    // ~500 µs @ 50 Hz
+static constexpr uint16_t kDefaultMaxPwm = 590;    // ~2500 µs @ 50 Hz
+static constexpr float kDefaultVelocity = 720.0f;  // deg/s
+static constexpr float kDefaultAccel = 1000.0f;    // deg/s²
+static constexpr float kDefaultBudget = 10000.0f;  // total deg/s budget
+static constexpr float kDefaultFreqHz = 50.0f;
+static constexpr float kDefaultTotalAngle = 180.0f;  // physical travel (°)
 
 // ---------------------------------------------------------------------------
 // M-port → kServoConfigs[] reverse lookup
@@ -59,8 +59,8 @@ static constexpr uint8_t kMPortToHexIdx[14] = {
 // ---------------------------------------------------------------------------
 // NVS Preferences
 // ---------------------------------------------------------------------------
-static constexpr char kPrefsNs[]        = "srvtest";
-static constexpr char kPrefsCfgKey[]    = "cfg";
+static constexpr char kPrefsNs[] = "srvtest";
+static constexpr char kPrefsCfgKey[] = "cfg";
 static constexpr char kPrefsBudgetKey[] = "budget";
 
 static Preferences prefs;
@@ -228,7 +228,8 @@ static void cmdAttachAll() {
   for (uint8_t m = 1; m <= 12; m++) {
     uint8_t idx = m - 1;
     servos->attach(idx);
-    Serial.printf("OK: M%u attached (ch%u)\r\n", m, servos->getConfig(idx).channel);
+    Serial.printf("OK: M%u attached (ch%u)\r\n", m,
+                  servos->getConfig(idx).channel);
   }
 }
 
@@ -565,22 +566,22 @@ static void buildDefaults(float& budget_out) {
         servo_configs[m - 1].max_pwm =
             (uint16_t)roundf(center + servo_configs[m - 1].max_angle * scale);
       } else {
-        servo_configs[m - 1].min_pwm =
-            (uint16_t)roundf(kDefaultMinPwm + servo_configs[m - 1].min_angle * scale);
-        servo_configs[m - 1].max_pwm =
-            (uint16_t)roundf(kDefaultMinPwm + servo_configs[m - 1].max_angle * scale);
+        servo_configs[m - 1].min_pwm = (uint16_t)roundf(
+            kDefaultMinPwm + servo_configs[m - 1].min_angle * scale);
+        servo_configs[m - 1].max_pwm = (uint16_t)roundf(
+            kDefaultMinPwm + servo_configs[m - 1].max_angle * scale);
       }
     } else {
       // M13: no hexapod servo — generic full-range default
       servo_configs[m - 1] = {
-          .channel         = Config::mPort(m),
-          .min_angle       = 0.0f,
-          .max_angle       = kDefaultTotalAngle,
-          .min_pwm         = kDefaultMinPwm,
-          .max_pwm         = kDefaultMaxPwm,
-          .inverted        = false,
-          .max_velocity    = kDefaultVelocity,
-          .max_accel       = kDefaultAccel,
+          .channel = Config::mPort(m),
+          .min_angle = 0.0f,
+          .max_angle = kDefaultTotalAngle,
+          .min_pwm = kDefaultMinPwm,
+          .max_pwm = kDefaultMaxPwm,
+          .inverted = false,
+          .max_velocity = kDefaultVelocity,
+          .max_accel = kDefaultAccel,
           .total_angle_deg = kDefaultTotalAngle,
       };
     }
@@ -593,7 +594,8 @@ static bool loadFromPrefs(float& budget_out) {
   prefs.begin(kPrefsNs, /*readOnly=*/true);
   bool found = prefs.isKey(kPrefsCfgKey);
   if (found) {
-    size_t n = prefs.getBytes(kPrefsCfgKey, servo_configs, sizeof(servo_configs));
+    size_t n =
+        prefs.getBytes(kPrefsCfgKey, servo_configs, sizeof(servo_configs));
     if (n != sizeof(servo_configs)) found = false;  // corrupt blob — ignore
   }
   if (found) {
@@ -611,16 +613,17 @@ void setup() {
   delay(1000);  // let serial settle
 
   float budget = kDefaultBudget;
-  buildDefaults(budget);                   // always build formula-derived defaults
-  bool from_prefs = loadFromPrefs(budget); // overrides if a valid NVS blob exists
+  buildDefaults(budget);  // always build formula-derived defaults
+  bool from_prefs =
+      loadFromPrefs(budget);  // overrides if a valid NVS blob exists
 
   // Heartbeat blink
   blink.beginThreadedPinned(2048, 1, 500, 1);
 
   // Servo subsystem
-  static Subsystem::ServoSetup servo_setup(
-      Wire, Config::pca_addr, Config::servo_en,
-      servo_configs, 13, budget, kDefaultFreqHz);
+  static Subsystem::ServoSetup servo_setup(Wire, Config::pca_addr,
+                                           Config::servo_en, servo_configs, 13,
+                                           budget, kDefaultFreqHz);
   auto& srv = Subsystem::ServoSubsystem::getInstance(servo_setup, i2c_mutex);
   if (!srv.init()) {
     Debug::printf(Debug::Level::ERROR, "[MAIN] Servo init failed");
@@ -632,8 +635,10 @@ void setup() {
 
   Serial.println("\r\n=== Servo Subsystem Test ===");
   Serial.println("M-port assignments (from HexapodConfig):");
-  Serial.println("  M1=FL_Hip  M2=ML_Hip  M3=RL_Hip  M4=RR_Hip  M5=MR_Hip  M6=FR_Hip");
-  Serial.println("  M7=RR_Knee M8=FL_Knee M9=ML_Knee M10=RL_Knee M11=MR_Knee M12=FR_Knee");
+  Serial.println(
+      "  M1=FL_Hip  M2=ML_Hip  M3=RL_Hip  M4=RR_Hip  M5=MR_Hip  M6=FR_Hip");
+  Serial.println(
+      "  M7=RR_Knee M8=FL_Knee M9=ML_Knee M10=RL_Knee M11=MR_Knee M12=FR_Knee");
   Serial.println("  M13=<unassigned>");
   Serial.printf("Config: %s\r\n", from_prefs ? "LOADED FROM NVS" : "defaults");
   Serial.println("All servos DETACHED. OE DISABLED.");

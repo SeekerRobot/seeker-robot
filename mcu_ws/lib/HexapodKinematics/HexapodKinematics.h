@@ -138,10 +138,11 @@ class HexapodKinematics {
 
  private:
   HexapodLeg legs_[kNumLegs];
-  Vec3 foot_world_[kNumLegs];        // planted foot positions in world frame
-  Vec3 neutral_foot_body_[kNumLegs]; // neutral foot position per leg, body frame
-  Vec3 body_pos_;                    // current body origin in world frame (mm)
-  float body_yaw_;                   // current body heading (degrees)
+  Vec3 foot_world_[kNumLegs];         // planted foot positions in world frame
+  Vec3 neutral_foot_body_[kNumLegs];  // neutral foot position per leg, body
+                                      // frame
+  Vec3 body_pos_;                     // current body origin in world frame (mm)
+  float body_yaw_;                    // current body heading (degrees)
 
   /// @brief Transform a world-frame position into the current body frame.
   ///
