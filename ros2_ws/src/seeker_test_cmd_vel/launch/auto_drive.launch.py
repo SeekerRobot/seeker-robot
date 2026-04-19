@@ -12,7 +12,7 @@ def generate_launch_description():
                 description="Target linear speed in meters per second",
             ),
             Node(
-                package="seeker_navigation",
+                package="seeker_test_cmd",
                 executable="velocity_node",
                 name="auto_velocity_node",
                 output="screen",
