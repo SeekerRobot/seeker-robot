@@ -89,15 +89,43 @@ class HexapodKinematics {
   /// @brief Move all legs to their neutral standing positions.
   ///
   /// Resets body pose to the world-frame origin with zero yaw, sets each
-  /// foot_world_[] to the corresponding leg's neutralPos(), then returns
-  /// the solved angles. Call once on startup before the gait loop begins.
+  /// foot_world_[] to the corresponding leg's stored neutral_foot_body_,
+  /// then returns the solved angles. Call once on startup before the gait
+  /// loop begins, or after setStandHeight() to apply a custom stand height.
   SolveResult standNeutral();
+
+  /// @brief Recompute each leg's neutral foot position so the body sits
+  ///        height_mm above the foot plane.
+  ///
+  /// For each leg, derives the knee angle from height via
+  ///   knee = asin(height_mm / L2)
+  /// and forward-solves the foot position at hip=0°, knee=knee_deg.
+  /// The computed positions are stored as the new neutral reference used
+  /// by standNeutral() (for the stance pose) and by the gait layer (as
+  /// the step-target anchor via neutralFootBody()).
+  ///
+  /// Atomic: if any leg's required knee angle is out of range (or
+  /// height_mm is outside (0, L2) for any leg), returns false and leaves
+  /// the previous neutral reference unchanged. Does NOT replant feet or
+  /// push servo angles — call standNeutral() afterward to apply.
+  ///
+  /// @param height_mm Desired body height above foot plane (mm).
+  /// @return true if every leg could accommodate the new height.
+  bool setStandHeight(float height_mm);
 
   // --- Queries ---
 
   /// @brief Returns the stored world-frame foot position for a leg.
   /// @param leg  Leg index (0–5).
   Vec3 getFootWorld(uint8_t leg) const;
+
+  /// @brief Returns the current neutral foot position in body frame for a
+  ///        leg. Updated by setStandHeight(); initialised to the leg's
+  ///        built-in neutralPos() on construction. The gait layer uses
+  ///        this as the step-target anchor so step targets scale with the
+  ///        active stand height.
+  /// @param leg  Leg index (0–5).
+  Vec3 neutralFootBody(uint8_t leg) const;
 
   /// @brief Returns true if foot_world is reachable by the specified leg
   ///        given the current body pose.
@@ -110,9 +138,11 @@ class HexapodKinematics {
 
  private:
   HexapodLeg legs_[kNumLegs];
-  Vec3 foot_world_[kNumLegs];  // planted foot positions in world frame
-  Vec3 body_pos_;              // current body origin in world frame (mm)
-  float body_yaw_;             // current body heading (degrees)
+  Vec3 foot_world_[kNumLegs];         // planted foot positions in world frame
+  Vec3 neutral_foot_body_[kNumLegs];  // neutral foot position per leg, body
+                                      // frame
+  Vec3 body_pos_;                     // current body origin in world frame (mm)
+  float body_yaw_;                    // current body heading (degrees)
 
   /// @brief Transform a world-frame position into the current body frame.
   ///

@@ -94,8 +94,19 @@ void ServoSubsystem::update() {
       const ServoConfig& cfg = configs_[i];
 
       state_[i].velocity = desired_vel[i] * scale;
-      state_[i].current_angle += state_[i].velocity * dt;
-      state_[i].current_angle = clampAngle(cfg, state_[i].current_angle);
+      float new_angle = state_[i].current_angle + state_[i].velocity * dt;
+      new_angle = clampAngle(cfg, new_angle);
+
+      // Snap to target if the integration step crossed it — prevents the
+      // profiler from oscillating around intermediate positions.
+      float cur = state_[i].current_angle;
+      float tgt = state_[i].target_angle;
+      if ((cur <= tgt && new_angle >= tgt) ||
+          (cur >= tgt && new_angle <= tgt)) {
+        new_angle = tgt;
+        state_[i].velocity = 0.0f;
+      }
+      state_[i].current_angle = new_angle;
 
       pwm_.set(cfg.channel, angleToPwm(cfg, state_[i].current_angle));
       any_dirty = true;
@@ -191,8 +202,13 @@ void ServoSubsystem::disarm() {
       state_[i].detached_by_disarm = true;
     }
   }
-  Threads::Scope lock(i2c_mutex_);
-  pwm_.disableOutputs();
+  // Give servos time to react to the zero-pulse before cutting OE, so they
+  // don't jerk from whatever position they were at when power is removed.
+  delay(kDisarmDelayMs);
+  {
+    Threads::Scope lock(i2c_mutex_);
+    pwm_.disableOutputs();
+  }
   armed_ = false;
   Debug::printf(Debug::Level::INFO, "[Servo] Disarmed — OE disabled");
 }
