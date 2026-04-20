@@ -6,7 +6,7 @@
  * as a robot-state indicator via StatusLedController.
  *
  * Subsystems (all threaded, most pinned to Core 1):
- *   Blink heartbeat, LED chain, BLE Nordic-UART debug (core 0), WiFi, BNO085
+ *   Blink heartbeat, LED chain, WiFi, BNO085
  *   gyro, battery ADC, LD14P lidar (core 0), PCA9685 servos, HexapodKinematics,
  *   GaitController, OV2640 camera (MJPEG :80), PDM mic (PCM :81, core 0),
  *   I2S speaker (PCM from host :8383), SSD1306 OLED (framebuffer from host
@@ -18,8 +18,8 @@
  *   ENABLE_MIC  — PDM microphone PCM server (default 1)
  *   ENABLE_SPK  — I2S speaker HTTP client (default 1)
  * Set any of these to 0 via -D in platformio.ini to offload that subsystem to
- * a satellite board. Speaker tolerates ENABLE_MIC=0 by passing nullptr for the
- * mic-pause pointer. The `esp32s3sense_offload` env ships all three off.
+ * a satellite board. The `esp32s3sense_offload` env ships cam + mic off while
+ * keeping the speaker on the main board.
  *
  * Boot LED sequence (visible state ladder):
  *   rainbow pulse → red chase (wifi) → yellow pulse (micro-ROS) →
@@ -35,7 +35,6 @@
  */
 #include <Arduino.h>
 #include <BatterySubsystem.h>
-#include <BleDebugSubsystem.h>
 #include <BlinkSubsystem.h>
 #include <CustomDebug.h>
 // Camera/mic/speaker are wired only on S3 Sense; off-board variants never
@@ -155,8 +154,6 @@ static Subsystem::BlinkSubsystem blink(blink_setup);
 static Subsystem::LedSetup led_setup(/*num_leds=*/5);
 static Subsystem::LedSubsystem<Config::rgb_data> leds(led_setup);
 
-static Subsystem::BleDebugSetup ble_setup("SeekerMain");
-
 static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
@@ -191,7 +188,7 @@ static float body_height_mm = 0.0f;
 
 // ---------------------------------------------------------------------------
 // Safe mode — after N consecutive boots without a kStableRunMs "healthy run"
-// the sketch skips every risky subsystem and comes up in WiFi+BLE+OTA mode so
+// the sketch skips every risky subsystem and comes up in WiFi+OTA mode so
 // the robot can be reflashed over the air. WiFi subsystem handles the OTA
 // handler itself (ENABLE_ARDUINO_OTA=1 in platformio.ini) — we just need
 // WiFi to come up and keep running.
@@ -273,8 +270,8 @@ static void safeModeScheduleClear() {
       "sm_clear", 2048, nullptr, 1, nullptr, 1);
 }
 
-// Enter safe mode: bring up Blink + LEDs (magenta chase) + BLE + WiFi (with
-// its built-in ArduinoOTA handler), then loop forever broadcasting status.
+// Enter safe mode: bring up Blink + LEDs (magenta chase) + WiFi (with its
+// built-in ArduinoOTA handler), then loop forever broadcasting status.
 [[noreturn]] static void runSafeMode() {
   Debug::printf(Debug::Level::ERROR,
                 "[SafeMode] %u consecutive boots (prev_reason=%s, "
@@ -292,13 +289,10 @@ static void safeModeScheduleClear() {
     leds.setEffect(Subsystem::LedMode::CHASE, CRGB::Magenta, 180);
   }
 
-  auto& ble = Subsystem::BleDebugSubsystem::getInstance(ble_setup);
-  if (ble.init()) ble.beginThreadedPinned(8192, 2, 50, 0);
-
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
   if (!wifi.init()) {
     Debug::printf(Debug::Level::ERROR,
-                  "[SafeMode] WiFi init failed — BLE-only, no OTA");
+                  "[SafeMode] WiFi init failed — Serial-only, no OTA");
   } else {
     // WiFi subsystem calls ArduinoOTA.begin()/handle() internally when
     // ENABLE_ARDUINO_OTA=1, so once this task connects OTA is live.
@@ -308,8 +302,8 @@ static void safeModeScheduleClear() {
   WiFiUDP reset_udp;
   bool udp_bound = false;
 
-  // Broadcast the reason every 5 s so whoever connects (serial, BLE, or
-  // tailing a log later) sees it immediately.
+  // Broadcast the reason every 5 s so whoever connects (serial or tailing a
+  // log later) sees it immediately.
   uint32_t last_status = 0;
   while (true) {
     if (wifi.isConnected() && !udp_bound) {
@@ -459,17 +453,6 @@ void setup() {
   // --- LED chain — come up immediately so boot state is visible ---
   if (!leds.init()) haltOnFail("LED");
   leds.beginThreadedPinned(2048, 2, 20, 1);
-
-  // --- BLE debug transport (optional — serial-only if it fails) ---
-  auto& ble = Subsystem::BleDebugSubsystem::getInstance(ble_setup);
-  if (ble.init()) {
-    ble.beginThreadedPinned(8192, 2, 50, 0);
-    Debug::printf(Debug::Level::INFO, "[Main] BLE advertising as \"%s\"",
-                  ble_setup.deviceName);
-  } else {
-    Debug::printf(Debug::Level::WARN,
-                  "[Main] BLE init failed — Serial-only debug");
-  }
 
   // --- WiFi ---
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);

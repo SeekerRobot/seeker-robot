@@ -21,9 +21,8 @@
  *
  * Production bring-up:
  *   - Safe-mode arbitration: 5 consecutive PANIC/WDT boots in under 30 s drops
- *     the sketch into BLE + WiFi + OTA, skipping camera/mic init so a broken
+ *     the sketch into WiFi + OTA, skipping camera/mic init so a broken
  *     firmware can always be recovered over the air.
- *   - BLE Nordic-UART debug transport (optional — serial-only if it fails).
  *   - WiFi static-IP bring-up with ArduinoOTA handler.
  *   - Onboard LED acts as status indicator: 500 ms toggle during normal
  *     operation (BlinkSubsystem default), 100 ms toggle (~5 Hz) in safe mode
@@ -40,7 +39,6 @@
  * ships with the Seeed board.
  */
 #include <Arduino.h>
-#include <BleDebugSubsystem.h>
 #include <BlinkSubsystem.h>
 #include <CameraSubsystem.h>
 #include <CustomDebug.h>
@@ -145,8 +143,6 @@ static constexpr uint32_t kBlinkSafeModeMs = 100;
 static Classes::BaseSetup blink_setup("blink");
 static Subsystem::BlinkSubsystem blink(blink_setup);
 
-static Subsystem::BleDebugSetup ble_setup("SeekerSatellite");
-
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
     "sat_wifi", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
 
@@ -189,13 +185,10 @@ static const char* wifiStateStr(Subsystem::WifiState s) {
   // heartbeat so the operator can tell at a glance the board is awaiting OTA.
   blink.beginThreadedPinned(2048, 1, kBlinkSafeModeMs, 1);
 
-  auto& ble = Subsystem::BleDebugSubsystem::getInstance(ble_setup);
-  if (ble.init()) ble.beginThreadedPinned(8192, 2, 50, 0);
-
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
   if (!wifi.init()) {
     Debug::printf(Debug::Level::ERROR,
-                  "[SafeMode] WiFi init failed — BLE-only, no OTA");
+                  "[SafeMode] WiFi init failed — Serial-only, no OTA");
   } else {
     wifi.beginThreadedPinned(4096, 3, 100, 1);
   }
@@ -279,17 +272,6 @@ void setup() {
 
   // --- Blink heartbeat (onboard LED only — satellite has no LED chain) ---
   blink.beginThreadedPinned(2048, 1, kBlinkNormalMs, 1);
-
-  // --- BLE debug (optional) ---
-  auto& ble = Subsystem::BleDebugSubsystem::getInstance(ble_setup);
-  if (ble.init()) {
-    ble.beginThreadedPinned(8192, 2, 50, 0);
-    Debug::printf(Debug::Level::INFO, "[Sat] BLE advertising as \"%s\"",
-                  ble_setup.deviceName);
-  } else {
-    Debug::printf(Debug::Level::WARN,
-                  "[Sat] BLE init failed — Serial-only debug");
-  }
 
   // --- WiFi (+ ArduinoOTA handler) ---
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);

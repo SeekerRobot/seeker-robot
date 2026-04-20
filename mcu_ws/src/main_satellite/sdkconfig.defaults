@@ -31,28 +31,9 @@ CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
 CONFIG_LWIP_TCP_MSL=6000
 CONFIG_LWIP_TCP_MAX_RETRANSMIT=8
 
-# --- NimBLE: push host allocations to PSRAM ---
-# Default is INTERNAL DRAM, which competes with WiFi/lwIP/I2S DMA pools.
-# EXTERNAL routes NimBLE host dynamic allocs (connection state, GATT tables,
-# mbufs) to PSRAM. The BT controller itself still uses internal RAM — that
-# part is hardware-bound and can't move.
-# CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL is not set
-CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
-# Controller-side: prefer PSRAM for allocations that can live there.
-CONFIG_BT_ALLOC_FROM_PSRAM_FIRST=y
-
-# --- NimBLE footprint minimization (debug console use only) ---
-# We only ever expect one debugger connection at a time with short writes,
-# so shrink the pools. Saves ~10-20 KB internal RAM vs defaults.
-CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
-CONFIG_BT_NIMBLE_MAX_BONDS=1
-CONFIG_BT_NIMBLE_MAX_CCCDS=2
-CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=128
-CONFIG_BT_NIMBLE_MSYS1_BLOCK_COUNT=8
-CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
-CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
-
-# --- BT controller footprint minimization ---
-# Default BLE_MAX_ACT=10 reserves buffers for 10 simultaneous activities.
-# We only need 1 (single advertising + accept-connection path).
-CONFIG_BT_CTRL_BLE_MAX_ACT=2
+# --- Bluetooth disabled ---
+# BLE debug transport removed — WiFi + UDP safe-mode reset + Serial cover
+# recovery and observability, so the controller and NimBLE host are disabled
+# entirely to reclaim flash and internal RAM.
+CONFIG_BT_ENABLED=n
+CONFIG_BT_NIMBLE_ENABLED=n
