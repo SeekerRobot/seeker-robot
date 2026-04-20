@@ -71,3 +71,6 @@ mcu_ws/platformio/network_config.ini
 # KiCad
 doc/pcb/sesamepcb/~sesamepcb.kicad_sch.lck
 doc/pcb/sesamepcb/sesamepcb-backups/*
+
+# Editor local-history snapshots (VS Code / IntelliJ plugins).
+**/.history/
