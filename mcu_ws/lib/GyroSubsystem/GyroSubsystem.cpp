@@ -1,5 +1,11 @@
 #include "GyroSubsystem.h"
 
+// BNO085 soft-reset caused cold-boot hangs on our boards — default OFF. Flip
+// via -DGYRO_ENABLE_SOFT_RESET=1 if you need to exercise the code path.
+#ifndef GYRO_ENABLE_SOFT_RESET
+#define GYRO_ENABLE_SOFT_RESET 0
+#endif
+
 namespace Subsystem {
 bool GyroSubsystem::init() {
   Threads::Scope lock(i2c_mutex_);
@@ -7,10 +13,7 @@ bool GyroSubsystem::init() {
     Debug::printf(Debug::Level::ERROR, "[BNO085] Wire.begin() failure");
     return false;
   }
-  if (!setup_.wire_.setClock(400000)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Wire.setClock() failure");
-    return false;
-  }
+  setup_.wire_.setClock(400000);
   if (!bno08x_.begin_I2C(setup_.addr_, &setup_.wire_)) {
     Debug::printf(Debug::Level::ERROR, "[BNO085] Failed to find BNO08x chip");
     return false;
@@ -24,7 +27,9 @@ bool GyroSubsystem::init() {
                   bno08x_.prodIds.entry[n].swVersionPatch,
                   bno08x_.prodIds.entry[n].swBuildNumber);
   }
+#if GYRO_ENABLE_SOFT_RESET
   reset();
+#endif
   setReorientation();
   setReports();
   pinMode(setup_.int_pin_, INPUT_PULLUP);
