@@ -6,7 +6,9 @@ from enum import Enum
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool  # Added Bool import
+
+from seeker_vision.constants import CLASS_NAMES
 
 try:
     from pydantic import BaseModel
@@ -33,24 +35,29 @@ class RobotAction(str, Enum):
     FIND = "find the object"
     NONE = "NONE OF THE ABOVE"
 
-
 if BaseModel is not None:
     class Output(BaseModel):
         translated_command: RobotAction
+        target_object: str = "none" 
+        response_phrase: str = "" 
 else:
     Output = None
 
-_INSTRUCTION = """\
-You are a robot named billy. You are given a command by a user that may
-represent a task from a predefined set of tasks. The command will take place
-between the key phrases 'hey billy' [COMMAND] 'over'. Unfortunately, the
-given command will not always be exactly any task. Additionally, the command
-may be interrupted by other words picked up from other people. Therefore, you
-must guess which task the user intended for you to command. If you do not
-believe that the command accurately represents any task, opt not to pick any
-task. The predefined set of tasks is: ['move forward', 'move backward', 'move
-left', 'move right', 'spin', 'dance', 'find the object', 'NONE OF THE ABOVE'].
-You may be lenient because your result will be verified by a human.
+_INSTRUCTION = f"""
+You are a robot named Hatsune. You receive commands between 'hey hatsune' and 'over'.
+Your goal is to map the user's intent to one of the predefined tasks.
+
+TASKS: {[a.value for a in RobotAction]}
+
+SPECIAL RULE FOR 'find the object':
+If you believe the command represents 'find the object', you MUST also identify 
+which specific object the user wants from the following allowed list:
+{CLASS_NAMES}
+
+If the user mentions an object NOT in the list, pick the most logically similar 
+item from the list (e.g., 'Coke' becomes 'bottle'). 
+
+Respond using the provided JSON schema.
 """
 
 
@@ -66,9 +73,8 @@ class CommandNode(Node):
         super().__init__("command_node")
 
         self.declare_parameter("gemini_api_key", "")
-        # Corrected model name to 1.5-flash
         self.declare_parameter("gemini_model", "gemini-2.5-flash")
-        self.declare_parameter("wake_word", "hey billy")
+        self.declare_parameter("wake_word", "hey hatsune")
         self.declare_parameter("end_word", "over")
         self.declare_parameter("idle_timeout_seconds", 30.0)
 
@@ -92,41 +98,40 @@ class CommandNode(Node):
         if genai is None:
             self.get_logger().error("google-genai not installed — command_node disabled")
             return
-        if not api_key:
-            self.get_logger().warn(
-                "GEMINI_API_KEY not set — Gemini calls will fail. "
-                "Set the gemini_api_key parameter or GEMINI_API_KEY env var."
-            )
+        
         self._client = genai.Client(api_key=api_key)
 
+        # Publishers
         self._tts_pub = self.create_publisher(String, "/audio_tts_input", 10)
         self._cmd_pub = self.create_publisher(String, "/voice_command", 10)
+        self.target_pub = self.create_publisher(String, '/target_object', 10)
+        self.search_trigger_pub = self.create_publisher(Bool, '/search_trigger', 10)
+
+        # Subscription
         self._sub = self.create_subscription(
             String, "/audio_transcription", self._on_transcription, 10
         )
 
         self._state = _IDLE
         self._command_parts: list[str] = []
-        self._pending_action: RobotAction | None = None
+        
+        # Changed to store the whole Output object so we keep the 'target_object'
+        self._pending_result: Output | None = None 
+        
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=1)
 
-        self.get_logger().info(
-            f"command_node ready — wake_word='{self._wake_word}', "
-            f"end_word='{self._end_word}', timeout={self._timeout_s}s"
-        )
+        self.get_logger().info("command_node ready.")
 
     def _on_transcription(self, msg: String):
-        # Verbose debug logging
         text = msg.data.strip()
-        print(f"DEBUG: Node received: {text}")
         text_lower = text.lower()
 
         with self._lock:
-            # --- EMERGENCY STOP OVERRIDE ---
+            # --- EMERGENCY STOP ---
             if "stop" in text_lower:
-                self.get_logger().warn("OVERRIDE HEARD: Halting immediately!")
+                self.get_logger().warn("Emergency Stop!")
                 stop_msg = String()
                 stop_msg.data = "stop"
                 self._cmd_pub.publish(stop_msg)
@@ -134,18 +139,15 @@ class CommandNode(Node):
                 self._reset()
                 return
 
-            # --- STATE MACHINE LOGIC ---
+            # --- STATE MACHINE ---
             if self._state == _IDLE:
-                if self._wake_word in text_lower:
-                    self.get_logger().info("Wake word detected — collecting command...")
+                valid_wakes = [self._wake_word, "hey hat soon", "hey hot soup"]
+                if any(wake in text_lower for wake in valid_wakes):
                     self._state = _COLLECTING
                     self._command_parts = [text]
                     self._restart_timeout()
-                    
-                    # Check if the sentence is already complete
                     if self._end_word in text_lower:
                         self._handle_command_complete()
-                    return
 
             elif self._state == _COLLECTING:
                 self._command_parts.append(text)
@@ -159,27 +161,21 @@ class CommandNode(Node):
                 elif "no" in text_lower:
                     self._abort_command()
 
-    # ---- State transitions -------------------------------------------------------
-
     def _handle_command_complete(self):
         self._cancel_timeout()
         command_text = " ".join(self._command_parts)
         if self._end_word in command_text.lower():
-            # Keep text before the end word
-            command_text = (
-                command_text.lower().split(self._end_word)[0] + self._end_word
-            )
-        self.get_logger().info(f"Command collected: '{command_text}' — calling Gemini…")
+            command_text = command_text.lower().split(self._end_word)[0] + self._end_word
+        
+        self.get_logger().info(f"Calling Gemini for: {command_text}")
         self._state = _CONFIRMING
-        self._command_parts = []
         self._executor.submit(self._call_gemini, command_text)
 
     def _call_gemini(self, command_text: str):
         try:
-            injected = f"<user_command>\n{command_text}\n</user_command>"
             response = self._client.models.generate_content(
                 model=self._model_name,
-                contents=injected,
+                contents=f"<user_command>\n{command_text}\n</user_command>",
                 config=genai_types.GenerateContentConfig(
                     system_instruction=_INSTRUCTION,
                     response_mime_type="application/json",
@@ -187,56 +183,72 @@ class CommandNode(Node):
                 ),
             )
             result = Output(**json.loads(response.text))
+            
             with self._lock:
-                self._pending_action = result.translated_command
+                self._pending_result = result
                 self._restart_timeout()
             
-            tts_text = (
-                f"I received '{command_text}' and translated it to "
-                f"'{result.translated_command.value}'. "
-                f"Say yes or no, then {self._end_word}."
-            )
+            # Formulate the confirmation question
+            action_desc = result.translated_command.value
+            if result.translated_command == RobotAction.FIND:
+                action_desc = f"finding the {result.target_object}"
+            
+            tts_text = f"I think you want me to {action_desc}. Is that right?"
             self._publish_tts(tts_text)
-            self.get_logger().info(f"Gemini result: {result.translated_command}")
+            
         except Exception as e:
             self.get_logger().error(f"Gemini error: {e}")
-            self._publish_tts("Sorry, I could not process that command.")
-            with self._lock:
-                self._reset()
+            self._publish_tts("I couldn't process that. Please try again.")
+            with self._lock: self._reset()
 
     def _execute_command(self):
-        if self._pending_action is None:
+        with self._lock:
+            if self._pending_result is None:
+                self._reset()
+                return
+            
+            res = self._pending_result
+            action = res.translated_command
             self._reset()
-            return
-        action = self._pending_action
-        self._reset()
 
+        # 1. Handle "Find" specific logic
+        if action == RobotAction.FIND:
+            # Tell Vision what to look for
+            target_msg = String()
+            target_msg.data = res.target_object
+            self.target_pub.publish(target_msg)
+
+            # Kick off the search state
+            search_msg = Bool()
+            search_msg.data = True
+            self.search_trigger_pub.publish(search_msg)
+            
+            self.get_logger().info(f"Searching for: {res.target_object}")
+
+        # 2. General command publication
         cmd_msg = String()
         cmd_msg.data = action.value
         self._cmd_pub.publish(cmd_msg)
 
-        self._publish_tts(f"Proceeding with '{action.value}'.")
-        self.get_logger().info(f"Executing command: {action.value}")
+        # 3. Use Gemini's custom response phrase if it provided one
+        feedback = res.response_phrase if res.response_phrase else f"Executing {action.value}."
+        self._publish_tts(feedback)
 
     def _abort_command(self):
         self._reset()
-        self._publish_tts("Abandoning command.")
-        self.get_logger().info("Command aborted by user.")
+        self._publish_tts("Okay, I'll ignore that.")
 
     def _on_timeout(self):
         with self._lock:
             if self._state != _IDLE:
-                self.get_logger().warn(f"Timeout — returning to idle.")
                 self._reset()
-        self._publish_tts("Timed out. I am listening for a new command.")
+                self._publish_tts("Listening timed out.")
 
     def _reset(self):
         self._cancel_timeout()
         self._state = _IDLE
         self._command_parts = []
-        self._pending_action = None
-
-    # ---- Timeout helpers ---------------------------------------------------------
+        self._pending_result = None
 
     def _restart_timeout(self):
         self._cancel_timeout()
@@ -245,25 +257,19 @@ class CommandNode(Node):
         self._timer.start()
 
     def _cancel_timeout(self):
-        if self._timer is not None:
+        if self._timer:
             self._timer.cancel()
             self._timer = None
-
-    # ---- Publishing helpers ------------------------------------------------------
 
     def _publish_tts(self, text: str):
         msg = String()
         msg.data = text
         self._tts_pub.publish(msg)
 
-    # ---- Lifecycle ---------------------------------------------------------------
-
     def destroy_node(self):
         self._executor.shutdown(wait=False)
-        with self._lock:
-            self._cancel_timeout()
+        with self._lock: self._cancel_timeout()
         super().destroy_node()
-
 
 def main(args=None):
     rclpy.init(args=args)
@@ -275,7 +281,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()

@@ -173,7 +173,7 @@ class TranscriptionNode(Node):
         self.declare_parameter("esp32_ip", "192.168.8.50")
         self.declare_parameter("esp32_port", 81)
         self.declare_parameter("esp32_path", "/audio")
-        self.declare_parameter("whisper_model", "tiny.en")
+        self.declare_parameter("whisper_model", "base")
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("window_seconds", 2.0)
         self.declare_parameter("passthrough_port", 8386)
@@ -396,7 +396,12 @@ class TranscriptionNode(Node):
                 return
 
         try:
-            segments, _ = self._model.transcribe(audio, beam_size=5)
+            segments, _ = self._model.transcribe(
+                audio, 
+                beam_size=5,
+                # initial_prompt="Hey Hatsune. Hatsune Miku."
+            )
+            
             for segment in segments:
                 text = segment.text.strip()
                 if text:
@@ -404,9 +409,10 @@ class TranscriptionNode(Node):
                     msg.data = text
                     self._pub.publish(msg)
                     self.get_logger().info(f"Transcribed: {text}")
+
         except Exception as e:
             self.get_logger().error(f"Whisper transcription error: {e}")
-
+            
     # ---- Lifecycle ---------------------------------------------------------------
 
     def destroy_node(self):

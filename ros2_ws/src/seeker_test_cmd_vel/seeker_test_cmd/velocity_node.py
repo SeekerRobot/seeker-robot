@@ -14,7 +14,7 @@ class VelocityNode(Node):
         # Subscribers and Publishers
         self.subscription = self.create_subscription(String, "/voice_command", self.command_callback, 10)
         self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)
-        self.search_pub = self.create_publisher(String, "/search_trigger", 10)
+        self.search_pub = self.create_publisher(String, "/manual_override", 10)
 
         # Safety timer
         self.stop_timer = None
