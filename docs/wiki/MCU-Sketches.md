@@ -252,8 +252,9 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 
 ### `main`
 
-- **Board env:** `esp32s3sense`
-- **Purpose:** Placeholder for the "final" integration firmware. Currently an empty `setup()`/`loop()` — don't flash.
+- **Board envs:** `esp32s3sense_main` (camera + mic + speaker on this board) or `esp32s3sense_offload` (default — cam/mic on the `main_satellite` board, speaker still here)
+- **Purpose:** Full integration firmware. All subsystems threaded and pinned; micro-ROS bridge publishes heartbeat, IMU, battery, lidar, and debug log; `GaitRosParticipant` subscribes to `/cmd_vel`.
+- **Build/flash:** `pio run -t upload` (defaults to `esp32s3sense_offload`) or `pio run -e esp32s3sense_main -t upload` for the all-in-one variant.
 
 ---
 
