@@ -23,7 +23,7 @@ from seeker_display.lcd_http_server import start_lcd_server
 WIDTH  = 128
 HEIGHT = 64
 PAGES  = HEIGHT // 8
-LCD_PORT = 8384
+LCD_PORT = 8390
 
 
 def set_pixel(fb: bytearray, x: int, y: int) -> None:

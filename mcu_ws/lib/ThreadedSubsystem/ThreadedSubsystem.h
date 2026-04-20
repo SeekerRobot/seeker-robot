@@ -25,13 +25,14 @@ class ThreadedSubsystem : public Classes::BaseSubsystem {
 
   /// @brief Begins a pinned-to-core threaded task, utilizing defined update()
   /// and begin() functions.
-  /// @param stackSize Stack size in words (word = 4 bytes).
+  /// @param stackSize Stack size in BYTES (ESP-IDF convention, differs from
+  /// vanilla FreeRTOS which uses words).
   /// @param priority Priority. Higher number = higher priority.
   /// @param updateDelayMs Delay between updates. Uses relative scheduling, not
   /// absolute.
   /// @param core Core to pin to. For ESP32, core 0 or core 1.
-  void beginThreadedPinned(uint32_t stackSize, int priority,
-                           uint32_t updateDelayMs, int core) {
+  TaskHandle_t beginThreadedPinned(uint32_t stackSize, int priority,
+                                   uint32_t updateDelayMs, int core) {
     task_delay_ms_ = updateDelayMs;
     BaseType_t rc =
         xTaskCreatePinnedToCore(taskFunction, setup_.getId(), stackSize, this,
@@ -41,7 +42,10 @@ class ThreadedSubsystem : public Classes::BaseSubsystem {
     } else {
       // TODO: add debug statement here
     }
+    return task_handle_;
   }
+
+  TaskHandle_t getTaskHandle() const { return task_handle_; }
 
  private:
   uint32_t task_delay_ms_ = 20;

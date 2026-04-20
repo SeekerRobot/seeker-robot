@@ -2,7 +2,7 @@
 oled_sine_node — Serve an animated sine wave to the OLED display via HTTP.
 
 Generates a 1024-byte SSD1306 framebuffer at 10 Hz and serves it as a
-persistent raw stream on GET /lcd_out (port lcd_serve_port, default 8384).
+persistent raw stream on GET /lcd_out (port lcd_serve_port, default 8390).
 The ESP32 connects as an HTTP client and reads 1024-byte frames continuously.
 No micro-ROS agent required.
 
@@ -12,7 +12,7 @@ SSD1306 framebuffer format (page-major):
   Pages run top-to-bottom (page 0 = rows 0-7, page 7 = rows 56-63)
 
 Parameters
-  lcd_serve_port  int  8384  HTTP port for the LCD stream
+  lcd_serve_port  int  8390  HTTP port for the LCD stream
 """
 
 import math
@@ -37,7 +37,7 @@ class OledSineNode(Node):
     def __init__(self):
         super().__init__("oled_sine")
 
-        self.declare_parameter("lcd_serve_port", 8384)
+        self.declare_parameter("lcd_serve_port", 8390)
         self._lcd_serve_port = (
             self.get_parameter("lcd_serve_port").get_parameter_value().integer_value
         )

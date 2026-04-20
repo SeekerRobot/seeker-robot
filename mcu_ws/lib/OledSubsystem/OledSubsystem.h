@@ -41,7 +41,7 @@ class OledSetup : public Classes::BaseSetup {
   /// @param host_ip    IP of the ROS 2 host serving GET /lcd_out.
   ///                   Pass IPAddress(0,0,0,0) (default) to disable HTTP
   ///                   client.
-  /// @param lcd_port   Port the host LCD server listens on (default 8384).
+  /// @param lcd_port   Port the host LCD server listens on (default 8390).
   ///                   Set to 0 to disable HTTP client (e.g. serial-only
   ///                   sketches).
   explicit OledSetup(Threads::Mutex& i2c_mutex,
