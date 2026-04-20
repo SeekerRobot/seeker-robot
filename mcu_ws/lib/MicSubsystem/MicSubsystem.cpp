@@ -10,43 +10,49 @@
 namespace Subsystem {
 
 bool MicSubsystem::init() {
-  initSuccess_ = true;
-  return true;
-}
+  // I2S DMA must be claimed before WiFi/BLE fragment internal DRAM.
+  // HTTP server is deferred to begin() because it needs lwIP.
+  i2s_chan_config_t chan_cfg =
+      I2S_CHANNEL_DEFAULT_CONFIG(setup_.i2s_port_, I2S_ROLE_MASTER);
+  chan_cfg.dma_desc_num = 8;
+  chan_cfg.dma_frame_num = 512;
+  if (i2s_new_channel(&chan_cfg, nullptr, &rx_handle_) != ESP_OK) {
+    Debug::printf(Debug::Level::ERROR, "[Mic] i2s_new_channel failed");
+    initSuccess_ = false;
+    return false;
+  }
 
-void MicSubsystem::begin() {
-  // Start the HTTP server before I2S init so httpd_start runs while heap is
-  // plentiful.
-  startServer();
-
-  i2s_config_t i2s_cfg = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_PDM),
-      .sample_rate = setup_.sample_rate_,
-      .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-      .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-      .communication_format = I2S_COMM_FORMAT_STAND_PCM_SHORT,
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = 8,
-      .dma_buf_len = 512,
-      .use_apll = false,
-  };
-  i2s_pin_config_t pin_cfg = {
-      .bck_io_num = I2S_PIN_NO_CHANGE,
-      .ws_io_num = setup_.clk_pin_,
-      .data_out_num = I2S_PIN_NO_CHANGE,
-      .data_in_num = setup_.data_pin_,
+  i2s_pdm_rx_config_t pdm_cfg = {
+      .clk_cfg = I2S_PDM_RX_CLK_DEFAULT_CONFIG(setup_.sample_rate_),
+      .slot_cfg = I2S_PDM_RX_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                 I2S_SLOT_MODE_MONO),
+      .gpio_cfg =
+          {
+              .clk = static_cast<gpio_num_t>(setup_.clk_pin_),
+              .din = static_cast<gpio_num_t>(setup_.data_pin_),
+              .invert_flags = {.clk_inv = false},
+          },
   };
 
-  if (i2s_driver_install(setup_.i2s_port_, &i2s_cfg, 0, NULL) != ESP_OK ||
-      i2s_set_pin(setup_.i2s_port_, &pin_cfg) != ESP_OK) {
+  if (i2s_channel_init_pdm_rx_mode(rx_handle_, &pdm_cfg) != ESP_OK ||
+      i2s_channel_enable(rx_handle_) != ESP_OK) {
     Debug::printf(Debug::Level::ERROR, "[Mic] I2S init failed");
-    stopServer();
-    return;
+    i2s_del_channel(rx_handle_);
+    rx_handle_ = nullptr;
+    initSuccess_ = false;
+    return false;
   }
   mic_ready_ = true;
   Debug::printf(Debug::Level::INFO,
                 "[Mic] I2S init OK (%u Hz, CLK=%d, DATA=%d)",
                 setup_.sample_rate_, setup_.clk_pin_, setup_.data_pin_);
+  initSuccess_ = true;
+  return true;
+}
+
+void MicSubsystem::begin() {
+  // HTTP server — lwIP is up only after WiFi has initialized.
+  if (mic_ready_) startServer();
 }
 
 void MicSubsystem::update() {
@@ -64,10 +70,12 @@ void MicSubsystem::pause() { stopServer(); }
 void MicSubsystem::reset() {
   stopServer();
   if (mic_ready_) {
-    i2s_driver_uninstall(setup_.i2s_port_);
+    i2s_channel_disable(rx_handle_);
+    i2s_del_channel(rx_handle_);
+    rx_handle_ = nullptr;
     mic_ready_ = false;
   }
-  begin();
+  if (init()) begin();
 }
 
 // ---- Audio stream task ------------------------------------------------------
@@ -91,7 +99,8 @@ void MicSubsystem::audioStreamTask(void* arg) {
 
     while (true) {
       size_t bytes_read = 0;
-      i2s_read(self->setup_.i2s_port_, buf, chunk, &bytes_read, portMAX_DELAY);
+      i2s_channel_read(self->rx_handle_, buf, chunk, &bytes_read,
+                       portMAX_DELAY);
       if (bytes_read > 0) {
         // Apply gain and clip to int16 range.
         int16_t* samples = reinterpret_cast<int16_t*>(buf);

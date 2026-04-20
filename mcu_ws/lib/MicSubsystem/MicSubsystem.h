@@ -24,7 +24,7 @@
 
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
-#include <driver/i2s.h>
+#include <driver/i2s_pdm.h>
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -109,6 +109,7 @@ class MicSubsystem : public Subsystem::ThreadedSubsystem {
   httpd_req_t* active_req_ = nullptr;
   TaskHandle_t audio_task_ = nullptr;
   SemaphoreHandle_t req_ready_ = nullptr;
+  i2s_chan_handle_t rx_handle_ = nullptr;
   bool mic_ready_ = false;
   uint32_t last_log_ms_ = 0;
 
