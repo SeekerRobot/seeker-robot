@@ -19,20 +19,38 @@ class CameraSetup : public Classes::BaseSetup {
  public:
   CameraSetup() = delete;
 
-  /// @param config     Camera hardware config (pins, pixel format, etc.)
-  /// @param port      HTTP port for the /cam endpoint (default 80).
-  /// @param ctrl_port httpd internal control socket port — must be unique
-  ///                  across all httpd instances (default 32768).
+  /// @param config             Camera hardware config (pins, pixel format, etc.)
+  /// @param port               HTTP port for the /cam endpoint (default 80).
+  /// @param ctrl_port          httpd internal control socket port — must be
+  ///                           unique across all httpd instances.
+  /// @param frame_interval_ms  Per-frame delay in the stream loop. 50 ms caps
+  ///                           the sender at ~20 fps, which keeps the lwIP PBUF
+  ///                           pool from starving when the board also runs a
+  ///                           micro-ROS UDP stack. Satellite boards can leave
+  ///                           it here (no micro-ROS contention) or lower it.
+  /// @param jpeg_quality       0 = auto-select by PSRAM (12 w/ PSRAM). Non-zero
+  ///                           forces the value (lower = better quality).
+  /// @param frame_size         FRAMESIZE_INVALID = auto (QVGA w/ PSRAM, QQVGA
+  ///                           otherwise). Override to taste on boards that can
+  ///                           spend more bandwidth.
   CameraSetup(const camera_config_t& config, uint16_t port = 80,
-              uint16_t ctrl_port = 32768)
+              uint16_t ctrl_port = 32768, uint32_t frame_interval_ms = 50,
+              uint8_t jpeg_quality = 0,
+              framesize_t frame_size = FRAMESIZE_INVALID)
       : Classes::BaseSetup("CameraSubsystem"),
         config_(config),
         port_(port),
-        ctrl_port_(ctrl_port) {}
+        ctrl_port_(ctrl_port),
+        frame_interval_ms_(frame_interval_ms),
+        jpeg_quality_(jpeg_quality),
+        frame_size_(frame_size) {}
 
   const camera_config_t config_;
   const uint16_t port_;
   const uint16_t ctrl_port_;
+  const uint32_t frame_interval_ms_;
+  const uint8_t jpeg_quality_;
+  const framesize_t frame_size_;
 };
 
 /**
