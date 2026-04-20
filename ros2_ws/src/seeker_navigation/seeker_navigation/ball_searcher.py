@@ -43,7 +43,7 @@ from sensor_msgs.msg import Image
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from tf2_ros import Buffer, TransformListener
-
+from std_msgs.msg import String
 
 # ---------------------------------------------------------------------------
 # Tuning constants
@@ -83,6 +83,7 @@ RED_PIXEL_LOG_THRESHOLD = 50  # log when this many red pixels are visible (below
 # ---------------------------------------------------------------------------
 
 class State(enum.Enum):
+    IDLE = "IDLE"
     WAITING_FOR_NAV2 = "WAITING_FOR_NAV2"
     INITIAL_ROTATION = "INITIAL_ROTATION"
     FRONTIER_NAV = "FRONTIER_NAV"
@@ -123,10 +124,13 @@ class BallSearcher(Node):
         self._tf_listener = TransformListener(self._tf_buffer, self)
 
         # -- State --
-        self._state = State.WAITING_FOR_NAV2
+        self._state = State.IDLE
         self._previous_state = None  # state before APPROACH_BALL
         self._latest_map = None
         self._visited_frontiers: deque[tuple[float, float]] = deque(maxlen=MAX_VISITED_FRONTIERS)
+
+        # -- Voice trigger subscription --
+        self.create_subscription(String, "/search_trigger", self._on_voice_trigger, 10)
 
         # Rotation tracking
         self._last_yaw = None
@@ -743,6 +747,14 @@ class BallSearcher(Node):
         msg.angular.z = angular
         self._cmd_pub.publish(msg)
 
+    # ------------------------------------------------------------------
+    # Voice command trigger
+    # ------------------------------------------------------------------
+
+    def _on_voice_trigger(self, msg: String):
+        if msg.data == "start_search" and self._state == State.IDLE:
+            self.get_logger().info("Voice Command Received! Transitioning to Search mode...")
+            self._state = State.WAITING_FOR_NAV2
 
 # ---------------------------------------------------------------------------
 # Entry point

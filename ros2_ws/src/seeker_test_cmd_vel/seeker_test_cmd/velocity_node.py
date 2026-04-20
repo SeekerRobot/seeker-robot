@@ -14,6 +14,7 @@ class VelocityNode(Node):
         # Subscribers and Publishers
         self.subscription = self.create_subscription(String, "/voice_command", self.command_callback, 10)
         self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.search_pub = self.create_publisher(String, "/search_trigger", 10)
 
         # Safety timer
         self.stop_timer = None
@@ -46,7 +47,10 @@ class VelocityNode(Node):
             twist_msg.linear.x = base_speed / 2.0
             twist_msg.angular.z = 2.0
         elif command == "find the object":
-            twist_msg.angular.z = 0.5
+            self.get_logger().info("AI requested ball search. Triggering Autonomy Node...")
+            trigger_msg = String()
+            trigger_msg.data = "start_search"
+            self.search_pub.publish(trigger_msg)
         elif command == "stop":
             self.get_logger().warn("HARD STOP RECEIVED.")
             twist_msg.linear.x = 0.0
