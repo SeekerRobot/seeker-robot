@@ -29,9 +29,9 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 ### `test_all`
 
 - **Board env:** `esp32s3sense`
-- **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81, speaker from :8383, OLED from :8384)
+- **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81, speaker from :8383, OLED from :8390)
 - **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
-- **Purpose:** The "everything on" integration test. Runs the full `MicroRosBridge` plus a concurrent MJPEG camera server, PDM audio HTTP server, I2S speaker (fetches PCM from host :8383), and OLED display (fetches framebuffers from host :8384) on a single ESP32-S3 Sense. This is the firmware you flash when you want the real robot to look like the Gazebo simulation — all sensor topics live plus camera/mic streams pullable from ROS.
+- **Purpose:** The "everything on" integration test. Runs the full `MicroRosBridge` plus a concurrent MJPEG camera server, PDM audio HTTP server, I2S speaker (fetches PCM from host :8383), and OLED display (fetches framebuffers from host :8390) on a single ESP32-S3 Sense. This is the firmware you flash when you want the real robot to look like the Gazebo simulation — all sensor topics live plus camera/mic streams pullable from ROS.
 - **Prereq:** micro-ROS agent running (`ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`).
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
 - **Serial output:** WiFi connection status, agent state transitions, IP + RSSI, periodic participant heartbeat.
@@ -60,7 +60,7 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 ### `test_bridge_all`
 
 - **Board env:** `esp32s3sense`
-- **Transport:** WiFi (micro-ROS) + HTTP (speaker from :8383, OLED from :8384)
+- **Transport:** WiFi (micro-ROS) + HTTP (speaker from :8383, OLED from :8390)
 - **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
 - **Purpose:** Like `test_all` but **without** the camera and mic HTTP servers. micro-ROS sensor bridge + I2S speaker + OLED HTTP display — ideal for SLAM, Nav2, or anything that doesn't need the camera feed.
 - **Prereq:** micro-ROS agent running.
@@ -79,7 +79,7 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
   ros2 launch seeker_tts tts.launch.py
   ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once
   ```
-- **Debug tips:** Same as `test_all` minus the camera/mic issues. If `/mcu/scan` publishes 0 points, the LD14P is probably unpowered or the UART pins in `RobotConfig.h` don't match your wiring. If the OLED never updates, make sure the host is serving on port 8384 (`ros2 run seeker_display oled_sine`) and that the ESP32 can reach `AGENT_IP:8384`.
+- **Debug tips:** Same as `test_all` minus the camera/mic issues. If `/mcu/scan` publishes 0 points, the LD14P is probably unpowered or the UART pins in `RobotConfig.h` don't match your wiring. If the OLED never updates, make sure the host is serving on port 8390 (`ros2 run seeker_display oled_sine`) and that the ESP32 can reach `AGENT_IP:8390`.
 
 ### `test_bridge_gait`
 
@@ -97,7 +97,7 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Board env:** `esp32s3sense`
 - **Transport:** WiFi (HTTP only — **no micro-ROS agent required**)
 - **Bridge flags:** none
-- **Purpose:** Isolated WiFi + OLED HTTP streaming test. The ESP32 connects to WiFi, then opens a persistent HTTP connection to the host at `AGENT_IP:8384/lcd_out` and reads 1024-byte SSD1306 framebuffers continuously. The `OledSubsystem` renders them at ~10 Hz. Text overlays show the boot banner and WiFi connection state. No `MicroRosBridge` is involved — the OLED data flows over plain HTTP, independent of DDS.
+- **Purpose:** Isolated WiFi + OLED HTTP streaming test. The ESP32 connects to WiFi, then opens a persistent HTTP connection to the host at `AGENT_IP:8390/lcd_out` and reads 1024-byte SSD1306 framebuffers continuously. The `OledSubsystem` renders them at ~10 Hz. Text overlays show the boot banner and WiFi connection state. No `MicroRosBridge` is involved — the OLED data flows over plain HTTP, independent of DDS.
 - **Prereq:** WiFi configured in `network_config.ini`; SSD1306 128×64 wired on the shared I²C bus (`Config::sda`/`Config::scl`, default address `0x3C`); a host-side LCD server running.
 - **Build/flash:** `pio run -e esp32s3sense -t upload`
 - **Verify on host (pick one):**
@@ -105,7 +105,7 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
   ros2 run seeker_display oled_sine    # animated sine wave
   ros2 launch seeker_media media.launch.py  # MP4 video playback
   ```
-- **Debug tips:** (1) Display blank → confirm `AGENT_IP` in `network_config.ini` and that the host LCD server is running on port 8384. (2) Display shows boot frame but never updates → WiFi may not be connected yet; check serial output. (3) Updates cap at 10 Hz — this is by design. (4) If text overlays don't show, remember the HTTP framebuffer push overrides them until the next overlay update tick.
+- **Debug tips:** (1) Display blank → confirm `AGENT_IP` in `network_config.ini` and that the host LCD server is running on port 8390. (2) Display shows boot frame but never updates → WiFi may not be connected yet; check serial output. (3) Updates cap at 10 Hz — this is by design. (4) If text overlays don't show, remember the HTTP framebuffer push overrides them until the next overlay update tick.
 
 ---
 
