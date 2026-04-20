@@ -17,7 +17,7 @@ class VelocityNode(Node):
 
         # Safety timer
         self.stop_timer = None
-        self.move_duration = 2.0
+        self.move_duration = 15.0
 
         mode = self.get_parameter("drive_mode").get_parameter_value().string_value
         speed = self.get_parameter("linear_speed").get_parameter_value().double_value
@@ -47,6 +47,20 @@ class VelocityNode(Node):
             twist_msg.angular.z = 2.0
         elif command == "find the object":
             twist_msg.angular.z = 0.5
+        elif command == "stop":
+            self.get_logger().warn("HARD STOP RECEIVED.")
+            twist_msg.linear.x = 0.0
+            twist_msg.angular.z = 0.0
+            
+            # Publish the zero-speed message immediately
+            self.publisher.publish(twist_msg)
+            
+            # Cancel any existing movement timers so it doesn't accidentally restart
+            if self.stop_timer is not None:
+                self.stop_timer.cancel()
+                self.stop_timer = None
+                
+            return  # CRITICAL: Exit the function here so we don't hit the start_stop_timer() below
         elif command == "NONE OF THE ABOVE":
             self.get_logger().warn("Command not recognized. Stopping.")
         else:

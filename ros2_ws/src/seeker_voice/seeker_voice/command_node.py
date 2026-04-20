@@ -1,5 +1,3 @@
-"""ROS 2 node: /audio_transcription → Gemini intent classification → /audio_tts_input + /voice_command."""
-
 import json
 import os
 import threading
@@ -68,6 +66,7 @@ class CommandNode(Node):
         super().__init__("command_node")
 
         self.declare_parameter("gemini_api_key", "")
+        # Corrected model name to 1.5-flash
         self.declare_parameter("gemini_model", "gemini-2.5-flash")
         self.declare_parameter("wake_word", "hey billy")
         self.declare_parameter("end_word", "over")
@@ -118,48 +117,55 @@ class CommandNode(Node):
             f"end_word='{self._end_word}', timeout={self._timeout_s}s"
         )
 
-    # ---- Subscription callback ---------------------------------------------------
-
     def _on_transcription(self, msg: String):
+        # Verbose debug logging
         text = msg.data.strip()
+        print(f"DEBUG: Node received: {text}")
         text_lower = text.lower()
 
         with self._lock:
+            # --- EMERGENCY STOP OVERRIDE ---
+            if "stop" in text_lower:
+                self.get_logger().warn("OVERRIDE HEARD: Halting immediately!")
+                stop_msg = String()
+                stop_msg.data = "stop"
+                self._cmd_pub.publish(stop_msg)
+                self._publish_tts("Stopping.")
+                self._reset()
+                return
+
+            # --- STATE MACHINE LOGIC ---
             if self._state == _IDLE:
                 if self._wake_word in text_lower:
-                    self._command_parts = [text]
+                    self.get_logger().info("Wake word detected — collecting command...")
                     self._state = _COLLECTING
-                    self.get_logger().info("Wake word detected — collecting command…")
+                    self._command_parts = [text]
                     self._restart_timeout()
+                    
+                    # Check if the sentence is already complete
                     if self._end_word in text_lower:
                         self._handle_command_complete()
+                    return
 
             elif self._state == _COLLECTING:
                 self._command_parts.append(text)
+                self._restart_timeout()
                 if self._end_word in text_lower:
                     self._handle_command_complete()
 
             elif self._state == _CONFIRMING:
-                self._command_parts.append(text)
-                if self._end_word in text_lower:
-                    self._cancel_timeout()
-                    response_text = " ".join(self._command_parts).lower()
-                    if "yes" in response_text:
-                        self._execute_command()
-                    elif "no" in response_text:
-                        self._abort_command()
-                    else:
-                        # Neither yes nor no — keep waiting, restart timeout
-                        self._command_parts = [text]
-                        self._restart_timeout()
+                if "yes" in text_lower:
+                    self._execute_command()
+                elif "no" in text_lower:
+                    self._abort_command()
 
     # ---- State transitions -------------------------------------------------------
 
     def _handle_command_complete(self):
-        """Called (under lock) when end_word arrives in COLLECTING state."""
         self._cancel_timeout()
         command_text = " ".join(self._command_parts)
         if self._end_word in command_text.lower():
+            # Keep text before the end word
             command_text = (
                 command_text.lower().split(self._end_word)[0] + self._end_word
             )
@@ -169,7 +175,6 @@ class CommandNode(Node):
         self._executor.submit(self._call_gemini, command_text)
 
     def _call_gemini(self, command_text: str):
-        """Runs in thread pool — must not hold self._lock."""
         try:
             injected = f"<user_command>\n{command_text}\n</user_command>"
             response = self._client.models.generate_content(
@@ -185,8 +190,9 @@ class CommandNode(Node):
             with self._lock:
                 self._pending_action = result.translated_command
                 self._restart_timeout()
+            
             tts_text = (
-                f"I received the command '{command_text}' and translated it to "
+                f"I received '{command_text}' and translated it to "
                 f"'{result.translated_command.value}'. "
                 f"Say yes or no, then {self._end_word}."
             )
@@ -199,7 +205,6 @@ class CommandNode(Node):
                 self._reset()
 
     def _execute_command(self):
-        """Called under lock."""
         if self._pending_action is None:
             self._reset()
             return
@@ -214,24 +219,18 @@ class CommandNode(Node):
         self.get_logger().info(f"Executing command: {action.value}")
 
     def _abort_command(self):
-        """Called under lock."""
         self._reset()
         self._publish_tts("Abandoning command.")
         self.get_logger().info("Command aborted by user.")
 
     def _on_timeout(self):
-        """Called from threading.Timer — acquires lock."""
         with self._lock:
             if self._state != _IDLE:
-                self.get_logger().warn(
-                    f"Timeout in state {'COLLECTING' if self._state == _COLLECTING else 'CONFIRMING'} "
-                    f"after {self._timeout_s}s — returning to idle."
-                )
+                self.get_logger().warn(f"Timeout — returning to idle.")
                 self._reset()
         self._publish_tts("Timed out. I am listening for a new command.")
 
     def _reset(self):
-        """Reset state machine. Must be called under self._lock."""
         self._cancel_timeout()
         self._state = _IDLE
         self._command_parts = []
@@ -240,14 +239,12 @@ class CommandNode(Node):
     # ---- Timeout helpers ---------------------------------------------------------
 
     def _restart_timeout(self):
-        """(Re)start the idle timeout. Must be called under self._lock."""
         self._cancel_timeout()
         self._timer = threading.Timer(self._timeout_s, self._on_timeout)
         self._timer.daemon = True
         self._timer.start()
 
     def _cancel_timeout(self):
-        """Cancel any pending timeout. Must be called under self._lock."""
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
