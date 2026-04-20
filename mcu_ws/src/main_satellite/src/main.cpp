@@ -48,6 +48,7 @@
 #include <MicSubsystem.h>
 #include <Preferences.h>
 #include <RobotConfig.h>
+#include <WiFiUdp.h>
 #include <camera_pins.h>
 #include <esp_system.h>
 
@@ -73,6 +74,12 @@ static constexpr uint32_t kStableRunMs = 30000;
 static constexpr char kSafeModeNs[] = "seeker_sm";
 static constexpr char kSafeModeCount[] = "count";
 static constexpr char kSafeModeReason[] = "last_reason";
+
+// UDP reset channel — same contract as the primary main sketch, so a single
+// host-side tool can recover either board.
+// Trigger: `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <SAT_IP> 4210`.
+static constexpr uint16_t kSafeModeUdpPort = 4210;
+static constexpr char kSafeModeUdpMagic[] = "SEEKER_CLEAR_SM";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
   switch (r) {
@@ -193,8 +200,42 @@ static const char* wifiStateStr(Subsystem::WifiState s) {
     wifi.beginThreadedPinned(4096, 3, 100, 1);
   }
 
+  WiFiUDP reset_udp;
+  bool udp_bound = false;
+
   uint32_t last_status = 0;
   while (true) {
+    if (wifi.isConnected() && !udp_bound) {
+      udp_bound = reset_udp.begin(kSafeModeUdpPort);
+      Debug::printf(udp_bound ? Debug::Level::INFO : Debug::Level::ERROR,
+                    "[SafeMode] UDP reset listener on :%u %s",
+                    kSafeModeUdpPort, udp_bound ? "ready" : "bind failed");
+    }
+    if (udp_bound) {
+      int len = reset_udp.parsePacket();
+      if (len > 0) {
+        char buf[32];
+        int n = reset_udp.read(reinterpret_cast<uint8_t*>(buf),
+                               sizeof(buf) - 1);
+        if (n > 0) buf[n] = '\0';
+        constexpr int kMagicLen =
+            static_cast<int>(sizeof(kSafeModeUdpMagic)) - 1;
+        if (n == kMagicLen &&
+            memcmp(buf, kSafeModeUdpMagic, kMagicLen) == 0) {
+          reset_udp.beginPacket(reset_udp.remoteIP(), reset_udp.remotePort());
+          reset_udp.print("OK_RESTARTING");
+          reset_udp.endPacket();
+          Debug::printf(Debug::Level::ERROR,
+                        "[SafeMode] UDP reset from %s:%u — clearing counter "
+                        "and rebooting",
+                        reset_udp.remoteIP().toString().c_str(),
+                        reset_udp.remotePort());
+          safeModeClearCounter();
+          vTaskDelay(pdMS_TO_TICKS(200));
+          ESP.restart();
+        }
+      }
+    }
     uint32_t now = millis();
     if (now - last_status >= 5000) {
       last_status = now;
@@ -202,10 +243,11 @@ static const char* wifiStateStr(Subsystem::WifiState s) {
           wifi.isConnected() ? wifi.getLocalIP().toString().c_str()
                              : "waiting";
       Debug::printf(Debug::Level::ERROR,
-                    "[SafeMode] boot=%u reason=%s prev=%s wifi=%s — push "
-                    "firmware via OTA to recover",
+                    "[SafeMode] boot=%u reason=%s prev=%s wifi=%s — OTA or "
+                    "UDP :%u reset to recover",
                     s_boot_count, resetReasonStr(s_reset_reason),
-                    s_prev_reason[0] ? s_prev_reason : "n/a", wifi_str);
+                    s_prev_reason[0] ? s_prev_reason : "n/a", wifi_str,
+                    kSafeModeUdpPort);
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }
