@@ -75,7 +75,7 @@ void GaitController::update() {
   VelocityCommand vel;
   GaitState state;
   {
-    Threads::Scope lock(cmd_mutex_);
+    Threads::Scope lock(state_mutex_);
     vel = cmd_;
     state = state_;
   }
@@ -147,7 +147,7 @@ void GaitController::update() {
 
   // STOPPING → IDLE once all legs are frozen (all in-flight legs have landed)
   if (state == GaitState::STOPPING && !anyFlying()) {
-    Threads::Scope lock(cmd_mutex_);
+    Threads::Scope lock(state_mutex_);
     if (state_ == GaitState::STOPPING) {
       state_ = GaitState::IDLE;
       Debug::printf(Debug::Level::INFO, "[Gait] all legs landed — IDLE");
@@ -168,12 +168,12 @@ void GaitController::reset() {
 // ---------------------------------------------------------------------------
 
 void GaitController::setVelocity(float vx, float vy, float wz) {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   cmd_ = {vx, vy, wz};
 }
 
 void GaitController::enable() {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   if (state_ == GaitState::IDLE) {
     state_ = GaitState::WALKING;
     Debug::printf(Debug::Level::INFO, "[Gait] enabled — WALKING");
@@ -181,7 +181,7 @@ void GaitController::enable() {
 }
 
 void GaitController::disable() {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   if (state_ == GaitState::WALKING) {
     state_ = GaitState::STOPPING;
     cmd_ = {};  // zero velocity so step targets return to neutral
@@ -199,7 +199,7 @@ void GaitController::disable() {
 
 void GaitController::stop() {
   {
-    Threads::Scope lock(cmd_mutex_);
+    Threads::Scope lock(state_mutex_);
     state_ = GaitState::IDLE;
     cmd_ = {};
   }
@@ -217,32 +217,32 @@ void GaitController::stop() {
 }
 
 GaitState GaitController::getState() const {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   return state_;
 }
 
 VelocityCommand GaitController::getVelocity() const {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   return cmd_;
 }
 
 void GaitController::setStepHeight(float mm) {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   setup_.gait.step_height_mm = mm;
 }
 
 void GaitController::setCycleTime(float s) {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   setup_.gait.cycle_time_s = s;
 }
 
 void GaitController::setStepScale(float x) {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   setup_.gait.step_scale = x;
 }
 
 GaitConfig GaitController::getGaitConfig() const {
-  Threads::Scope lock(cmd_mutex_);
+  Threads::Scope lock(state_mutex_);
   return setup_.gait;
 }
 
