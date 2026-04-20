@@ -11,7 +11,7 @@
  * Serial is free for pre-connect debug output (DEBUG_TRANSPORT_SERIAL).
  *
  * OLED display fetches 1024-byte framebuffers over HTTP from the host
- * (AGENT_IP:8384/lcd_out). micro-ROS agent is NOT required for OLED.
+ * (AGENT_IP:8390/lcd_out). micro-ROS agent is NOT required for OLED.
  *
  * Build flags (set in this sketch's platformio.ini):
  *   -DDEBUG_TRANSPORT_SERIAL
@@ -73,7 +73,7 @@ static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
-static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8384);
+static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8390);
 
 // LidarSetup holds a HardwareSerial& — Serial2 is a global object, safe here.
 static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
@@ -127,11 +127,11 @@ void setup() {
   Debug::printf(Debug::Level::INFO, "[Main] Lidar started");
 
   // --- Speaker — fetches PCM from seeker_tts on host (AGENT_IP:8383) ---
-  // Uses I2S_NUM_1, pinned to Core 1. No mic present here; update() retries
-  // gracefully until WiFi is up and the TTS server is running.
+  // Uses I2S_NUM_1, pinned to Core 1. update() retries gracefully until WiFi
+  // is up and the TTS server is running.
   static Subsystem::SpeakerSetup speaker_setup(
       I2S_NUM_1, 16000, Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
-      agent_ip, 8383, 2048, nullptr);
+      agent_ip, 8383, 2048);
   auto& spk = Subsystem::SpeakerSubsystem::getInstance(speaker_setup);
   if (!spk.init()) {
     Debug::printf(Debug::Level::ERROR, "[Main] Speaker init FAILED — halting");

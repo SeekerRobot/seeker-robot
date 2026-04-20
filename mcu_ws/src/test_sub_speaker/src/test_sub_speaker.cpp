@@ -39,7 +39,7 @@ static IPAddress agent_ip(AGENT_IP);
 static Subsystem::SpeakerSetup speaker_setup(I2S_NUM_1, 16000, Config::spk_bclk,
                                              Config::spk_lrclk,
                                              Config::spk_dout, agent_ip, 8383,
-                                             2048, nullptr);
+                                             2048);
 
 // ---------------------------------------------------------------------------
 // Heartbeat blink

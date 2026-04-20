@@ -5,7 +5,7 @@
  * @brief Test: WiFi + OLED HTTP streaming (no micro-ROS required).
  *
  * The ESP32 connects to WiFi then opens a persistent HTTP connection to the
- * host at AGENT_IP:8384/lcd_out, reads 1024-byte framebuffers, and renders
+ * host at AGENT_IP:8390/lcd_out, reads 1024-byte framebuffers, and renders
  * them on the SSD1306 128x64 OLED.  The micro-ROS agent does NOT need to be
  * running — OLED data flows over plain HTTP, independent of DDS.
  *
@@ -36,7 +36,7 @@ static Subsystem::BlinkSubsystem blink(blink_setup);
 
 static Threads::Mutex i2c_mutex;
 
-static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8384);
+static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8390);
 
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
                                                      WIFI_PASSWORD, static_ip,
@@ -62,7 +62,7 @@ void setup() {
   Wire.setClock(400000);
 
   // --- OLED display ---
-  // begin() spawns the lcdFetchTask that connects to AGENT_IP:8384/lcd_out.
+  // begin() spawns the lcdFetchTask that connects to AGENT_IP:8390/lcd_out.
   auto& oled = Subsystem::OledSubsystem::getInstance(oled_setup);
   if (!oled.init()) {
     Debug::printf(Debug::Level::ERROR, "[Main] OLED init FAILED — halting");
@@ -74,7 +74,7 @@ void setup() {
   oled.setOverlay(0, 4, 40, "bridge_oled");
   oled.setOverlay(1, 4, 52, "connecting...");
   Debug::printf(Debug::Level::INFO,
-                "[Main] OLED started (HTTP client -> %s:8384)",
+                "[Main] OLED started (HTTP client -> %s:8390)",
                 agent_ip.toString().c_str());
 }
 
