@@ -3,19 +3,19 @@ import cv2
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
-from std_msgs.msg import Bool, Float32MultiArray
+from std_msgs.msg import Bool
 from ultralytics import YOLO
-from mcu_msgs.msg import HexapodCmd
-from seeker_vision.detection_utils import run_detection, build_detection_msg
+from mcu_msgs.msg import DetectedObjectArray
+from std_msgs.msg import Header
+from seeker_vision.detection_utils import build_detection_array
 
 
 class ObjectDetectionNode(Node):
     def __init__(self):
         super().__init__('object_detection_node')
 
+        self.detection_pub = self.create_publisher(DetectedObjectArray, '/vision/detections', 10)
         self.found_publisher = self.create_publisher(Bool, '/object_found', 10)
-        self.detection_pub = self.create_publisher(Float32MultiArray, '/detection_detail', 10)
-        self.pub = self.create_publisher(HexapodCmd, '/mcu/hexapod_cmd', 10)
 
         self.declare_parameter('video_source', 'http://localhost:8080/stream')
         source = self.get_parameter('video_source').get_parameter_value().string_value
@@ -27,7 +27,6 @@ class ObjectDetectionNode(Node):
             get_package_share_directory('seeker_vision'), 'model', 'yolo26n.pt'
         )
         self.model = YOLO(model_path)
-        self.target_name = "teddy bear"
         self.has_display = bool(os.environ.get('DISPLAY'))
 
         self.timer = self.create_timer(0.033, self.timer_callback)  # ~30 fps
@@ -38,18 +37,15 @@ class ObjectDetectionNode(Node):
             self.get_logger().warning("Failed to grab frame from stream.")
             return
 
-        found_target, found_box = run_detection(self.model, img, self.target_name, self.get_logger())
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = 'camera_optical_frame'
+        detections_msg = build_detection_array(self.model, img, header)
+        self.detection_pub.publish(detections_msg)
 
-        found_msg = Bool()
-        found_msg.data = found_target
-        self.found_publisher.publish(found_msg)
-
-        self.detection_pub.publish(build_detection_msg(found_target, found_box, img.shape[1]))
-
-        if found_target:
-            msg = HexapodCmd()
-            msg.mode = HexapodCmd.MODE_DANCE
-            self.pub.publish(msg)
+        found = Bool()
+        found.data = len(detections_msg.detections) > 0
+        self.found_publisher.publish(found)
 
         if self.has_display:
             cv2.imshow('Webcam', img)
