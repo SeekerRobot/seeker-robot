@@ -6,8 +6,10 @@ from enum import Enum
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, Bool  # Added Bool import
+from rclpy.action import ActionClient
+from std_msgs.msg import String, Bool
 
+from mcu_msgs.action import SeekObject
 from seeker_vision.constants import CLASS_NAMES
 
 try:
@@ -95,16 +97,22 @@ class CommandNode(Node):
         )
 
         if genai is None:
-            self.get_logger().error("google-genai not installed — command_node disabled")
-            return
-        
-        self._client = genai.Client(api_key=api_key)
+            self.get_logger().warn("google-genai not installed — command_node will only use heuristic fallback.")
+            self._client = None
+        elif api_key:
+            self._client = genai.Client(api_key=api_key)
+        else:
+            self._client = None
+            self.get_logger().warn("No GEMINI_API_KEY provided. Gemini features will be disabled, using heuristics only.")
 
         # Publishers
         self._tts_pub = self.create_publisher(String, "/audio_tts_input", 10)
         self._cmd_pub = self.create_publisher(String, "/voice_command", 10)
         self.target_pub = self.create_publisher(String, '/target_object', 10)
         self.search_trigger_pub = self.create_publisher(Bool, '/search_trigger', 10)
+
+        # Action Client (New Seeker Interface)
+        self._action_client = ActionClient(self, SeekObject, 'seek_object')
 
         # Subscription
         self._sub = self.create_subscription(
@@ -180,11 +188,15 @@ class CommandNode(Node):
         if self._end_word in command_text.lower():
             command_text = command_text.lower().split(self._end_word)[0] + self._end_word
         
-        self.get_logger().info(f"Calling Gemini for: {command_text}")
+        self.get_logger().info(f"Command complete: {command_text}")
         self._state = _CONFIRMING
         
-        # Dispatch to background thread so we don't block the ROS callback queue or deadlock the lock
-        self._executor.submit(self._call_gemini, command_text)
+        if self._client:
+            # Dispatch to background thread so we don't block the ROS callback queue
+            self._executor.submit(self._call_gemini, command_text)
+        else:
+            self.get_logger().warn("Gemini client missing. Skipping API call, jumping to fallback.")
+            self._executor.submit(self._call_fallback, command_text)
 
     def _call_gemini(self, command_text: str):
         import traceback
@@ -216,50 +228,53 @@ class CommandNode(Node):
         except Exception as e:
             self.get_logger().error(f"Gemini error: {e}")
             self.get_logger().error(traceback.format_exc())
-            
-            # --- HEURISTIC FALLBACK ---
-            # This allows the robot to function even if the API is offline or the key is exhausted.
-            self.get_logger().warn("Attempting heuristic fallback...")
-            text = command_text.lower()
-            
-            fallback_result = None
-            if "forward" in text:
-                fallback_result = Output(translated_command=RobotAction.FORWARD, response_phrase="Moving forward.")
-            elif "backward" in text:
-                fallback_result = Output(translated_command=RobotAction.BACKWARD, response_phrase="Moving backward.")
-            elif "left" in text:
-                fallback_result = Output(translated_command=RobotAction.LEFT, response_phrase="Turning left.")
-            elif "right" in text:
-                fallback_result = Output(translated_command=RobotAction.RIGHT, response_phrase="Turning right.")
-            elif "spin" in text:
-                fallback_result = Output(translated_command=RobotAction.SPIN, response_phrase="Spinning around.")
-            elif "dance" in text:
-                fallback_result = Output(translated_command=RobotAction.DANCE, response_phrase="Let's dance!")
-            elif "find" in text or "search" in text or "look" in text:
-                # Try to extract target object from the allowed list
-                target = "ball" # default
-                for obj in CLASS_NAMES:
-                    if obj.lower() in text:
-                        target = obj
-                        break
-                fallback_result = Output(translated_command=RobotAction.FIND, target_object=target, response_phrase=f"Searching for the {target}.")
+            self._call_fallback(command_text)
 
-            if fallback_result:
-                self.get_logger().info(f"Heuristic matched: {fallback_result.translated_command}")
-                with self._lock:
-                    self._pending_result = fallback_result
-                    self._restart_timeout()
-                
-                action_desc = fallback_result.translated_command.value
-                if fallback_result.translated_command == RobotAction.FIND:
-                    action_desc = f"finding the {fallback_result.target_object}"
-                
-                # We add a note to the TTS so the user knows it's using the fallback
-                self._publish_tts(f"Gemini is offline, but I think you want me to {action_desc}. Is that right?")
-                return
+    def _call_fallback(self, command_text: str):
+        # --- HEURISTIC FALLBACK ---
+        # This allows the robot to function even if the API is offline or the key is exhausted.
+        self.get_logger().warn("Attempting heuristic fallback...")
+        text = command_text.lower()
+        
+        fallback_result = None
+        if "forward" in text:
+            fallback_result = Output(translated_command=RobotAction.FORWARD, response_phrase="Moving forward.")
+        elif "backward" in text:
+            fallback_result = Output(translated_command=RobotAction.BACKWARD, response_phrase="Moving backward.")
+        elif "left" in text:
+            fallback_result = Output(translated_command=RobotAction.LEFT, response_phrase="Turning left.")
+        elif "right" in text:
+            fallback_result = Output(translated_command=RobotAction.RIGHT, response_phrase="Turning right.")
+        elif "spin" in text:
+            fallback_result = Output(translated_command=RobotAction.SPIN, response_phrase="Spinning around.")
+        elif "dance" in text:
+            fallback_result = Output(translated_command=RobotAction.DANCE, response_phrase="Let's dance!")
+        elif "find" in text or "search" in text or "look" in text:
+            # Try to extract target object from the allowed list
+            target = "sports ball" # default to something in CLASS_NAMES
+            for obj in CLASS_NAMES:
+                if obj.lower() in text:
+                    target = obj
+                    break
+            fallback_result = Output(translated_command=RobotAction.FIND, target_object=target, response_phrase=f"Searching for the {target}.")
+
+        if fallback_result:
+            self.get_logger().info(f"Heuristic matched: {fallback_result.translated_command}")
+            with self._lock:
+                self._pending_result = fallback_result
+                self._restart_timeout()
             
-            self._publish_tts("I couldn't process that. Please try again.")
-            with self._lock: self._reset()
+            action_desc = fallback_result.translated_command.value
+            if fallback_result.translated_command == RobotAction.FIND:
+                action_desc = f"finding the {fallback_result.target_object}"
+            
+            # We add a note to the TTS so the user knows it's using the fallback
+            prefix = "Gemini is offline, but " if self._client else ""
+            self._publish_tts(f"{prefix}I think you want me to {action_desc}. Is that right?")
+            return
+        
+        self._publish_tts("I couldn't process that. Please try again.")
+        with self._lock: self._reset()
 
     def _execute_command(self):
         with self._lock:
@@ -275,19 +290,48 @@ class CommandNode(Node):
 
         # 1. Handle "Find" specific logic
         if action == RobotAction.FIND:
-            # Tell Vision what to look for
+            self.get_logger().info(f"Initiating search for: {res.target_object}")
+
+            # Update legacy target topic for monitoring
             target_msg = String()
             target_msg.data = res.target_object
             self.target_pub.publish(target_msg)
 
-            # Kick off the search state
+            # Request autonomous search via Action Server
+            if self._action_client.wait_for_server(timeout_sec=1.0):
+                goal_msg = SeekObject.Goal()
+                goal_msg.class_name = res.target_object
+                self._action_client.send_goal_async(goal_msg).add_done_callback(self._goal_response_callback)
+            else:
+                self.get_logger().error("SeekObject Action Server not available!")
+                self._publish_tts("I can't start the search because the navigation system is offline.")
+
+            # Trigger legacy search state
             search_msg = Bool()
             search_msg.data = True
             self.search_trigger_pub.publish(search_msg)
-            
-            self.get_logger().info(f"Searching for: {res.target_object}")
 
-        # 2. General command publication
+        self._finish_up_command(action, res)
+
+    def _goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn("Search goal rejected by server.")
+            return
+        self.get_logger().info("Search goal accepted. Awaiting result...")
+        goal_handle.get_result_async().add_done_callback(self._goal_result_callback)
+
+    def _goal_result_callback(self, future):
+        result = future.result().result
+        if result.success:
+            self.get_logger().info(f"SUCCESS: {result.message}")
+            self._publish_tts("Goal complete! I've reached the target.")
+        else:
+            self.get_logger().warn(f"FAILED: {result.message}")
+            self._publish_tts("The search mission was unsuccessful.")
+
+    # 2. General command publication
+    def _finish_up_command(self, action, res):
         cmd_msg = String()
         cmd_msg.data = action.value
         self.get_logger().info(f"Publishing to /voice_command: {cmd_msg.data}")

@@ -9,16 +9,28 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
 ## Architecture
 
 - **`ros2_ws/`** — ROS 2 colcon workspace. Packages live in `ros2_ws/src/`:
-  - `mcu_msgs` — Custom ROS 2 message/service definitions (`.msg`/`.srv` files) shared between ROS 2 nodes and micro-ROS MCUs. Also mounted into `mcu_ws/platformio/extra_packages/` by Docker so micro-ROS firmware can use the same interfaces.
-  - `seeker_description` — URDF/Xacro hexapod model and `robot_state_publisher` launch.
-  - `seeker_gazebo` — Gazebo Harmonic simulation, sensor bridges, and simulation launch files.
-  - `seeker_navigation` — Nav2, SLAM Toolbox, EKF configs, and `ball_searcher` mission planner.
-  - `seeker_sim` — `fake_mcu_node`: simulates ESP32 gait for testing without hardware.
-  - `seeker_display` — OLED display nodes: `oled_sine_node` (animated sine wave demo) and `lcd_http_server` (shared helper that serves SSD1306 framebuffers over HTTP on port 8384 for the ESP32 `OledSubsystem`).
-  - `seeker_media` — MP4 media player node (`mp4_player_node`): decodes video to 128×64 SSD1306 framebuffers streamed over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync.
-  - `seeker_tts` — Fish Audio TTS node plus a local-WAV playback topic, both re-served as an HTTP PCM stream for the ESP32 `SpeakerSubsystem`.
-  - `seeker_vision` — YOLO object detection (`vision_node`, `gazebo_vision_node`), DeepFace emotion detection (`emotion_node`), and an MJPEG camera proxy (`cam_proxy`) that bridges the ESP32 camera stream to localhost. Three launch files: `mcu_cam.launch.py` (ESP32 camera via proxy), `gazebo_cam.launch.py` (Gazebo `/camera/image`), `local_cam.launch.py` (host webcam).
-  - `test_package` — Minimal C++ ROS 2 node for workflow verification.
+  - `mcu_msgs` — Custom interfaces. Includes `SeekObject.action` for autonomous search and `DetectedObjectArray.msg` for vision.
+  - `seeker_description` — URDF/Xacro hexapod model.
+  - `seeker_gazebo` — Gazebo Harmonic simulation. Use `sim_ball_search.launch.py gui:=false` for headless performance.
+  - `seeker_navigation` — `ball_searcher` (runs `object_seeker.py`): ROS 2 Action Server that performs frontier exploration and object approach.
+  - `seeker_vision` — YOLO/HSV detection. `gazebo_vision_node` supports hybrid mode: `ros2 run seeker_vision gazebo_vision_node --ros-args -p use_yolo:=false` for lightweight HSV detection.
+  - `seeker_voice` — `command_node`: The Brain. Now acts as an Action Client to the navigation stack.
+
+## Key Integration Patterns (Brain-Body)
+
+The system has transitioned from a topic-based trigger to a **ROS 2 Action** pattern:
+1.  **Brain** (`command_node.py`) receives a command ("find the ball").
+2.  **Brain** sends a `SeekObject` Goal to the **Body** (`ball_searcher`).
+3.  **Body** performs exploration and publishes feedback.
+4.  **Body** returns a result (Success/Fail) once the object is reached.
+5.  **Brain** announces the result via TTS.
+
+## Development & Hardware Optimization
+
+- **Headless Mode**: Always use `gui:=false` in launch files when running on integrated graphics.
+- **Vision Fallback**: Use the `use_yolo:=false` parameter to enable HSV color-based detection if YOLO is too heavy for the current machine.
+- **Offline Mode**: `command_node` will automatically use heuristic matching if the Gemini API is unavailable.
+
 - **`mcu_ws/`** — PlatformIO workspace for ESP32 firmware. Uses micro-ROS WiFi transport (Jazzy distro). Multi-project layout:
   - `platformio/platformio.ini` — Shared base config (board environments, build flags, library deps). All sketches inherit from this via `extra_configs`.
   - `platformio/network_config.ini` — Local network settings (WiFi creds, agent IP, static IP). Gitignored; copy from `network_config.example.ini`.
