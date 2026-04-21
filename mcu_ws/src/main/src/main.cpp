@@ -267,7 +267,7 @@ static void safeModeScheduleClear() {
                       (unsigned)kStableRunMs);
         vTaskDelete(nullptr);
       },
-      "sm_clear", 2048, nullptr, 1, nullptr, 1);
+      "sm_clear", 4096, nullptr, 1, nullptr, 1);
 }
 
 // Enter safe mode: bring up Blink + LEDs (magenta chase) + WiFi (with its
@@ -461,16 +461,22 @@ void setup() {
   Debug::printf(Debug::Level::INFO, "[Main] WiFi connecting to \"%s\"",
                 WIFI_SSID);
 
-  // --- Gyro (BNO085 on I2C) ---
+  // --- Gyro (BNO085 on I2C, non-fatal if it fails) ---
   auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
-  if (!gyro.init()) haltOnFail("Gyro");
-  gyro.beginThreadedPinned(4096, 5, 0, 1);
+  Subsystem::GyroSubsystem* gyro_ptr = nullptr;
+  if (gyro.init()) {
+    gyro.beginThreadedPinned(4096, 5, 0, 1);
+    gyro_ptr = &gyro;
+  } else {
+    Debug::printf(Debug::Level::WARN,
+                  "[Main] Gyro init failed — IMU topic disabled");
+  }
 
   // --- Battery (ADC, non-fatal if it fails) ---
   auto& batt = Subsystem::BatterySubsystem::getInstance(battery_setup);
   Subsystem::BatterySubsystem* batt_ptr = nullptr;
   if (batt.init()) {
-    batt.beginThreadedPinned(4096, 2, 50, 1);
+    batt.beginThreadedPinned(4096, 2, 1000, 1);
     batt_ptr = &batt;
   } else {
     Debug::printf(Debug::Level::WARN,
@@ -559,7 +565,7 @@ void setup() {
 
   // --- MicroRosBridge (sensors → topics) ---
   static Subsystem::MicroRosBridgeSetup bridge_setup;
-  bridge_setup.gyro = &gyro;
+  bridge_setup.gyro = gyro_ptr;
   bridge_setup.battery = batt_ptr;
   bridge_setup.lidar = &lidar;
   static Subsystem::MicroRosBridge bridge(bridge_setup);

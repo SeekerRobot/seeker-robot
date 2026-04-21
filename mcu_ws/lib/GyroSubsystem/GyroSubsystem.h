@@ -68,6 +68,21 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   ///        Safe to call from any task (e.g., the microROS manager task).
   ImuData getImuData() const;
 
+  /// @brief Count of intISR invocations since boot. Lets external code
+  ///        confirm the INT line is actually firing without touching
+  ///        update() — handy after the pioarduino/IDF migration.
+  uint32_t getIsrCount() const { return isr_count_; }
+
+  /// @brief Current logic level on the BNO INT pin. BNO drives LOW when a
+  ///        report is queued; returns HIGH when the bus has been drained.
+  int readIntPin() const { return digitalRead(setup_.int_pin_); }
+
+  /// @brief Diagnostic: poll the BNO once without waiting on the semaphore.
+  ///        Returns the number of sensor events drained this call. If this
+  ///        returns >0 while getIsrCount() stays at 0, the chip is producing
+  ///        data but the INT line isn't reaching the MCU pin.
+  int pollOnce();
+
  private:
   // Constructor moved to private to prevent multiple creations
   explicit GyroSubsystem(const GyroSetup& setup, Threads::Mutex& i2c_mutex)
@@ -87,6 +102,7 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   ImuData imu_data_ = {};
   SemaphoreHandle_t int_semaphore_;
   elapsedMillis since_last_log_;
+  volatile uint32_t isr_count_ = 0;
 
   static void IRAM_ATTR intISR(void* arg);
 

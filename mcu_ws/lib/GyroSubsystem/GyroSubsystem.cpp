@@ -27,20 +27,25 @@ bool GyroSubsystem::init() {
                   bno08x_.prodIds.entry[n].swVersionPatch,
                   bno08x_.prodIds.entry[n].swBuildNumber);
   }
-#if GYRO_ENABLE_SOFT_RESET
-  reset();
-#endif
+  //reset();
   setReorientation();
-  setReports();
+  // Attach ISR before enabling reports: BNO085 INT is active-low and level-
+  // held until I2C drain, so if setReports() fires the first report before
+  // the ISR is wired up, we miss the FALLING edge and never see another one
+  // (the line stays LOW). Kick the semaphore once so update()'s first pass
+  // drains whatever is already queued and releases INT back to HIGH.
   pinMode(setup_.int_pin_, INPUT_PULLUP);
   attachInterruptArg(digitalPinToInterrupt(setup_.int_pin_), intISR, this,
                      FALLING);
+  setReports();
+  xSemaphoreGive(int_semaphore_);
   Debug::printf(Debug::Level::INFO, "[BNO085] Init success");
   return true;
 }
 
 void IRAM_ATTR GyroSubsystem::intISR(void* arg) {
   auto* self = static_cast<GyroSubsystem*>(arg);
+  self->isr_count_++;
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   xSemaphoreGiveFromISR(self->int_semaphore_, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
@@ -100,6 +105,16 @@ ImuData GyroSubsystem::getImuData() const {
   return imu_data_;
 }
 
+int GyroSubsystem::pollOnce() {
+  Threads::Scope i2c_lock(i2c_mutex_);
+  sh2_SensorValue_t sensorValue;
+  int drained = 0;
+  while (bno08x_.getSensorEvent(&sensorValue)) {
+    ++drained;
+  }
+  return drained;
+}
+
 void GyroSubsystem::reset() {
   Threads::Scope lock(i2c_mutex_);
   Debug::printf(Debug::Level::INFO, "[BNO085] Software resetting");
@@ -108,6 +123,22 @@ void GyroSubsystem::reset() {
 }
 
 void GyroSubsystem::logImuData() {
+  const float qx = imu_data_.gameRotationVector.i;
+  const float qy = imu_data_.gameRotationVector.j;
+  const float qz = imu_data_.gameRotationVector.k;
+  const float qw = imu_data_.gameRotationVector.real;
+  // ZYX intrinsic (roll-pitch-yaw), ROS REP 103 convention.
+  const float sinp = 2.0f * (qw * qy - qz * qx);
+  const float pitch =
+      (fabsf(sinp) >= 1.0f) ? copysignf(M_PI_2, sinp) : asinf(sinp);
+  const float roll = atan2f(2.0f * (qw * qx + qy * qz),
+                            1.0f - 2.0f * (qx * qx + qy * qy));
+  const float yaw = atan2f(2.0f * (qw * qz + qx * qy),
+                           1.0f - 2.0f * (qy * qy + qz * qz));
+  constexpr float kRad2Deg = 180.0f / static_cast<float>(M_PI);
+  Debug::printf(Debug::Level::VERBOSE,
+                "[BNO085] RPY: roll=%+7.2f pitch=%+7.2f yaw=%+7.2f deg",
+                roll * kRad2Deg, pitch * kRad2Deg, yaw * kRad2Deg);
   Debug::printf(
       Debug::Level::VERBOSE, "[BNO085] GRV: i=%.3f j=%.3f k=%.3f r=%.3f",
       imu_data_.gameRotationVector.i, imu_data_.gameRotationVector.j,
@@ -169,26 +200,21 @@ void GyroSubsystem::tareYaw() {
 }
 
 void GyroSubsystem::setReports() {
-  if (!bno08x_.enableReport(SH2_GYROSCOPE_CALIBRATED)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable gyroscope");
-  }
-  if (!bno08x_.enableReport(SH2_LINEAR_ACCELERATION)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable linear acceleration");
-  }
-  if (!bno08x_.enableReport(SH2_GRAVITY)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable gravity vector");
-  }
-  if (!bno08x_.enableReport(SH2_GAME_ROTATION_VECTOR)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable game rotation vector");
-  }
-  if (!bno08x_.enableReport(SH2_STABILITY_CLASSIFIER)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable stability classifier");
-  }
-Debug:
-  printf(Debug::Level::INFO, "[BNO085] Reports set");
+  Debug::printf(Debug::Level::INFO,
+                "[BNO085] enableReport GYRO_CAL      -> %d",
+                bno08x_.enableReport(SH2_GYROSCOPE_CALIBRATED));
+  Debug::printf(Debug::Level::INFO,
+                "[BNO085] enableReport LIN_ACCEL     -> %d",
+                bno08x_.enableReport(SH2_LINEAR_ACCELERATION));
+  Debug::printf(Debug::Level::INFO,
+                "[BNO085] enableReport GRAVITY       -> %d",
+                bno08x_.enableReport(SH2_GRAVITY));
+  Debug::printf(Debug::Level::INFO,
+                "[BNO085] enableReport GAME_ROT_VEC  -> %d",
+                bno08x_.enableReport(SH2_GAME_ROTATION_VECTOR));
+  Debug::printf(Debug::Level::INFO,
+                "[BNO085] enableReport STABILITY     -> %d",
+                bno08x_.enableReport(SH2_STABILITY_CLASSIFIER));
+  Debug::printf(Debug::Level::INFO, "[BNO085] Reports set");
 }
 };  // namespace Subsystem

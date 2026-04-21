@@ -128,7 +128,7 @@ static void safeModeScheduleClear() {
                       (unsigned)kStableRunMs);
         vTaskDelete(nullptr);
       },
-      "sm_clear", 2048, nullptr, 1, nullptr, 1);
+      "sm_clear", 4096, nullptr, 1, nullptr, 1);
 }
 
 // ---------------------------------------------------------------------------
