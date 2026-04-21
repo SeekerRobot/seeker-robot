@@ -176,6 +176,7 @@ void GaitController::enable() {
   Threads::Scope lock(cmd_mutex_);
   if (state_ == GaitState::IDLE) {
     state_ = GaitState::WALKING;
+    initPhases(); // reset phase to sync gait and unfreeze all legs
     Debug::printf(Debug::Level::INFO, "[Gait] enabled — WALKING");
   }
 }
@@ -238,8 +239,7 @@ void GaitController::initPhases() {
   }
   for (uint8_t leg : kGroupB) {
     leg_state_[leg].phase_t = 0.5f;
-    leg_state_[leg].was_flying =
-        true;  // will detect stance entry on first tick
+    leg_state_[leg].was_flying = false;  // will detect flight entry on first tick
     leg_state_[leg].frozen = false;
   }
 }

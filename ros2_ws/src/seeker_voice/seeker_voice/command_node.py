@@ -73,15 +73,14 @@ class CommandNode(Node):
         super().__init__("command_node")
 
         self.declare_parameter("gemini_api_key", "")
-        self.declare_parameter("gemini_model", "gemini-2.5-flash")
+        self.declare_parameter("gemini_model", "gemini-2.0-flash")
         self.declare_parameter("wake_word", "hey hatsune")
         self.declare_parameter("end_word", "over")
         self.declare_parameter("idle_timeout_seconds", 30.0)
 
-        api_key = (
-            self.get_parameter("gemini_api_key").get_parameter_value().string_value
-            or os.environ.get("GEMINI_API_KEY", "")
-        )
+        api_key = self.get_parameter("gemini_api_key").get_parameter_value().string_value
+        if not api_key:
+            api_key = os.environ.get("GEMINI_API_KEY", "")
         self._model_name = (
             self.get_parameter("gemini_model").get_parameter_value().string_value
         )
@@ -119,7 +118,7 @@ class CommandNode(Node):
         self._pending_result: Output | None = None 
         
         self._timer: threading.Timer | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=1)
 
         self.get_logger().info("command_node ready.")
@@ -129,6 +128,8 @@ class CommandNode(Node):
         text_lower = text.lower()
 
         with self._lock:
+            self.get_logger().info(f"Received transcription: '{text}' (Current State: {self._state})")
+            
             # --- EMERGENCY STOP ---
             if "stop" in text_lower:
                 self.get_logger().warn("Emergency Stop!")
@@ -143,6 +144,7 @@ class CommandNode(Node):
             if self._state == _IDLE:
                 valid_wakes = [self._wake_word, "hey hat soon", "hey hot soup"]
                 if any(wake in text_lower for wake in valid_wakes):
+                    self.get_logger().info("Wake word detected! Switching to COLLECTING.")
                     self._state = _COLLECTING
                     self._command_parts = [text]
                     self._restart_timeout()
@@ -150,16 +152,27 @@ class CommandNode(Node):
                         self._handle_command_complete()
 
             elif self._state == _COLLECTING:
+                self.get_logger().info("Collecting command parts...")
                 self._command_parts.append(text)
                 self._restart_timeout()
                 if self._end_word in text_lower:
+                    self.get_logger().info("End word detected! Handling command complete.")
                     self._handle_command_complete()
 
             elif self._state == _CONFIRMING:
-                if "yes" in text_lower:
+                self.get_logger().info(f"Waiting for confirmation. Text: '{text_lower}'")
+                # More robust "yes" detection: look for 'yes', 'yeah', 'correct', 'do it', etc.
+                positive_responses = ["yes", "yeah", "correct", "do it", "sure", "yep", "ok"]
+                negative_responses = ["no", "nope", "wrong", "cancel", "stop", "don't"]
+                
+                if any(pos in text_lower for pos in positive_responses):
+                    self.get_logger().info("Confirmation received (YES). Executing...")
                     self._execute_command()
-                elif "no" in text_lower:
+                elif any(neg in text_lower for neg in negative_responses):
+                    self.get_logger().info("Confirmation received (NO). Aborting.")
                     self._abort_command()
+                else:
+                    self.get_logger().info("Did not understand confirmation. Still waiting...")
 
     def _handle_command_complete(self):
         self._cancel_timeout()
@@ -169,9 +182,12 @@ class CommandNode(Node):
         
         self.get_logger().info(f"Calling Gemini for: {command_text}")
         self._state = _CONFIRMING
+        
+        # Dispatch to background thread so we don't block the ROS callback queue or deadlock the lock
         self._executor.submit(self._call_gemini, command_text)
 
     def _call_gemini(self, command_text: str):
+        import traceback
         try:
             response = self._client.models.generate_content(
                 model=self._model_name,
@@ -187,6 +203,7 @@ class CommandNode(Node):
             with self._lock:
                 self._pending_result = result
                 self._restart_timeout()
+                self.get_logger().info(f"Gemini parsed: action={result.translated_command}, target={result.target_object}")
             
             # Formulate the confirmation question
             action_desc = result.translated_command.value
@@ -198,17 +215,62 @@ class CommandNode(Node):
             
         except Exception as e:
             self.get_logger().error(f"Gemini error: {e}")
+            self.get_logger().error(traceback.format_exc())
+            
+            # --- HEURISTIC FALLBACK ---
+            # This allows the robot to function even if the API is offline or the key is exhausted.
+            self.get_logger().warn("Attempting heuristic fallback...")
+            text = command_text.lower()
+            
+            fallback_result = None
+            if "forward" in text:
+                fallback_result = Output(translated_command=RobotAction.FORWARD, response_phrase="Moving forward.")
+            elif "backward" in text:
+                fallback_result = Output(translated_command=RobotAction.BACKWARD, response_phrase="Moving backward.")
+            elif "left" in text:
+                fallback_result = Output(translated_command=RobotAction.LEFT, response_phrase="Turning left.")
+            elif "right" in text:
+                fallback_result = Output(translated_command=RobotAction.RIGHT, response_phrase="Turning right.")
+            elif "spin" in text:
+                fallback_result = Output(translated_command=RobotAction.SPIN, response_phrase="Spinning around.")
+            elif "dance" in text:
+                fallback_result = Output(translated_command=RobotAction.DANCE, response_phrase="Let's dance!")
+            elif "find" in text or "search" in text or "look" in text:
+                # Try to extract target object from the allowed list
+                target = "ball" # default
+                for obj in CLASS_NAMES:
+                    if obj.lower() in text:
+                        target = obj
+                        break
+                fallback_result = Output(translated_command=RobotAction.FIND, target_object=target, response_phrase=f"Searching for the {target}.")
+
+            if fallback_result:
+                self.get_logger().info(f"Heuristic matched: {fallback_result.translated_command}")
+                with self._lock:
+                    self._pending_result = fallback_result
+                    self._restart_timeout()
+                
+                action_desc = fallback_result.translated_command.value
+                if fallback_result.translated_command == RobotAction.FIND:
+                    action_desc = f"finding the {fallback_result.target_object}"
+                
+                # We add a note to the TTS so the user knows it's using the fallback
+                self._publish_tts(f"Gemini is offline, but I think you want me to {action_desc}. Is that right?")
+                return
+            
             self._publish_tts("I couldn't process that. Please try again.")
             with self._lock: self._reset()
 
     def _execute_command(self):
         with self._lock:
             if self._pending_result is None:
+                self.get_logger().error("Execute called but pending_result is None!")
                 self._reset()
                 return
             
             res = self._pending_result
             action = res.translated_command
+            self.get_logger().info(f"Executing action: {action.value}")
             self._reset()
 
         # 1. Handle "Find" specific logic
@@ -228,6 +290,7 @@ class CommandNode(Node):
         # 2. General command publication
         cmd_msg = String()
         cmd_msg.data = action.value
+        self.get_logger().info(f"Publishing to /voice_command: {cmd_msg.data}")
         self._cmd_pub.publish(cmd_msg)
 
         # 3. Use Gemini's custom response phrase if it provided one
