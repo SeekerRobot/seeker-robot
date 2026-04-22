@@ -52,9 +52,13 @@ bool GaitRosParticipant::onCreate(Subsystem::MicroRosContext& ctx) {
     return false;
   }
 
+  // Arm the gait's dead-man watchdog so the robot stops walking if this
+  // publisher dies without sending a zero command.
+  setup_.gait->setCommandTimeout(setup_.cmd_watchdog_ms);
+
   initialized_ = true;
-  Debug::printf(Debug::Level::INFO, "[GaitRos] onCreate OK -> %s",
-                setup_.cmd_vel_topic);
+  Debug::printf(Debug::Level::INFO, "[GaitRos] onCreate OK -> %s (watchdog %u ms)",
+                setup_.cmd_vel_topic, (unsigned)setup_.cmd_watchdog_ms);
   return true;
 }
 

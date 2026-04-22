@@ -60,7 +60,7 @@ from mcu_msgs.action import SeekObject
 # Tuning constants
 # ---------------------------------------------------------------------------
 
-ROTATION_SPEED = 0.2            # rad/s — slow enough for SLAM scan matching to keep up
+ROTATION_SPEED = 0.20           # rad/s (~11.5 deg/s) — in-place scan rotation speed
 
 MIN_BBOX_AREA      = 1000.0     # px² — min bbox area to trigger approach
 REACHED_BBOX_AREA  = 18000.0    # px² — bbox this big = close enough
@@ -73,8 +73,8 @@ MIN_FRONTIER_SIZE     = 3
 VISITED_RADIUS        = 0.3
 MAX_VISITED_FRONTIERS = 100
 
-COVERAGE_SPACING    = 1.0
-COVERAGE_MARGIN     = 0.35
+COVERAGE_SPACING    = 0.5    # denser grid — more waypoints in small rooms
+COVERAGE_MARGIN     = 0.12   # just above the loosened Nav2 robot_radius (0.10)
 NEAR_UNKNOWN_MARGIN = 1.5
 
 DANCE_SPIN_RATE = 1.0           # rad/s during a PERFORM_MOVE dance
@@ -110,13 +110,23 @@ class ObjectSeeker(Node):
         # hexapod gait controller's safe envelope. Override via ros-args.
         self.declare_parameter("max_linear_x", 0.1)
         self.declare_parameter("max_linear_y", 0.05)
-        self.declare_parameter("max_angular_z_rad", 0.524)  # ~30 deg/s
+        self.declare_parameter("max_angular_z_rad", 0.20)  # ~11.5 deg/s
         self._max_lin_x = float(self.get_parameter("max_linear_x").value)
         self._max_lin_y = float(self.get_parameter("max_linear_y").value)
         self._max_ang_z = float(self.get_parameter("max_angular_z_rad").value)
 
+        # When false, the node stays passive in WAITING_FOR_NAV2 until a
+        # /seek_object goal arrives. When true (default), it autonomously
+        # enters INITIAL_ROTATION → FRONTIER_NAV / COVERAGE_NAV for map
+        # exploration even without a goal — the original WANDER behaviour.
+        self.declare_parameter("auto_wander", True)
+        self._auto_wander = bool(self.get_parameter("auto_wander").value)
+
         # -- Publishers / subscribers --
-        self._cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        # Feeds velocity_smoother on /cmd_vel_nav so the smoother is the only
+        # publisher on /cmd_vel (→ MCU). Avoids interleaved twists from Nav2's
+        # controller_server while we're spinning/approaching directly.
+        self._cmd_pub = self.create_publisher(Twist, "/cmd_vel_nav", 10)
         self._hex_pub = self.create_publisher(HexapodCmd, "/mcu/hexapod_cmd", 10)
 
         self.create_subscription(
@@ -236,12 +246,18 @@ class ObjectSeeker(Node):
 
         if self._substate == SubState.WAITING_FOR_NAV2:
             if self._nav_client.server_is_ready():
+                if not self._auto_wander and self._mode != Mode.SEEK:
+                    # Passive mode — sit idle until a /seek_object goal arrives.
+                    # _seek_execute flips into SCAN_ROTATION directly, bypassing
+                    # this WAITING_FOR_NAV2 branch.
+                    return
                 self.get_logger().info(
                     "Nav2 action server ready — starting initial rotation"
                 )
-                self._substate = SubState.INITIAL_ROTATION
+                # Latch fields first, then flip substate (see _start_scan_rotation).
                 self._last_yaw = self._get_yaw("odom")
                 self._rotation_accumulated = 0.0
+                self._substate = SubState.INITIAL_ROTATION
 
         elif self._substate == SubState.INITIAL_ROTATION:
             self._publish_cmd(linear=0.0, angular=ROTATION_SPEED)
@@ -255,7 +271,18 @@ class ObjectSeeker(Node):
             if self._rotation_accumulated >= 2.0 * math.pi:
                 self._publish_cmd(0.0, 0.0)
                 self.get_logger().info(
-                    "Initial 360° rotation complete — starting frontier exploration"
+                    "Initial 360° rotation complete — clearing costmaps"
+                )
+                # Only the Nav2 costmaps get cleared here — it's a local,
+                # near-instant operation that doesn't disturb TF. Resetting
+                # SLAM's map mid-run cycles slam_toolbox's lifecycle for
+                # several seconds, during which TF goes stale and any in-
+                # flight planner request fails with an Extrapolation Error.
+                # SLAM's own scan matching will correct bad cells over time;
+                # we don't need to wipe the grid.
+                self._clear_nav2_costmaps()
+                self.get_logger().info(
+                    "Costmaps cleared — starting frontier exploration"
                 )
                 self._substate = SubState.FRONTIER_NAV
                 self._send_next_frontier_goal()
@@ -275,6 +302,12 @@ class ObjectSeeker(Node):
                 delta = self._angle_diff(current_yaw, self._last_yaw)
                 self._rotation_accumulated += abs(delta)
             self._last_yaw = current_yaw
+
+            self.get_logger().info(
+                f"SCAN_ROT yaw={current_yaw} "
+                f"accum={self._rotation_accumulated:.3f}/{2.0 * math.pi:.3f} rad",
+                throttle_duration_sec=1.0,
+            )
 
             if self._rotation_accumulated >= 2.0 * math.pi:
                 self._publish_cmd(0.0, 0.0)
@@ -615,7 +648,7 @@ class ObjectSeeker(Node):
         if not goal_handle.accepted:
             self.get_logger().warning("Nav2 goal rejected — trying next")
             self._navigating = False
-            self._on_goal_finished()
+            self._on_goal_finished(succeeded=False)
             return
         self._current_goal_handle = goal_handle
         goal_handle.get_result_async().add_done_callback(self._goal_result_cb)
@@ -628,7 +661,8 @@ class ObjectSeeker(Node):
             return
 
         status = future.result().status
-        if status == GoalStatus.STATUS_SUCCEEDED:
+        succeeded = (status == GoalStatus.STATUS_SUCCEEDED)
+        if succeeded:
             self.get_logger().info("Reached Nav2 goal — finding next target")
         elif status == GoalStatus.STATUS_CANCELED:
             return
@@ -636,15 +670,28 @@ class ObjectSeeker(Node):
             self.get_logger().warning(
                 f"Nav2 goal ended with status {status} — trying next target"
             )
-        self._on_goal_finished()
+        self._on_goal_finished(succeeded=succeeded)
 
-    def _on_goal_finished(self):
-        # In SEEK mode, scan 360° between waypoints so YOLO gets every angle.
-        # In WANDER mode, skip the scan and chain waypoints straight through.
-        if (self._mode == Mode.SEEK
+    def _on_goal_finished(self, succeeded: bool = True):
+        # In SEEK mode, scan 360° between waypoints so YOLO gets every angle —
+        # but only after a SUCCESSFUL arrival. Scan-rotating on every planner
+        # abort means a failed frontier goal triggers 30s of pure angular
+        # cmd_vel, starving the controller of any chance to actually move.
+        if (succeeded
+                and self._mode == Mode.SEEK
                 and self._substate in (SubState.FRONTIER_NAV, SubState.COVERAGE_NAV)):
             self._start_scan_rotation(return_to=self._substate)
             return
+
+        # On failure (planner abort, goal rejection, or unreachable frontier),
+        # clear Nav2 costmaps before the retry — stale inflation / ghost
+        # obstacles from earlier scans are the usual cause of "Failed to
+        # create plan" loops. Cheap one-shot service calls, TF-safe.
+        if not succeeded:
+            self.get_logger().info(
+                "Goal failed — clearing Nav2 costmaps before retry"
+            )
+            self._clear_nav2_costmaps()
 
         if self._substate == SubState.FRONTIER_NAV:
             self._send_next_frontier_goal()
@@ -654,10 +701,15 @@ class ObjectSeeker(Node):
             self._send_approach_goal()
 
     def _start_scan_rotation(self, return_to: SubState):
+        # Prime the rotation-tracking fields *before* flipping substate — with
+        # MultiThreadedExecutor + ReentrantCallbackGroup, a _tick() call can
+        # race between these assignments and see SCAN_ROTATION with stale
+        # _last_yaw / _rotation_accumulated from the previous rotation
+        # session (which never get zeroed on SCAN→FRONTIER_NAV transition).
         self._scan_return_substate = return_to
-        self._substate = SubState.SCAN_ROTATION
         self._last_yaw = self._get_yaw("odom")
         self._rotation_accumulated = 0.0
+        self._substate = SubState.SCAN_ROTATION
 
     # ------------------------------------------------------------------
     # Map / costmap reset — wipes SLAM occupancy + Nav2 costmaps so each
@@ -767,8 +819,12 @@ class ObjectSeeker(Node):
             self._navigating = False
             self._publish_cmd(0.0, 0.0)
 
-            # Wipe SLAM map + Nav2 costmaps so the robot must re-explore.
-            self._reset_slam_map()
+            # Only clear Nav2 costmaps — do NOT cycle SLAM's lifecycle. The
+            # lifecycle reset disrupts map→odom TF for ~8s, which flood the
+            # planner with "Extrapolation Error" and occasionally leaves
+            # slam_toolbox stuck mid-transition (never returns to ACTIVE).
+            # Scan matching keeps the occupancy grid fresh; we don't need a
+            # bulk wipe per seek goal.
             self._clear_nav2_costmaps()
 
             self._visited_frontiers.clear()

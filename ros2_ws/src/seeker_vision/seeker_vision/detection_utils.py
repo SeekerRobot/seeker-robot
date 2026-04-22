@@ -13,7 +13,7 @@ def run_detection(model, img, target_name, logger):
     found_target = False
     found_box = None
 
-    for r in model(img, stream=True):
+    for r in model(img, stream=True, verbose=False):
         for box in r.boxes:
             cls = int(box.cls[0])
             label = CLASS_NAMES[cls]
@@ -53,7 +53,7 @@ def build_detection_array(model, img, header):
     msg.header = header
     h, w = img.shape[:2]
 
-    for r in model(img, stream=True):
+    for r in model(img, stream=True, verbose=False):
         for box in r.boxes:
             cls = int(box.cls[0])
             label = CLASS_NAMES[cls]

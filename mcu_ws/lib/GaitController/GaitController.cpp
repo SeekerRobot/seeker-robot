@@ -60,6 +60,7 @@ void GaitController::begin() {
   body_yaw_ = 0.f;
   initPhases();
   last_us_ = micros();
+  last_cmd_ms_ = millis();
 
   Debug::printf(Debug::Level::INFO, "[Gait] begin — neutral stance, armed");
 }
@@ -74,10 +75,27 @@ void GaitController::update() {
   // Snapshot command and state under the mutex
   VelocityCommand vel;
   GaitState state;
+  uint32_t last_cmd_ms;
+  uint32_t cmd_timeout_ms;
   {
     Threads::Scope lock(state_mutex_);
     vel = cmd_;
     state = state_;
+    last_cmd_ms = last_cmd_ms_;
+    cmd_timeout_ms = cmd_timeout_ms_;
+  }
+
+  // Dead-man watchdog: if we're walking but no new command has arrived in
+  // cmd_timeout_ms, treat the publisher as dead and request a clean stop.
+  // Uses uint32 wrap-safe subtraction; safe as long as timeout < 35 minutes.
+  if (state == GaitState::WALKING && cmd_timeout_ms > 0 &&
+      (millis() - last_cmd_ms) > cmd_timeout_ms) {
+    Debug::printf(Debug::Level::WARN,
+                  "[Gait] cmd_vel watchdog (%u ms) — auto-disabling",
+                  (unsigned)cmd_timeout_ms);
+    disable();  // WALKING → STOPPING; next tick completes the transition
+    state = GaitState::STOPPING;
+    vel = {};
   }
 
   if (state == GaitState::IDLE) return;
@@ -147,10 +165,20 @@ void GaitController::update() {
 
   // STOPPING → IDLE once all legs are frozen (all in-flight legs have landed)
   if (state == GaitState::STOPPING && !anyFlying()) {
-    Threads::Scope lock(state_mutex_);
-    if (state_ == GaitState::STOPPING) {
-      state_ = GaitState::IDLE;
+    bool transitioned = false;
+    {
+      Threads::Scope lock(state_mutex_);
+      if (state_ == GaitState::STOPPING) {
+        state_ = GaitState::IDLE;
+        transitioned = true;
+      }
+    }
+    if (transitioned) {
       Debug::printf(Debug::Level::INFO, "[Gait] all legs landed — IDLE");
+      // Rebase the world frame so the next walking session starts with
+      // body_pos_ / body_yaw_ at zero. Prevents unbounded accumulation
+      // across sessions that otherwise eventually saturates stance hips.
+      rebaseWorldFrame();
     }
   }
 }
@@ -170,10 +198,15 @@ void GaitController::reset() {
 void GaitController::setVelocity(float vx, float vy, float wz) {
   Threads::Scope lock(state_mutex_);
   cmd_ = {vx, vy, wz};
+  last_cmd_ms_ = millis();
 }
 
 void GaitController::enable() {
   Threads::Scope lock(state_mutex_);
+  // Refresh the watchdog timestamp even when the state transition is a
+  // no-op — a publisher re-arming a walk shouldn't immediately trip the
+  // timeout if its last setVelocity happened just over the threshold ago.
+  last_cmd_ms_ = millis();
   if (state_ == GaitState::IDLE) {
     state_ = GaitState::WALKING;
     initPhases(); // reset phase to sync gait and unfreeze all legs
@@ -240,6 +273,14 @@ void GaitController::setCycleTime(float s) {
 void GaitController::setStepScale(float x) {
   Threads::Scope lock(state_mutex_);
   setup_.gait.step_scale = x;
+}
+
+void GaitController::setCommandTimeout(uint32_t ms) {
+  Threads::Scope lock(state_mutex_);
+  cmd_timeout_ms_ = ms;
+  // Reset the reference so the new timeout counts from this moment rather
+  // than from a stale timestamp that could have already exceeded it.
+  last_cmd_ms_ = millis();
 }
 
 GaitConfig GaitController::getGaitConfig() const {
@@ -328,6 +369,30 @@ bool GaitController::anyFlying() const {
     if (!leg_state_[i].frozen) return true;
   }
   return false;
+}
+
+void GaitController::rebaseWorldFrame() {
+  // Re-express every stored foot_world position in a body-at-origin frame
+  // so we can zero body_pos_ / body_yaw_ without any physical motion:
+  //   foot_body = R(-body_yaw_) · (foot_world - body_pos_)
+  // With body at origin and zero yaw, body-frame == world-frame, so we
+  // write foot_body back as the new foot_world.
+  float cy = cosf(body_yaw_ * kDegToRad);
+  float sy = sinf(body_yaw_ * kDegToRad);
+  for (uint8_t i = 0; i < kNumLegs; i++) {
+    Kinematics::Vec3 f = kin_->getFootWorld(i);
+    float dx = f.x - body_pos_.x;
+    float dy = f.y - body_pos_.y;
+    float dz = f.z - body_pos_.z;
+    Kinematics::Vec3 rebased = {cy * dx + sy * dy, -sy * dx + cy * dy, dz};
+    kin_->setFootWorld(i, rebased);
+  }
+  body_pos_ = {};
+  body_yaw_ = 0.f;
+  // Sync kinematics' internal body_pos_ / body_yaw_ (used by worldToBody on
+  // the next IK call) without changing any servo angles — the re-expressed
+  // foot_world positions produce identical body-frame positions.
+  kin_->setBodyPose(body_pos_, body_yaw_);
 }
 
 float GaitController::smoothstep(float s) {

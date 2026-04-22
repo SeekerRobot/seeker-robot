@@ -1,0 +1,23 @@
+# scripted_cmd_vel script.
+#
+# Forward/backward legs: duration | inches | meters.
+# Turns: angle_deg — positive = counterclockwise (CCW), negative = clockwise (CW).
+# Global `scale` ROS param (default 1.0) multiplies all durations/distances.
+
+steps:
+  - {type: turn,    angle_deg: 360.0}    # spin 360° counterclockwise
+  - {type: forward, inches:    26.0}
+  - {type: turn,    angle_deg: -30.0}    # 30° clockwise
+  - {type: forward, inches:    2.0}
+  - {type: turn,    angle_deg: -25.0}    # 25° clockwise
+  - {type: forward, inches:    2.0}
+  - {type: turn,    angle_deg: -35.0}    # 35° clockwise
+  - {type: forward, inches:    17.0}
+  - {type: turn,    angle_deg: -25.0}    # 25° clockwise
+  - {type: forward, inches:    2.0}
+  - {type: turn,    angle_deg: -30.0}    # 30° clockwise
+  - {type: forward, inches:    3.0}
+  - {type: turn,    angle_deg:  15.0}    # 15° counterclockwise
+  - {type: forward, inches:    5.0}
+  - {type: turn,    angle_deg: -10.0}    # 10° clockwise
+  - {type: forward, inches:    8.0}

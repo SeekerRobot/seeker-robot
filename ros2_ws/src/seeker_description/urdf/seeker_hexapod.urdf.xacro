@@ -263,7 +263,7 @@
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="lidar_link"/>
-    <origin xyz="0 0 ${body_z/2}" rpy="0 0 ${pi}"/>
+    <origin xyz="0 0 ${body_z/2}" rpy="0 0 0"/>
   </joint>
 
   <!-- Gazebo LiDAR sensor → /gz/scan, bridged to /mcu/scan -->

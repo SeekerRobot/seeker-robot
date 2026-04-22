@@ -39,6 +39,13 @@ class ScanTiltFilter(Node):
             LaserScan, '/mcu/scan', self._scan_cb, _SENSOR_QOS)
         self._pub = self.create_publisher(LaserScan, '/mcu/scan_filtered', 10)
 
+        # LD14P occasionally emits scans one point off from the previous one
+        # (timing drift on its continuous rotation). slam_toolbox's Karto
+        # caches the first scan's length and spams "LaserRangeScan contains
+        # N, expected M" for every mismatch. Lock to the first length here
+        # and pad/truncate — SLAM sees a consistent ray count.
+        self._locked_len: int | None = None
+
         self.get_logger().info(
             f'scan_tilt_filter ready  max_tilt={math.degrees(self._max_tilt):.1f} deg')
 
@@ -80,6 +87,15 @@ class ScanTiltFilter(Node):
                 dropped += 1
             angle += inc
 
+        # Normalise scan length against the first-seen count so Karto doesn't
+        # log "LaserRangeScan contains N, expected M" on every off-by-one.
+        if self._locked_len is None:
+            self._locked_len = len(ranges)
+        if len(ranges) < self._locked_len:
+            ranges.extend([float('inf')] * (self._locked_len - len(ranges)))
+        elif len(ranges) > self._locked_len:
+            ranges = ranges[: self._locked_len]
+
         if dropped and self.get_clock().now().nanoseconds % 5_000_000_000 < 100_000_000:
             self.get_logger().debug(
                 f'tilt filter: roll={math.degrees(roll):.1f}° '
@@ -88,14 +104,22 @@ class ScanTiltFilter(Node):
         out = LaserScan()
         out.header = msg.header
         out.angle_min = msg.angle_min
-        out.angle_max = msg.angle_max
+        # angle_max / angle_increment must stay consistent with the locked
+        # ray count; recompute angle_max so (max - min) / inc == locked_len - 1.
         out.angle_increment = msg.angle_increment
+        out.angle_max = msg.angle_min + msg.angle_increment * (self._locked_len - 1)
         out.time_increment = msg.time_increment
         out.scan_time = msg.scan_time
         out.range_min = msg.range_min
         out.range_max = msg.range_max
         out.ranges = ranges
-        out.intensities = list(msg.intensities) if msg.intensities else []
+        intensities = list(msg.intensities) if msg.intensities else []
+        if intensities:
+            if len(intensities) < self._locked_len:
+                intensities.extend([0.0] * (self._locked_len - len(intensities)))
+            elif len(intensities) > self._locked_len:
+                intensities = intensities[: self._locked_len]
+        out.intensities = intensities
 
         self._pub.publish(out)
 

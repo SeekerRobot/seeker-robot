@@ -169,6 +169,13 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   ///        entry (where step targets are computed).
   void setStepScale(float x);
 
+  /// @brief Dead-man watchdog: if no setVelocity() call arrives within this
+  ///        many ms while WALKING, the gait auto-disables (STOPPING → IDLE).
+  ///        Set 0 to disable. Default 0. GaitRosParticipant sets 500 ms on
+  ///        onCreate so publisher silence (e.g. a killed `ros2 topic pub`)
+  ///        doesn't leave the gait walking forever with unbounded pose drift.
+  void setCommandTimeout(uint32_t ms);
+
   // --- Queries (thread-safe) ---
 
   GaitState getState() const;
@@ -194,6 +201,8 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   uint32_t last_us_ = 0;
 
   VelocityCommand cmd_ = {};
+  uint32_t last_cmd_ms_ = 0;       // millis() of last setVelocity/enable
+  uint32_t cmd_timeout_ms_ = 0;    // 0 disables the watchdog
   mutable Threads::Mutex state_mutex_;
 
   // Tripod groups — legs 0,3,4 start at phase 0 (stance first);
@@ -223,6 +232,13 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   /// @brief True if any leg has not yet been frozen (still in-flight).
   ///        Used during STOPPING to detect when all legs have landed.
   bool anyFlying() const;
+
+  /// @brief Zero body_pos_ / body_yaw_ without moving the robot by
+  ///        re-expressing every stored foot-world position in a body-at-
+  ///        origin frame. Called on STOPPING → IDLE so a fresh walking
+  ///        session starts from a clean reference instead of inheriting
+  ///        the unbounded drift the previous session accumulated.
+  void rebaseWorldFrame();
 
   /// @brief Smoothstep: s²·(3 − 2s). Zero velocity at both endpoints.
   static float smoothstep(float s);

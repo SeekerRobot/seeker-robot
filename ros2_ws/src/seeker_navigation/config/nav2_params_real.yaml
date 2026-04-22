@@ -38,57 +38,59 @@ controller_server:
 
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.50
+      # Generous goal tolerances — getting "close enough" unblocks waypoint
+      # chaining. Tight tolerances caused the robot to spin forever at a
+      # goal trying to nail the last few cm / degrees it can't hit from
+      # gait slippage and odom drift.
+      xy_goal_tolerance: 0.40
+      yaw_goal_tolerance: 1.57   # 90° — don't care about heading, just position
       stateful: true
 
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
-      debug_trajectory_details: false
-      min_vel_x: 0.0
-      min_vel_y: 0.0
-      max_vel_x: 0.15
-      min_speed_xy: 0.0
-      max_speed_xy: 0.15
-      min_speed_theta: 0.0
-      max_vel_y: 0.0
-      max_vel_theta: 0.5
-      min_vel_theta: 0.0
-      acc_lim_x: 0.5
-      acc_lim_y: 0.0
-      acc_lim_theta: 1.0
-      decel_lim_x: -0.5
-      decel_lim_y: 0.0
-      decel_lim_theta: -1.0
-      vx_samples: 8
-      vy_samples: 1
-      vtheta_samples: 12
-      sim_time: 1.0
-      linear_granularity: 0.05
-      angular_granularity: 0.025
+      # Regulated Pure Pursuit instead of DWB. DWB's trajectory-sampling
+      # approach produced angular oscillation (hunting between +max and -max
+      # wz on a small indoor map). RPP is geometric: picks a point on the
+      # path at `lookahead_dist` and computes smooth curvature toward it.
+      # No critic weights, no sampling, no ties to flip between.
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.10
+      min_linear_velocity: 0.0
+      # Larger lookahead → gentler angular (ω = 2·v·sin(α)/L_d).
+      # At L_d=0.8, max geometric angular at 90° offset = 0.25 rad/s (vs 0.50
+      # at L_d=0.4). Trade-off: wider turns, cuts corners more on sharp paths.
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.4
+      max_lookahead_dist: 1.2
+      use_velocity_scaled_lookahead_dist: true
+      lookahead_time: 1.5
+
+      # rotate_to_heading disabled: on noisy odom, the near-threshold check
+      # flips between "arc forward" and "stop and turn" every tick, producing
+      # the ±wz oscillation we were seeing. With it off, RPP always arcs —
+      # smoother cmd_vel, possibly slightly wider turns.
+      allow_reversing: false
+      use_rotate_to_heading: false
+      max_angular_accel: 1.0
+      rotate_to_heading_angular_vel: 0.20
+
+      # Curvature regulation OFF — was dragging linear to 0.05 floor on every
+      # indoor turn. Cost regulation ON — safer, only slows near obstacles.
+      use_regulated_linear_velocity_scaling: false
+      use_cost_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.3
+      regulated_linear_scaling_min_speed: 0.05
+      # Start slowing further from inflated cost (match inflation_radius) and
+      # weight inflation more aggressively so RPP steers away from walls
+      # rather than just slowing next to them.
+      cost_scaling_dist: 0.4
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 5.0
+
+      # Goal behaviour
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.25
-      trans_stopped_velocity: 0.05
-      short_circuit_trajectory_evaluation: true
-      stateful: true
-      critics:
-        - RotateToGoal
-        - Oscillation
-        - BaseObstacle
-        - GoalAlign
-        - PathAlign
-        - PathDist
-        - GoalDist
-      BaseObstacle.scale: 0.10
-      PathAlign.scale: 24.0
-      PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 20.0
-      GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 32.0
-      GoalDist.scale: 32.0
-      RotateToGoal.scale: 2.0
-      RotateToGoal.slowing_factor: 2.0
-      RotateToGoal.lookahead_time: -1.0
+      use_collision_detection: true
+      # 2 s @ 0.10 m/s = 20 cm collision-check horizon (was 10 cm).
+      max_allowed_time_to_collision_up_to_carrot: 2.0
 
 # ------------------------------------------------------------------
 # planner_server (NavfnPlanner)
@@ -101,7 +103,11 @@ planner_server:
 
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
-      tolerance: 0.2
+      # Very generous planner tolerance — accept any free cell within 1m of
+      # the requested goal. Frontier goals sit on known/unknown boundaries
+      # that are often surrounded by inflated obstacles; a large tolerance
+      # lets the planner "snap" to a reachable cell rather than aborting.
+      tolerance: 1.0
       use_astar: true
       allow_unknown: true
 
@@ -125,8 +131,8 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.2
     simulate_ahead_time: 1.0
-    max_rotational_vel: 0.5
-    min_rotational_vel: 0.1
+    max_rotational_vel: 0.20
+    min_rotational_vel: 0.05
     rotational_acc_lim: 1.0
 
 # ------------------------------------------------------------------
@@ -144,14 +150,17 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.14
+      # Hexapod body (~12 cm) plus outstretched leg reach (~1–2 cm). 0.13 m
+      # covers the physical footprint; anything smaller lets Nav2 clip legs
+      # into walls because the robot-shaped region gets treated as free.
+      robot_radius: 0.13
       plugins: ["voxel_layer", "inflation_layer"]
       voxel_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
         observation_sources: scan
         scan:
-          topic: /mcu/scan
+          topic: /mcu/scan_filtered
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -162,8 +171,14 @@ local_costmap:
           obstacle_min_range: 0.1
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 15.0
-        inflation_radius: 0.28
+        # Softer cost gradient (was 15.0, razor-thin) — cost now decays over
+        # the full inflation_radius so paths feel a continuous push from
+        # walls instead of a step at the edge.
+        cost_scaling_factor: 3.0
+        # Inflation must be > robot_radius for the inflation layer to have
+        # any effect beyond the footprint. 0.30 m leaves ~17 cm of "soft"
+        # buffer beyond the 0.13 m robot body.
+        inflation_radius: 0.30
 
 # ------------------------------------------------------------------
 # global_costmap
@@ -176,7 +191,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_footprint
-      robot_radius: 0.14
+      robot_radius: 0.13
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -188,7 +203,7 @@ global_costmap:
         enabled: true
         observation_sources: scan
         scan:
-          topic: /mcu/scan
+          topic: /mcu/scan_filtered
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -199,8 +214,11 @@ global_costmap:
           obstacle_min_range: 0.1
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 15.0
-        inflation_radius: 0.28
+        cost_scaling_factor: 3.0
+        # Global inflation slightly wider than local — the planner will
+        # carve paths ~40 cm from walls while the local costmap (0.30 m)
+        # allows tighter recovery / passage if needed.
+        inflation_radius: 0.40
 
 # ------------------------------------------------------------------
 # velocity_smoother
@@ -211,8 +229,8 @@ velocity_smoother:
     smoothing_frequency: 10.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.15, 0.0, 0.5]
-    min_velocity: [-0.15, 0.0, -0.5]
+    max_velocity: [0.15, 0.0, 0.20]
+    min_velocity: [-0.15, 0.0, -0.20]
     max_accel: [0.5, 0.0, 1.0]
     max_decel: [-0.5, 0.0, -1.0]
     odom_topic: /odom
@@ -226,12 +244,15 @@ lifecycle_manager_navigation:
   ros__parameters:
     use_sim_time: false
     autostart: true
+    # velocity_smoother is intentionally omitted — the launch file configures
+    # and activates it explicitly because the lifecycle_manager autostart
+    # races the smoother's service registration and leaves it INACTIVE,
+    # which kills /cmd_vel. See real_object_seek.launch.py::vsmoother_activate.
     node_names:
       - controller_server
       - planner_server
       - behavior_server
       - bt_navigator
-      - velocity_smoother
     bond_timeout: 8.0
     attempt_respawn_reconnection: true
     bond_respawn_max_duration: 10.0
