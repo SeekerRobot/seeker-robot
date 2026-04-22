@@ -222,10 +222,14 @@ void GyroSubsystem::setReorientation() {
   // From datasheet Figure 4-3, row X=South, Y=East, Z=Up:
   //   Qw = sqrt(2)/2, Qx = 0, Qy = 0, Qz = -sqrt(2)/2  (-90 deg around Z)
   sh2_Quaternion_t orient;
+  /*orient.x = 0.0f;
+  orient.y = 0.0f;
+  orient.z = 0.7071068f;
+  orient.w = 0.7071068f;*/
   orient.x = 0.0f;
   orient.y = 0.0f;
-  orient.z = -0.7071068f;
-  orient.w = 0.7071068f;
+  orient.z = 0.0f;
+  orient.w = 1.0f;
   int rc = sh2_setReorientation(&orient);
   if (rc != SH2_OK) {
     Debug::printf(Debug::Level::ERROR,
