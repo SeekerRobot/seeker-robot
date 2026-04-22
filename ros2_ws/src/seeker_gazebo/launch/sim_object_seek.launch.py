@@ -27,6 +27,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, IncludeLaunchDescription, LogInfo, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import EnvironmentVariable
 from launch_ros.actions import Node
 import xacro
 
@@ -81,6 +82,21 @@ def generate_launch_description():
         executable='fake_mcu_node',
         name='fake_mcu_node',
         parameters=[{'use_sim_time': False}],
+        output='screen',
+    )
+
+    tts_node = Node(
+        package='seeker_tts',
+        executable='tts_node',
+        name='tts_node',
+        parameters=[{
+            'fish_api_key': EnvironmentVariable('FISH_API_KEY', default_value=''),
+            'fish_reference_id': EnvironmentVariable(
+                'FISH_REFERENCE_ID', default_value=''
+            ),
+            'sample_rate': 16000,
+            'fish_model': 's2-pro',
+        }],
         output='screen',
     )
 
@@ -142,7 +158,9 @@ def generate_launch_description():
         actions=[
             ExecuteProcess(
                 cmd=['bash', '-c',
-                     'ros2 lifecycle set /slam_toolbox configure '
+                     'until ros2 node list 2>/dev/null | grep -q slam_toolbox; '
+                     'do sleep 1; done '
+                     '&& ros2 lifecycle set /slam_toolbox configure '
                      '&& sleep 2 '
                      '&& ros2 lifecycle set /slam_toolbox activate'],
                 output='screen',
@@ -204,7 +222,7 @@ def generate_launch_description():
         msg='\n'
             '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
             '  YOLO object seeker demo launching.\n'
-            '  t=0s  Gazebo + fake MCU\n'
+            '  t=0s  Gazebo + fake MCU + TTS bridge (:8383/audio_out)\n'
             '  t=2s  EKF\n'
             '  t=5s  SLAM Toolbox + gazebo_vision_node (YOLO)\n'
             '  t=10s SLAM activated\n'
@@ -233,6 +251,7 @@ def generate_launch_description():
         gz_spawn,
         gz_bridge,
         fake_mcu,
+        tts_node,
         ekf_node,
         scan_filter,
         slam_toolbox,

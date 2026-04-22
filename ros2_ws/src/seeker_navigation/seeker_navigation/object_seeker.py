@@ -31,6 +31,7 @@ Topics / interfaces
 
 import enum
 import math
+import os
 import time
 from collections import deque
 
@@ -42,9 +43,14 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from action_msgs.msg import GoalStatus
+from ament_index_python.packages import (
+    PackageNotFoundError,
+    get_package_share_directory,
+)
 from geometry_msgs.msg import Twist, Quaternion, Point
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
+from std_msgs.msg import String
 from tf2_ros import Buffer, TransformListener
 
 from std_srvs.srv import Trigger
@@ -54,6 +60,8 @@ from nav2_msgs.srv import ClearEntireCostmap
 from mcu_msgs.msg import DetectedObjectArray, HexapodCmd
 from mcu_msgs.srv import PerformMove
 from mcu_msgs.action import SeekObject
+
+from .search_voice import SearchVoice
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +117,20 @@ class ObjectSeeker(Node):
         # -- Publishers / subscribers --
         self._cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self._hex_pub = self.create_publisher(HexapodCmd, "/mcu/hexapod_cmd", 10)
+        self._tts_pub = self.create_publisher(String, "/audio_tts_input", 10)
+        self._file_pub = self.create_publisher(String, "/audio_play_file", 10)
+
+        try:
+            sounds_dir = os.path.join(
+                get_package_share_directory("seeker_tts"), "sounds"
+            )
+        except PackageNotFoundError:
+            sounds_dir = ""
+            self.get_logger().warn(
+                "seeker_tts package not found; static WAVs will fall back to dynamic TTS"
+            )
+        self._voice = SearchVoice(self, self._tts_pub, self._file_pub, sounds_dir)
+        self._last_announced_substate: SubState | None = None
 
         self.create_subscription(
             DetectedObjectArray, "/vision/detections",
@@ -225,6 +247,15 @@ class ObjectSeeker(Node):
                 self._publish_cmd(0.0, DANCE_SPIN_RATE)
             return
 
+        if self._mode == Mode.SEEK and self._substate in (
+            SubState.FRONTIER_NAV, SubState.COVERAGE_NAV, SubState.SCAN_ROTATION,
+        ):
+            now_ns = self.get_clock().now().nanoseconds
+            if self._substate != self._last_announced_substate:
+                self._voice.reset_periodic_timer(now_ns)
+                self._last_announced_substate = self._substate
+            self._voice.maybe_periodic(now_ns, thing=self._target_class)
+
         if self._substate == SubState.WAITING_FOR_NAV2:
             if self._nav_client.server_is_ready():
                 self.get_logger().info(
@@ -325,6 +356,7 @@ class ObjectSeeker(Node):
             self._start_approach()
 
     def _start_approach(self):
+        self._voice.say_event("object_spotted", thing=self._target_class)
         self._prior_substate = self._substate
         self._substate = SubState.APPROACH_OBJECT
         self._approach_attempts = 0
@@ -386,6 +418,7 @@ class ObjectSeeker(Node):
         self.get_logger().info(
             f"OBJECT REACHED! '{self._target_class}' bbox area={bbox_area:.0f} px²"
         )
+        self._voice.say_event("object_reached", thing=self._target_class)
 
     # ------------------------------------------------------------------
     # Map callback
@@ -544,6 +577,8 @@ class ObjectSeeker(Node):
                 self.get_logger().info(
                     "Frontier retries exhausted — switching to coverage navigation"
                 )
+                if self._mode == Mode.SEEK:
+                    self._voice.say_event("coverage_start")
                 self._start_coverage_nav()
             return
 
@@ -655,7 +690,7 @@ class ObjectSeeker(Node):
     # new SEEK goal starts from a blank slate and is forced to re-explore.
     # ------------------------------------------------------------------
 
-    def _reset_slam_map(self, per_step_timeout: float = 3.0) -> bool:
+    def _reset_slam_map(self, per_step_timeout: float = 10.0) -> bool:
         # Cycle slam_toolbox through deactivate → cleanup → configure → activate.
         # cleanup is what actually drops the occupancy grid; we re-activate so
         # scans start accumulating into a fresh map immediately.
@@ -695,8 +730,21 @@ class ObjectSeeker(Node):
                 return False
 
         self._latest_map = None
-        self.get_logger().info("SLAM map reset complete")
-        return True
+        self.get_logger().info("SLAM map reset complete — waiting for map→odom TF")
+
+        # Wait until SLAM is actually publishing map→odom before returning,
+        # so Nav2 and the frontier search don't start against a broken TF tree.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            try:
+                self._tf_buffer.lookup_transform("map", "odom", rclpy.time.Time())
+                self.get_logger().info("map→odom TF confirmed — SLAM is live")
+                return True
+            except Exception:
+                time.sleep(0.2)
+
+        self.get_logger().warning("SLAM map reset: map→odom TF not seen after 10 s")
+        return False
 
     def _clear_nav2_costmaps(self, timeout: float = 1.0) -> None:
         for label, client in (
@@ -747,6 +795,8 @@ class ObjectSeeker(Node):
         self._target_bbox_area = 0.0
         self._approach_attempts = 0
         self._mode = Mode.SEEK
+        self._last_announced_substate = None
+        self._voice.say_event("search_start", thing=self._target_class)
 
         # Fresh seek → drop any mid-exploration state and re-scan the full map.
         # Without this, a seek arriving after WANDER finished exploring would
@@ -777,6 +827,7 @@ class ObjectSeeker(Node):
         try:
             while rclpy.ok():
                 if goal_handle.is_cancel_requested:
+                    self._voice.say_event("search_canceled")
                     goal_handle.canceled()
                     return self._finish_seek(False, "canceled")
 
@@ -787,6 +838,9 @@ class ObjectSeeker(Node):
                 if timeout_sec > 0:
                     elapsed = (self.get_clock().now() - start_time).nanoseconds * 1e-9
                     if elapsed > timeout_sec:
+                        self._voice.say_event(
+                            "search_failed", thing=self._target_class
+                        )
                         goal_handle.abort()
                         return self._finish_seek(False, "timeout")
 
@@ -808,6 +862,7 @@ class ObjectSeeker(Node):
                 time.sleep(rate_sec)
         except Exception as exc:
             self.get_logger().error(f"SeekObject execute failed: {exc}")
+            self._voice.say_event("search_failed", thing=self._target_class)
             if not goal_handle.is_cancel_requested:
                 goal_handle.abort()
             return self._finish_seek(False, f"exception: {exc}")
