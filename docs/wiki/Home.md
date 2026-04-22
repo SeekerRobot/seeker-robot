@@ -63,11 +63,12 @@ seeker-robot/
 │       ├── seeker_navigation/  # Nav2 + SLAM + EKF + ball_searcher
 │       ├── seeker_sim/         # fake_mcu_node (tripod gait sim)
 │       ├── seeker_tts/         # Fish Audio TTS bridge
-│       ├── seeker_vision/     # YOLO object detection + emotion detection + camera proxy
+│       ├── seeker_vision/      # YOLO object detection + emotion detection + camera proxy
+│       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST)
 │       └── test_package/       # Minimal CI sanity package
 ├── mcu_ws/            # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared base platformio.ini + network_config.ini
-│   ├── src/                    # Per-sketch PlatformIO projects
+│   ├── src/                    # Per-sketch PlatformIO projects (31 sketches)
 │   ├── lib/                    # Shared C++ libraries (subsystems, bridge, kinematics...)
 │   ├── libs_external/          # Pre-vendored micro-ROS PlatformIO library
 │   └── platformio/extra_packages/ # mcu_msgs bind-mounted from ros2_ws for micro-ROS builds

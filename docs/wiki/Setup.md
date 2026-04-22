@@ -102,10 +102,12 @@ wifi_ssid      = YourSSID
 wifi_password  = YourPassword
 agent_ip       = { 192, 168, 8, 134 }   ; machine running the micro-ROS agent
 agent_port     = 8888
-static_ip      = { 192, 168, 8, 50 }    ; assigned to the ESP32 (required)
+static_ip      = { 192, 168, 8, 50 }    ; assigned to the main ESP32 (required)
 gateway        = { 192, 168, 8, 1 }
 subnet         = { 255, 255, 255, 0 }
 ota_upload_port = 192.168.8.50           ; plain string for espota
+satellite_ip   = { 192, 168, 8, 51 }    ; assigned to the satellite ESP32 (for main_satellite)
+satellite_ota_upload_port = 192.168.8.51
 ```
 
 > **A static IP for the ESP32 is required for micro-ROS to work correctly.** You can either reserve one in your router DHCP or configure the firmware to claim one.
@@ -152,7 +154,7 @@ colcon build
 source install/setup.bash
 ```
 
-This builds `mcu_msgs`, `seeker_description`, `seeker_display`, `seeker_gazebo`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`, and `test_package`. Build artifacts go into named Docker volumes (`ros2_build`, `ros2_install`, `ros2_log`) so they survive container restarts without cluttering the host.
+This builds `mcu_msgs`, `seeker_description`, `seeker_display`, `seeker_gazebo`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`, `seeker_web`, and `test_package`. Build artifacts go into named Docker volumes (`ros2_build`, `ros2_install`, `ros2_log`) so they survive container restarts without cluttering the host.
 
 `source install/setup.bash` must be rerun in every new shell — or add it to `~/.bashrc` alongside `source /opt/ros/jazzy/setup.bash` (the Dockerfile adds only the ROS 2 base source automatically).
 
@@ -165,7 +167,7 @@ Run these inside the container after the first build to make sure everything is 
 ```bash
 # ROS 2 finds the packages
 ros2 pkg list | grep seeker
-# Expected: seeker_description seeker_display seeker_gazebo seeker_media seeker_navigation seeker_sim seeker_tts seeker_vision ...
+# Expected: seeker_description seeker_display seeker_gazebo seeker_media seeker_navigation seeker_sim seeker_tts seeker_vision seeker_web ...
 
 # micro-ROS agent is installed
 ros2 run micro_ros_agent micro_ros_agent --help

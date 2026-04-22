@@ -107,6 +107,7 @@ seeker-robot/
 │       ├── seeker_sim/         # Simulated MCU node (fake_mcu_node)
 │       ├── seeker_tts/         # Text-to-speech node (Fish Audio API)
 │       ├── seeker_vision/     # YOLO object detection + emotion detection + camera proxy
+│       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST)
 │       └── test_package/       # Minimal test package
 ├── mcu_ws/               # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared board/library config (inherited by all sketches)
@@ -134,6 +135,7 @@ seeker-robot/
 | `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
 | `seeker_tts` | Fish Audio TTS + local WAV file playback, re-served as a chunked HTTP PCM stream for the ESP32 speaker |
 | `seeker_vision` | YOLO object detection, DeepFace emotion detection, MJPEG camera proxy for the ESP32 camera stream |
+| `seeker_web` | Browser-based robot controller: virtual joystick, IMU/LiDAR visualization, camera feed, TTS input, live logs. Served on port 8080 via WebSocket + REST |
 | `test_package` | Minimal ROS 2 node for build/workflow verification |
 
 ---
@@ -168,7 +170,10 @@ seeker-robot/
 | `test_sub_speaker` | I2S speaker output test |
 | `test_sub_wifi` | WiFi connectivity test |
 | `test_sub_ble_debug` | BLE debug output test |
-| `main` | Placeholder for full system integration (currently empty) |
+| `test_raw_bno` | BNO085 IMU raw hardware isolation test |
+| `main` | Full integration firmware (default: `esp32s3sense_offload` with camera offloaded to satellite board) |
+| `main_add` | Incremental modular rebuild of `main` (phases 1–6 bring-up) |
+| `main_satellite` | Camera/sensor offload board for dual-board architecture (ESP32-CAM or XIAO ESP32-S3 Sense) |
 
 ---
 

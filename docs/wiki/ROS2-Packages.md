@@ -12,7 +12,7 @@ colcon build --symlink-install --packages-select <pkg> # symlink so Python edits
 source install/setup.bash
 ```
 
-`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`) because you don't need to rebuild for every edit.
+`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`, `seeker_web`) because you don't need to rebuild for every edit.
 
 ---
 
@@ -257,7 +257,7 @@ You should not normally run this node standalone — use a `seeker_gazebo` launc
 
 **Build type:** `ament_python`
 
-Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS and local WAV file playback — and re-serves both as a persistent chunked HTTP PCM stream that the ESP32 `SpeakerSubsystem` long-polls.
+Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS and local WAV file playback — and re-serves both as a persistent chunked HTTP PCM stream that the ESP32 `SpeakerSubsystem` long-polls. Publishes `/audio_speaker_active` (`std_msgs/Bool`, TRANSIENT_LOCAL QoS) with edge-triggered transitions so downstream consumers (e.g. `seeker_web`) can mute the mic during playback.
 
 **Nodes:**
 
@@ -342,6 +342,89 @@ ros2 launch seeker_vision local_cam.launch.py      # host webcam
 
 ---
 
+## `seeker_web`
+
+**Build type:** `ament_python`
+
+All-in-one browser controller for the robot. Serves an HTML dashboard over HTTP with WebSocket and REST bridges to ROS 2 topics and ESP32 camera/microphone HTTP streams.
+
+**Nodes:**
+
+- `web_node` (`seeker_web/web_node.py`) — runs an `aiohttp` web server (default port 8080). The ROS 2 executor spins on a background thread; the main thread runs the asyncio event loop. Subscribes to MCU telemetry topics and caches the latest values, then pushes them to connected browsers via WebSocket at configurable rates. Also provides REST endpoints for one-shot commands.
+
+**REST endpoints:**
+
+| Method | Path | Action |
+|---|---|---|
+| `GET` | `/` | Serves `index.html` |
+| `GET` | `/static/<file>` | CSS, JS assets |
+| `GET` | `/api/config` | Returns `{mcu_ip, cam_url, mic_url, topic_lists}` |
+| `POST` | `/api/cmd_vel` | Publishes `geometry_msgs/Twist` on `/cmd_vel` |
+| `POST` | `/api/stop` | Publishes zero Twist |
+| `POST` | `/api/tts` | Publishes `std_msgs/String` on `/audio_tts_input` |
+| `POST` | `/api/play_wav` | Publishes `std_msgs/String` on `/audio_play_file` |
+
+**WebSocket** (`/ws`, bidirectional):
+
+- Server → client: `{type: "status"|"imu"|"lidar"|"log"|"speaker_active"}` at configurable rates.
+- Client → server: command messages (same shapes as REST).
+
+**Subscribed topics:**
+
+| Topic | Type |
+|---|---|
+| `/mcu/battery_voltage` | `std_msgs/Float32` |
+| `/mcu/heartbeat` | `std_msgs/Int32` |
+| `/mcu/imu` | `sensor_msgs/Imu` |
+| `/mcu/scan` | `sensor_msgs/LaserScan` |
+| `/mcu/log` | `std_msgs/String` |
+| `/audio_speaker_active` | `std_msgs/Bool` (TRANSIENT_LOCAL) |
+
+**Published topics:**
+
+| Topic | Type |
+|---|---|
+| `/cmd_vel` | `geometry_msgs/Twist` |
+| `/audio_tts_input` | `std_msgs/String` |
+| `/audio_play_file` | `std_msgs/String` |
+
+**Parameters:**
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `mcu_ip` | `"192.168.1.50"` | ESP32 IP for camera/mic URLs |
+| `http_port` | `8080` | Web server port |
+| `cam_port` | `80` | ESP32 camera HTTP port |
+| `mic_port` | `81` | ESP32 mic HTTP port |
+| `lidar_max_points` | `180` | Downsample LiDAR for WebSocket |
+| `status_rate_s` | `0.1` | Status push interval |
+| `imu_rate_s` | `0.05` | IMU push interval |
+| `lidar_rate_s` | `0.2` | LiDAR push interval |
+| `log_rate_s` | `0.1` | Log push interval |
+| `play_wav_allow_roots` | install dirs + `/tmp` | Path allowlist for WAV playback |
+
+**Frontend features** (in `static/`):
+
+- Virtual joystick (WASD/mouse/touch) with 20 Hz command tick.
+- Real-time IMU quaternion display and LiDAR polar plot (3 m range).
+- MJPEG camera feed from ESP32 `:80/cam`.
+- Mic audio stream from ESP32 `:81/audio` with automatic muting during TTS/WAV playback.
+- TTS text input and WAV file playback forms.
+- Live log tail (200-line ring buffer) from `/mcu/log`.
+- E-stop button and status pills (WebSocket, Heartbeat, Battery, MCU IP).
+
+**Launch:**
+
+- `launch/web.launch.py` — starts `web_node`. Args: `mcu_ip`, `http_port`.
+
+```bash
+colcon build --packages-select seeker_web
+ros2 launch seeker_web web.launch.py mcu_ip:=192.168.1.50 http_port:=8080
+# Open http://localhost:8080 in a browser
+```
+
+---
+
 ## `test_package`
 
 **Build type:** `ament_cmake`
@@ -358,11 +441,12 @@ ros2 launch test_package test_node.launch.py
 ## Inter-package dependency graph
 
 ```
-seeker_gazebo ──► seeker_description
-seeker_gazebo ──► seeker_sim
-seeker_media  ──► seeker_display
+seeker_gazebo     ──► seeker_description
+seeker_gazebo     ──► seeker_sim
+seeker_media      ──► seeker_display
 seeker_navigation ──► seeker_description
-seeker_vision ──► mcu_msgs
+seeker_vision     ──► mcu_msgs
+seeker_web        ──► (standalone — uses only std_msgs, geometry_msgs, sensor_msgs)
 every ROS node importing HexapodCmd ──► mcu_msgs
 ```
 

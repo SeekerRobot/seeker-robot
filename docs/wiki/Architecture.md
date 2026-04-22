@@ -55,6 +55,9 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │  seeker_tts     ──► HTTP :8383 /audio_out ──► ESP32 SpeakerSubsystem         │
 │  seeker_display ──► HTTP :8390 /lcd_out   ──► ESP32 OledSubsystem           │
 │  seeker_media   ──► HTTP :8383 + :8390    ──► ESP32 speaker + OLED          │
+│                                                                             │
+│  seeker_web     ──► HTTP :8080  (browser dashboard)                         │
+│       WebSocket + REST bridge to all /mcu/* topics + /cmd_vel + TTS/WAV     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,13 +100,14 @@ seeker-robot/
 │       ├── seeker_media/        # MP4 player (video → OLED + audio → speaker)
 │       ├── seeker_tts/          # Fish Audio TTS node + tts.launch.py
 │       ├── seeker_vision/      # YOLO detection + emotion + camera proxy
+│       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST on :8080)
 │       └── test_package/        # Tiny CI-sanity C++ node
 ├── mcu_ws/
 │   ├── platformio/
 │   │   ├── platformio.ini               # Shared base config (board envs, lib_base)
 │   │   ├── network_config.ini           # WiFi creds + agent IP (gitignored)
 │   │   └── network_config.example.ini   # Template
-│   ├── src/                             # 27 per-sketch PlatformIO projects
+│   ├── src/                             # 31 per-sketch PlatformIO projects
 │   ├── lib/                             # Shared subsystems (see below)
 │   ├── libs_external/esp32/             # Pre-vendored micro-ROS PlatformIO lib
 │   └── platformio/extra_packages/mcu_msgs/ # Bind-mounted from ros2_ws/src/mcu_msgs

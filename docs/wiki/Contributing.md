@@ -81,7 +81,9 @@ find mcu_ws ros2_ws \
 | `test_threaded_blink` | `ThreadedSubsystem` / FreeRTOS smoke test. |
 | `test_fast_led_raw` | FastLED blink bypassing `LedSubsystem`. |
 | `build_microros` | Placeholder sketch for pre-building the micro-ROS library. |
-| `main` | Placeholder for the final integration firmware (currently empty). |
+| `main` | Full integration firmware (default env `esp32s3sense_offload` offloads camera to `main_satellite`). |
+| `main_add` | Incremental modular rebuild of `main` (phases 1–6 bring-up). |
+| `main_satellite` | Camera/sensor offload board for dual-board architecture. |
 
 Serial-only sketches must **exclude** `libs_external/esp32` from `lib_extra_dirs` in their own `platformio.ini` to avoid pulling in micro-ROS.
 

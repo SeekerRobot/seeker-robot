@@ -14,7 +14,7 @@ source ~/ros2_workspaces/install/setup.bash
 You must have built at least:
 
 ```bash
-colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_vision
+colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_vision seeker_web
 ```
 
 ---
@@ -214,8 +214,9 @@ source install/setup.bash
 
 When you're ready to replace `fake_mcu_node` with a real ESP32:
 
-1. Flash `test_bridge_all` (all publishers) or `test_bridge_gait` (just gait + `/cmd_vel`).
+1. Flash `test_bridge_all` (all publishers), `test_all` (everything + diagnostics), or `main` (production firmware).
 2. Start the micro-ROS agent in a new terminal: `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`.
 3. Launch one of the `real_*` launches in `seeker_navigation` (see **[ROS2 Packages → seeker_navigation](ROS2-Packages.md#seeker_navigation)** and **[IRL Tests](IRL-Tests.md)**).
+4. Optionally, launch the browser controller for teleop and telemetry: `ros2 launch seeker_web web.launch.py mcu_ip:=<ESP32_IP>` and open `http://localhost:8080`.
 
 `robot_state_publisher` in every simulation launch already remaps `joint_states → /mcu/joint_states`, so it picks up servo angles from the real MCU micro-ROS bridge automatically.

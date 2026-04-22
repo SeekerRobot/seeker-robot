@@ -132,11 +132,17 @@ Drive the hexapod with `i/j/l/,` keys. If nothing moves, verify `/cmd_vel` actua
 Once every step above passes:
 
 ```bash
-# Firmware: flash test_bridge_all for sensors + test_bridge_gait separately
-# on a second MCU if you have one. If you only have one board, flash
-# test_all which does both.
+# Option A — test_all (diagnostics + everything on one board):
 cd ~/mcu_workspaces/seeker_mcu/src/test_all
-pio run -e esp32s3sense -t upload
+pio run -t upload
+
+# Option B — main (production firmware, offloads camera to satellite):
+cd ~/mcu_workspaces/seeker_mcu/src/main
+pio run -t upload     # defaults to esp32s3sense_offload
+
+# If using a satellite board for camera (Option B):
+cd ~/mcu_workspaces/seeker_mcu/src/main_satellite
+pio run -t upload     # defaults to esp32cam_satellite
 
 # ROS launch (with agent already running in another terminal):
 ros2 launch seeker_navigation real_ball_search.launch.py
