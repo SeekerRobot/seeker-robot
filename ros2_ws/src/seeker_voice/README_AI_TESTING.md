@@ -18,6 +18,55 @@ Unlike simple movements (which use topics), the **Find** command triggers a **RO
 
 ---
 
+## Dynamic Miku Voice Replies
+
+Every accepted voice command triggers a unique, in-character Hatsune Miku
+reply through the Fish Audio TTS pipeline — no canned strings. The prompt
+sent to Gemini asks it to emit a short, energetic acknowledgment in the
+`response_phrase` field of the structured output (under 12 words, varied
+each call, references the action and — for `find` — the target object).
+`command_node` uses that phrase twice: once as the confirmation prompt
+(`"{response_phrase} Is that right?"`) and again as execution feedback
+after the user confirms. Example parses:
+
+| User says | Gemini returns | Robot says (confirmation) |
+|---|---|---|
+| `hey hatsune spin around for me over` | `action=spin, response_phrase="Hehe, spinning around for you~!"` | *"Hehe, spinning around for you~! Is that right?"* |
+| `hey hatsune go find the coke over` | `action=find, target=bottle, response_phrase="Searching for that bottle, yay~!"` | *"Searching for that bottle, yay~! Is that right?"* |
+
+**Default model**: `gemini-2.5-flash` (overridable via the `gemini_model`
+node parameter). `gemini-2.0-flash` is no longer available to new users.
+
+**Offline fallback**: if Gemini is unreachable or quota-limited,
+`command_node` falls back to keyword matching and uses the static
+`response_phrase` baked into the fallback `Output(...)` construction.
+
+### Quick isolated test (no sim, no mic)
+
+Start just the two nodes and inject a fake transcription:
+
+```bash
+# Terminal A — TTS bridge
+ros2 run seeker_tts tts_node
+
+# Terminal B — Brain
+ros2 run seeker_voice command_node
+
+# Terminal C — audition audio on the HOST (not in container)
+./ros2_ws/src/seeker_tts/tools/listen_audio.sh
+
+# Terminal D — fake a transcription (note the {...} YAML dict form)
+ros2 topic pub --once /audio_transcription std_msgs/String \
+  "{data: 'hey hatsune spin around for me over'}"
+```
+
+Expected: a dynamic Miku confirmation plays out of the host speaker within
+~2 seconds. The `command_node` log will show
+`Gemini parsed: action=RobotAction.SPIN, target=none` and the `tts_node`
+log will show `TTS request: <the dynamic phrase>` + a PCM byte count.
+
+---
+
 ## Prerequisites
 
 1.  **API Key**: A valid `GEMINI_API_KEY` must be in your `docker/.env`.
