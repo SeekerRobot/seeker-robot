@@ -11,6 +11,16 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>mcu_msgs</exec_depend>
+
+  <!--
+    Runtime Python deps installed via pip in docker/Dockerfile (no rosdep keys):
+      - google-genai     (Gemini intent classification)
+      - faster-whisper   (on-device STT)
+      - sounddevice      (local mic capture)
+      - pydantic         (pulled in transitively by google-genai)
+  -->
+
 
   <export>
     <build_type>ament_python</build_type>
