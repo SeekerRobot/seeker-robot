@@ -24,6 +24,7 @@
 
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
+#include <atomic>
 #include <driver/i2s_pdm.h>
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
@@ -94,6 +95,13 @@ class MicSubsystem : public Subsystem::ThreadedSubsystem {
   bool isMicReady() const { return mic_ready_; }
   bool isServerRunning() const { return stream_httpd_ != nullptr; }
 
+  /// Attach an external "mute now" flag. While *flag is true, audioStreamTask
+  /// still drains I2S DMA (so the ring doesn't back up) but replaces captured
+  /// samples with silence before sending over HTTP — prevents speaker audio
+  /// from bleeding back into the mic stream via acoustic feedback.
+  /// Pass nullptr (default) to disable muting.
+  void setMuteSource(const std::atomic<bool>* flag) { mute_src_ = flag; }
+
  private:
   explicit MicSubsystem(const MicSetup& setup)
       : ThreadedSubsystem(setup), setup_(setup) {}
@@ -112,6 +120,7 @@ class MicSubsystem : public Subsystem::ThreadedSubsystem {
   i2s_chan_handle_t rx_handle_ = nullptr;
   bool mic_ready_ = false;
   uint32_t last_log_ms_ = 0;
+  const std::atomic<bool>* mute_src_ = nullptr;
 
   static constexpr uint32_t kLogIntervalMs = 1000;
 };

@@ -27,6 +27,7 @@
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
 #include <WiFi.h>
+#include <atomic>
 #include <driver/i2s_std.h>
 #include <esp_http_client.h>
 #include <freertos/FreeRTOS.h>
@@ -86,6 +87,11 @@ class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
   const char* getInfo() override { return setup_.getId(); }
 
   bool isI2sReady() const { return i2s_ready_; }
+
+  /// True while a playback stream is actively writing PCM to I2S. Externally
+  /// readable (e.g. by MicSubsystem) so on-board mic capture can be muted
+  /// during speaker output to prevent acoustic feedback.
+  static std::atomic<bool> playing;
 
  private:
   explicit SpeakerSubsystem(const SpeakerSetup& setup)

@@ -5,6 +5,8 @@
 
 namespace Subsystem {
 
+std::atomic<bool> SpeakerSubsystem::playing{false};
+
 bool SpeakerSubsystem::init() {
   // I2S DMA must be claimed before WiFi/BLE fragment internal DRAM.
   // The HTTP client that feeds it runs in update() once lwIP is up.
@@ -140,15 +142,16 @@ bool SpeakerSubsystem::fetchAndPlay() {
 
   // Persistent stream — read chunked data until the connection drops.
   // Each chunk from the TTS server is one complete TTS utterance.
-  bool playing = false;
+  bool is_playing = false;
   while (true) {
     int read = esp_http_client_read(client, reinterpret_cast<char*>(buf),
                                     setup_.chunk_size_);
     if (read < 0) break;   // error
     if (read == 0) break;  // server closed connection
 
-    if (!playing) {
-      playing = true;
+    if (!is_playing) {
+      is_playing = true;
+      playing.store(true, std::memory_order_release);
       Debug::printf(Debug::Level::INFO, "[Speaker] Playback started");
     }
 
@@ -158,19 +161,22 @@ bool SpeakerSubsystem::fetchAndPlay() {
 
   free(buf);
 
-  if (playing) {
+  if (is_playing) {
     // i2s_channel_write() returns once data is in the DMA ring buffer, not
     // after it has played out. Wait for the full pipeline to drain;
     // auto_clear keeps the tail as silence instead of a repeating sample.
+    // Hold `playing` high for the drain so the mic stays muted until the
+    // last sample has physically left the amp.
     const uint32_t drain_ms =
         (kDmaBufCount * kDmaBufLen * 1000u) / setup_.sample_rate_ + 50u;
     vTaskDelay(pdMS_TO_TICKS(drain_ms));
+    playing.store(false, std::memory_order_release);
     Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
   }
 
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
-  return playing;
+  return is_playing;
 }
 
 }  // namespace Subsystem

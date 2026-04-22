@@ -26,7 +26,7 @@ bool CameraSubsystem::init() {
     // teleop + most remote YOLO pipelines (they downsample anyway).
     cfg.frame_size = FRAMESIZE_QVGA;
     cfg.jpeg_quality = 12;  // 10->12: ~15% smaller frames, imperceptible.
-    cfg.fb_count = 1;
+    cfg.fb_count = 2;
     cfg.fb_location = CAMERA_FB_IN_PSRAM;
   } else {
     cfg.frame_size = FRAMESIZE_QQVGA;

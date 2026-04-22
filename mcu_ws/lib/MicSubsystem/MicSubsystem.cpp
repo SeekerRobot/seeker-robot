@@ -97,19 +97,33 @@ void MicSubsystem::audioStreamTask(void* arg) {
     httpd_req_t* req = self->active_req_;
     Debug::printf(Debug::Level::INFO, "[Mic] Audio stream connected");
 
+    bool was_muted = false;
     while (true) {
       size_t bytes_read = 0;
       i2s_channel_read(self->rx_handle_, buf, chunk, &bytes_read,
                        portMAX_DELAY);
       if (bytes_read > 0) {
-        // Apply gain and clip to int16 range.
-        int16_t* samples = reinterpret_cast<int16_t*>(buf);
-        size_t n = bytes_read / sizeof(int16_t);
-        for (size_t i = 0; i < n; i++) {
-          int32_t s = static_cast<int32_t>(samples[i]) * self->setup_.gain_;
-          if (s > 32767) s = 32767;
-          if (s < -32768) s = -32768;
-          samples[i] = static_cast<int16_t>(s);
+        const bool muted = self->mute_src_ != nullptr &&
+                           self->mute_src_->load(std::memory_order_acquire);
+        if (muted != was_muted) {
+          Debug::printf(Debug::Level::INFO, "[Mic] %s (speaker playing=%d)",
+                        muted ? "muting capture" : "resuming capture", muted);
+          was_muted = muted;
+        }
+        if (muted) {
+          // Drain I2S but send silence so the HTTP client's sample-rate
+          // timeline stays intact and we don't pick up speaker output.
+          memset(buf, 0, bytes_read);
+        } else {
+          // Apply gain and clip to int16 range.
+          int16_t* samples = reinterpret_cast<int16_t*>(buf);
+          size_t n = bytes_read / sizeof(int16_t);
+          for (size_t i = 0; i < n; i++) {
+            int32_t s = static_cast<int32_t>(samples[i]) * self->setup_.gain_;
+            if (s > 32767) s = 32767;
+            if (s < -32768) s = -32768;
+            samples[i] = static_cast<int16_t>(s);
+          }
         }
         if (httpd_resp_send_chunk(req, reinterpret_cast<const char*>(buf),
                                   bytes_read) != ESP_OK) {

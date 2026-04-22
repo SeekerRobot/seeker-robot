@@ -15,7 +15,7 @@
 // INT pin for watchdog read-only diagnostic. Default matches RobotConfig
 // gyro_int on XIAO ESP32-S3 (D1). Override if wired elsewhere.
 #ifndef BNO08X_INT
-#define BNO08X_INT D1
+#define BNO08X_INT 5
 #endif
 
 struct euler_t { float yaw, pitch, roll; } ypr;
@@ -66,23 +66,28 @@ void setup(void) {
   // Datasheet: ~300 ms to reach operational state. Give it plenty.
   delay(800);
 
+
   Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.setClock(100000);  // slow for reliability
+  Wire.setClock(400000);  // slow for reliability
   delay(100);
+  scanI2C();
+
 
   // Retry begin_I2C — one cold-boot failure shouldn't end the sketch.
-  Serial.println("Attempting BNO08x @ 0x4A...");
+  Serial.println("Attempting BNO08x @ 0x4B...");
   bool ok = false;
   for (int attempt = 1; attempt <= 5 && !ok; attempt++) {
     Serial.printf("  attempt %d...\n", attempt);
-    ok = bno08x.begin_I2C(0x4A, &Wire);
+    ok = bno08x.begin_I2C(0x4B, &Wire);
     if (!ok) {
       Serial.println("  failed, waiting 1s");
       delay(1000);
     }
   }
   if (!ok) {
-    Serial.println("All attempts failed. Halting.");
+    Serial.println("All attempts failed.");
+    scanI2C();
+    Serial.println("Halting.");
     while (1) delay(1000);
   }
   Serial.println("BNO08x Found!");

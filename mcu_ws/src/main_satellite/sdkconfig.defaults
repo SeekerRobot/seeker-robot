@@ -1,3 +1,10 @@
+# S3-Sense-only. Referenced exclusively by [env:esp32s3sense_satellite] via
+# board_build.esp-idf.sdkconfig_defaults. The esp32cam_satellite env uses
+# stock espressif32 (Arduino 2.x) and relies on -DBOARD_HAS_PSRAM +
+# -mfix-esp32-psram-cache-issue instead — do NOT extend this file with
+# esp32cam-compatible options; add a sibling sdkconfig.defaults.esp32cam
+# file if that ever becomes necessary.
+
 # --- PSRAM (8 MB octal on XIAO S3 Sense) ---
 CONFIG_ESP32S3_SPIRAM_SUPPORT=y
 CONFIG_SPIRAM=y

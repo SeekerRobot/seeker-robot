@@ -17,17 +17,19 @@
  *   ENABLE_CAM  — OV2640 MJPEG server (default 1)
  *   ENABLE_MIC  — PDM microphone PCM server (default 1)
  *   ENABLE_SPK  — I2S speaker HTTP client (default 1)
+ *   ENABLE_GYRO — BNO085 IMU (default 1; disabled across all current envs)
  * Set any of these to 0 via -D in platformio.ini to offload that subsystem to
- * a satellite board. The `esp32s3sense_offload` env ships cam + mic off while
- * keeping the speaker on the main board.
+ * a satellite board. The `esp32s3sense_offload` env ships with only the
+ * camera offloaded; mic, speaker, OLED, and gait all stay on the main board.
  *
  * Boot LED sequence (visible state ladder):
  *   rainbow pulse → red chase (wifi) → yellow pulse (micro-ROS) →
- *   cyan slow pulse (idle). Red fast pulse at any point = low battery.
+ *   cyan slow pulse (idle). Cyan fast pulse during speaker playback.
+ *   Red fast pulse at any point = low battery.
  *
  * ROS verify (after `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`):
- *   ros2 topic echo /mcu/heartbeat
- *   ros2 topic hz   /mcu/imu              # ~50 Hz
+ *   ros2 topic echo /mcu/heartbeat1       # main board
+ *   ros2 topic echo /mcu/heartbeat2       # satellite board
  *   ros2 topic echo /mcu/battery_voltage
  *   ros2 topic hz   /mcu/scan             # ~6 Hz
  *   ros2 topic echo /mcu/log
@@ -62,6 +64,12 @@
 #define ENABLE_SPK 0
 #endif
 
+// Gyro is gated by its own flag so the main board can hand it off to the
+// satellite (see esp32s3sense_offload). Default ON when unset.
+#ifndef ENABLE_GYRO
+#define ENABLE_GYRO 1
+#endif
+
 #if ENABLE_CAM
 #include <CameraSubsystem.h>
 #include <camera_pins.h>
@@ -76,7 +84,9 @@
 #include <ESP32WifiSubsystem.h>
 #include <GaitController.h>
 #include <GaitRosParticipant.h>
+#if ENABLE_GYRO
 #include <GyroSubsystem.h>
+#endif
 #include <HexapodConfig.h>
 #include <HexapodKinematics.h>
 #include <LedSubsystem.h>
@@ -154,8 +164,10 @@ static Subsystem::BlinkSubsystem blink(blink_setup);
 static Subsystem::LedSetup led_setup(/*num_leds=*/5);
 static Subsystem::LedSubsystem<Config::rgb_data> leds(led_setup);
 
+#if ENABLE_GYRO
 static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
                                        Config::gyro_int);
+#endif
 static Subsystem::BatterySetup battery_setup(Config::batt, kBattCalibration,
                                              /*num_samples=*/16);
 static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
@@ -210,8 +222,13 @@ static constexpr char kSafeModeReason[] = "last_reason";
 // UDP reset channel — lets a host on the LAN clear the safe-mode counter
 // without reflashing. Only bound in runSafeMode(), so normal-mode firmware
 // never listens here. Magic string keeps stray packets from clearing state.
-// Trigger from host: `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <MCU_IP> 4210`.
-static constexpr uint16_t kSafeModeUdpPort = 4210;
+// Trigger from host: `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <MCU_IP> <port>`.
+// Main defaults to 4210; satellite uses 4211 so you can target one without
+// broadcasting to the other (see main_satellite platformio.ini).
+#ifndef SAFE_MODE_UDP_PORT
+#define SAFE_MODE_UDP_PORT 4210
+#endif
+static constexpr uint16_t kSafeModeUdpPort = SAFE_MODE_UDP_PORT;
 static constexpr char kSafeModeUdpMagic[] = "SEEKER_CLEAR_SM";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
@@ -462,15 +479,24 @@ void setup() {
                 WIFI_SSID);
 
   // --- Gyro (BNO085 on I2C, non-fatal if it fails) ---
-  auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
+  // Offloaded to the satellite when ENABLE_GYRO=0; bridge handles gyro_ptr
+  // being null (no /mcu/imu publisher created if BRIDGE_ENABLE_GYRO=0 too).
   Subsystem::GyroSubsystem* gyro_ptr = nullptr;
+#if ENABLE_GYRO
+  auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
   if (gyro.init()) {
-    gyro.beginThreadedPinned(4096, 5, 0, 1);
+    // INT mode: 0 ms — task blocks on semaphore until BNO asserts INT.
+    // Poll mode (GYRO_USE_INT=0): ~5 ms cadence (200 Hz headroom).
+    gyro.beginThreadedPinned(4096, 5, GYRO_USE_INT ? 0 : 5, 1);
     gyro_ptr = &gyro;
   } else {
     Debug::printf(Debug::Level::WARN,
                   "[Main] Gyro init failed — IMU topic disabled");
   }
+#else
+  Debug::printf(Debug::Level::INFO,
+                "[Main] Gyro offloaded (ENABLE_GYRO=0) — satellite publishes");
+#endif
 
   // --- Battery (ADC, non-fatal if it fails) ---
   auto& batt = Subsystem::BatterySubsystem::getInstance(battery_setup);
@@ -533,13 +559,31 @@ void setup() {
 
 #if ENABLE_CAM
   // --- Camera (OV2640, MJPEG on :80) — non-fatal ---
+  // ThreadedSubsystem's task only calls begin()+update(); init() must run
+  // here or camera_ready_ stays false and the HTTP server never starts.
   auto& cam = Subsystem::CameraSubsystem::getInstance(cam_setup);
+  if (!cam.init()) {
+    Debug::printf(Debug::Level::WARN,
+                  "[Main] Camera init failed — /cam endpoint disabled");
+  }
   cam.beginThreadedPinned(8192, 2, 5000, 1);
 #endif
 
 #if ENABLE_MIC
   // --- Mic (PDM on I2S_NUM_0, PCM on :81, Core 0) — non-fatal ---
+  // ThreadedSubsystem's task only calls begin()+update(); init() must run
+  // here or mic_ready_ stays false and the HTTP server never starts.
   auto& mic = Subsystem::MicSubsystem::getInstance(mic_setup);
+  if (!mic.init()) {
+    Debug::printf(Debug::Level::WARN,
+                  "[Main] Mic init failed — /audio endpoint disabled");
+  }
+#if ENABLE_SPK
+  // Half-duplex acoustic-feedback guard: mute captured audio while the
+  // speaker is actively writing PCM to I2S. Flag lives on SpeakerSubsystem
+  // and is safe to reference before the Speaker instance exists (static).
+  mic.setMuteSource(&Subsystem::SpeakerSubsystem::playing);
+#endif
   mic.beginThreadedPinned(4096, 2, 5000, 0);
 #endif
 
@@ -564,7 +608,10 @@ void setup() {
   oled.setOverlay(1, 4, 52, "connecting...");
 
   // --- MicroRosBridge (sensors → topics) ---
+  // Heartbeat splits into heartbeat1 (main) / heartbeat2 (satellite) so the
+  // host can independently observe each board's liveness.
   static Subsystem::MicroRosBridgeSetup bridge_setup;
+  bridge_setup.heartbeat_topic = "mcu/heartbeat1";
   bridge_setup.gyro = gyro_ptr;
   bridge_setup.battery = batt_ptr;
   bridge_setup.lidar = &lidar;
@@ -591,6 +638,9 @@ void setup() {
   slc_setup.wifi = &wifi;
   slc_setup.manager = &manager;
   slc_setup.gait = &gait_ctrl;
+#if ENABLE_SPK
+  slc_setup.audio_active = &Subsystem::SpeakerSubsystem::playing;
+#endif
   static Subsystem::StatusLedController slc(slc_setup);
   if (!slc.init()) haltOnFail("StatusLed");
   slc.beginThreadedPinned(3072, 2, 100, 1);

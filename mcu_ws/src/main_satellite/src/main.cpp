@@ -1,54 +1,85 @@
 /**
  * @file main_satellite/src/main.cpp
- * @brief Seeker Robot — camera + mic satellite sketch.
+ * @brief Seeker Robot — satellite sketch (camera offload board).
  *
- * Runs on a second XIAO ESP32-S3 Sense board that offloads the OV2640 camera
- * and the PDM microphone from the primary MCU. The main board runs with
- * `-DENABLE_CAM=0 -DENABLE_MIC=0` (see the `esp32s3sense_offload` env) so the
- * host-side stack can point its camera proxy and mic consumer at this board's
- * static IP instead.
+ * Runs on either an AI-Thinker ESP32-CAM (default, `esp32cam_satellite`) or a
+ * second XIAO ESP32-S3 Sense (`esp32s3sense_satellite`). The main board runs
+ * with ENABLE_CAM=0 (`esp32s3sense_offload` env) so the MJPEG endpoint moves
+ * here while mic, speaker, OLED, and gait stay on the main sketch. Gyro is
+ * disabled across both boards for now (ENABLE_GYRO=0 everywhere).
  *
- * Motivation: camera MJPEG + mic PCM + speaker TTS + OLED framebuffer + gait
- * + micro-ROS all on one ESP32-S3 exhausts the internal-SRAM PBUF pool under
- * concurrent load (sendPacket() errno 12). Splitting the two heaviest HTTP
- * endpoints onto a dedicated board keeps both sides well below the PBUF
- * starvation threshold.
+ * Motivation: camera MJPEG on the main ESP32-S3 competes with micro-ROS, mic
+ * PCM, speaker TTS, OLED framebuffer, and gait control for the internal-SRAM
+ * PBUF pool and starts dropping packets (sendPacket() errno 12) under
+ * concurrent load. Moving the MJPEG server onto its own board removes the
+ * largest single PBUF consumer.
  *
- * Endpoints (same shape as the primary board — the host-side nodes don't need
- * to change, only their configured IP):
+ * Endpoints (unchanged from earlier satellite revisions — host-side nodes
+ * just point at this board's static IP):
  *   GET http://<SATELLITE_IP>:80/cam    — MJPEG video stream
- *   GET http://<SATELLITE_IP>:81/audio  — raw 16-bit PCM, 16 kHz, mono
+ *
+ * micro-ROS topics (when BRIDGE_ENABLE_* flags set in the env):
+ *   /mcu/heartbeat2  — satellite liveness (main publishes heartbeat1)
+ *
+ * Compile-time hardware gates (set per env in platformio.ini):
+ *   ENABLE_CAM   — OV2640 MJPEG server (default 1)
+ *   ENABLE_MIC   — PDM microphone PCM server (default 0 — mic lives on main)
+ *   ENABLE_GYRO  — BNO085 IMU (default 1; off on both satellite envs for now)
+ * Each maps to a `#if ENABLE_FOO` block below; set to 0 via -D to skip.
  *
  * Production bring-up:
- *   - Safe-mode arbitration: 5 consecutive PANIC/WDT boots in under 30 s drops
- *     the sketch into WiFi + OTA, skipping camera/mic init so a broken
- *     firmware can always be recovered over the air.
+ *   - Safe-mode arbitration: 5 consecutive PANIC/WDT boots in under 30 s
+ *     drops the sketch into WiFi + OTA + UDP reset listener on :4211,
+ *     skipping every subsystem so bricked firmware can be recovered OTA.
  *   - WiFi static-IP bring-up with ArduinoOTA handler.
- *   - Onboard LED acts as status indicator: 500 ms toggle during normal
- *     operation (BlinkSubsystem default), 100 ms toggle (~5 Hz) in safe mode
- *     so the operator can tell at a glance when OTA recovery is required.
- *     The satellite runs with only the sense board connected — no external
- *     LED chain, no OLED, no I2C peripherals.
+ *   - Onboard LED: 500 ms toggle in normal mode, 100 ms (~5 Hz) in safe mode.
  *
  * Network config — expects SATELLITE_IP, WIFI_SSID, WIFI_PASSWORD, GATEWAY,
- * and SUBNET in network_config.ini. Reuses WIFI_SSID/GATEWAY/SUBNET with the
- * primary board.
- *
- * Pin layout matches the S3 Sense `Config::pdm_clk` / `Config::pdm_data`
- * (mic) and the bundled `camera_pins.h` layout for the OV2640 module that
- * ships with the Seeed board.
+ * SUBNET, AGENT_IP, AGENT_PORT in network_config.ini.
  */
 #include <Arduino.h>
 #include <BlinkSubsystem.h>
-#include <CameraSubsystem.h>
 #include <CustomDebug.h>
 #include <ESP32WifiSubsystem.h>
-#include <MicSubsystem.h>
 #include <Preferences.h>
 #include <RobotConfig.h>
+#include <Wire.h>
 #include <WiFiUdp.h>
-#include <camera_pins.h>
 #include <esp_system.h>
+#include <hal_thread.h>
+
+// ---------------------------------------------------------------------------
+// Hardware enable flags — default values for when the env doesn't set them.
+// ESP32-CAM has no onboard mic, so ENABLE_MIC must stay 0 on that board.
+// ---------------------------------------------------------------------------
+#ifndef ENABLE_CAM
+#define ENABLE_CAM 1
+#endif
+#ifndef ENABLE_MIC
+#define ENABLE_MIC 0
+#endif
+#ifndef ENABLE_GYRO
+#define ENABLE_GYRO 1
+#endif
+#ifndef ENABLE_MICROROS
+#define ENABLE_MICROROS 1
+#endif
+
+#if ENABLE_CAM
+#include <CameraSubsystem.h>
+#include <camera_pins.h>
+#endif
+#if ENABLE_MIC
+#include <MicSubsystem.h>
+#endif
+#if ENABLE_GYRO
+#include <GyroSubsystem.h>
+#endif
+
+#if ENABLE_MICROROS
+#include <MicroRosBridge.h>
+#include <microros_manager_robot.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // Network config — SATELLITE_IP is a dedicated macro so the satellite doesn't
@@ -73,10 +104,14 @@ static constexpr char kSafeModeNs[] = "seeker_sm";
 static constexpr char kSafeModeCount[] = "count";
 static constexpr char kSafeModeReason[] = "last_reason";
 
-// UDP reset channel — same contract as the primary main sketch, so a single
-// host-side tool can recover either board.
-// Trigger: `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <SAT_IP> 4210`.
-static constexpr uint16_t kSafeModeUdpPort = 4210;
+// UDP reset channel — same magic string as the primary main sketch, on a
+// distinct port so the two boards can be reset independently. Main uses 4210,
+// satellite uses 4211 (overridden via -DSAFE_MODE_UDP_PORT in platformio.ini).
+// Trigger: `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <SAT_IP> <port>`.
+#ifndef SAFE_MODE_UDP_PORT
+#define SAFE_MODE_UDP_PORT 4211
+#endif
+static constexpr uint16_t kSafeModeUdpPort = SAFE_MODE_UDP_PORT;
 static constexpr char kSafeModeUdpMagic[] = "SEEKER_CLEAR_SM";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
@@ -140,28 +175,49 @@ static void safeModeScheduleClear() {
 static constexpr uint32_t kBlinkNormalMs = 500;
 static constexpr uint32_t kBlinkSafeModeMs = 100;
 
+static Threads::Mutex i2c_mutex;  // shared by gyro (BNO085) on Wire
+
 static Classes::BaseSetup blink_setup("blink");
 static Subsystem::BlinkSubsystem blink(blink_setup);
 
 static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
     "sat_wifi", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
 
-// Satellite has no micro-ROS stack competing for the lwIP PBUF pool, so it
-// can afford a bigger frame and a lower (better) jpeg quality number. Stream
-// cap stays at 20 Hz (50 ms) — well below the OV2640's ceiling but matches
-// the main board for consumer-side parity.
+#if ENABLE_MICROROS
+static Subsystem::MicrorosManagerSetup manager_setup("microros",
+                                                     "seeker_satellite_node");
+static Subsystem::MicrorosManager manager(manager_setup);
+#endif
+
+#if ENABLE_CAM
+// Stream cap stays at 20 Hz (50 ms) — well below the OV2640's ceiling but
+// matches the main board for consumer-side parity.
 static Subsystem::CameraSetup cam_setup(camera_config, /*port=*/80,
                                         /*ctrl_port=*/32768,
-                                        /*frame_interval_ms=*/50,
+                                        /*frame_interval_ms=*/1,
                                         /*jpeg_quality=*/10,
                                         /*frame_size=*/FRAMESIZE_VGA);
+#endif
 
+#if ENABLE_MIC
 static Subsystem::MicSetup mic_setup(I2S_NUM_0,
                                      /*sample_rate=*/16000,
                                      /*clk_pin=*/Config::pdm_clk,
                                      /*data_pin=*/Config::pdm_data,
                                      /*gain=*/4,
                                      /*http_port=*/81);
+#endif
+
+#if ENABLE_GYRO
+// Pass SDA/SCL explicitly so GyroSubsystem::init() pins Wire to the
+// SD-slot lines instead of the ESP32-CAM's default 21/22, which are the
+// camera's Y5 and PCLK. The S3-Sense variant's default Wire pins already
+// match Config::sda/scl, but pinning explicitly everywhere is harmless and
+// keeps the two envs symmetric.
+static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
+                                       Config::gyro_int, Config::sda,
+                                       Config::scl);
+#endif
 
 static const char* wifiStateStr(Subsystem::WifiState s) {
   switch (s) {
@@ -257,7 +313,7 @@ static void haltOnFail(const char* subsystem) {
 // ---------------------------------------------------------------------------
 void setup() {
   Serial.begin(921600);
-  delay(500);
+  delay(2000);
 
   uint8_t boots = safeModeTickOnBoot();
   Debug::printf(Debug::Level::INFO,
@@ -273,6 +329,19 @@ void setup() {
   // --- Blink heartbeat (onboard LED only — satellite has no LED chain) ---
   blink.beginThreadedPinned(2048, 1, kBlinkNormalMs, 1);
 
+#if ENABLE_CAM
+  // --- Camera: hardware init BEFORE WiFi ---
+  // esp_camera_init() claims a 16 KB internal-DRAM DMA buffer that has to be
+  // contiguous; running after WiFi-driver heap fragmentation often fails with
+  // ESP_ERR_NO_MEM. The task thread (started later) only starts the HTTP
+  // server, which needs lwIP up.
+  auto& cam = Subsystem::CameraSubsystem::getInstance(cam_setup);
+  if (!cam.init()) {
+    Debug::printf(Debug::Level::WARN,
+                  "[Sat] Camera init failed — /cam endpoint disabled");
+  }
+#endif
+
   // --- WiFi (+ ArduinoOTA handler) ---
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
   if (!wifi.init()) haltOnFail("WiFi");
@@ -280,17 +349,55 @@ void setup() {
   Debug::printf(Debug::Level::INFO, "[Sat] WiFi connecting to \"%s\"",
                 WIFI_SSID);
 
-  // --- Camera (OV2640, MJPEG on :80) — non-fatal ---
-  // Init runs inside the ThreadedSubsystem task after begin(); the subsystem
-  // logs its own failure. We start it even if cam hardware is missing so the
-  // mic half of the board still comes up.
-  auto& cam = Subsystem::CameraSubsystem::getInstance(cam_setup);
-  cam.beginThreadedPinned(8192, 2, 5000, 1);
+#if ENABLE_GYRO
+  // --- Gyro (BNO085 on I2C, non-fatal if it fails) ---
+  // gyro_setup carries the SDA/SCL pins, so GyroSubsystem::init() pins Wire
+  // itself — pinning here too would just get overridden.
+  auto& gyro = Subsystem::GyroSubsystem::getInstance(gyro_setup, i2c_mutex);
+  const bool gyro_ready = gyro.init();
+  if (gyro_ready) {
+    gyro.beginThreadedPinned(4096, 5, 0, 1);
+  } else {
+    Debug::printf(Debug::Level::WARN,
+                  "[Sat] Gyro init failed — IMU topic disabled");
+  }
+#endif
 
+#if ENABLE_CAM
+  // --- Camera HTTP server (begin() starts the MJPEG server on :80) ---
+  // WiFi is up by now, so lwIP is ready for httpd_start. begin() no-ops if
+  // the earlier init() failed, keeping the rest of the board alive.
+  cam.beginThreadedPinned(8192, 2, 5000, 1);
+#endif
+
+#if ENABLE_MIC
   // --- Mic (PDM on I2S_NUM_0, PCM on :81, Core 0) — non-fatal ---
   // Core-pinned to 0 so camera_task (Core 1) can't starve i2s_channel_read.
   auto& mic = Subsystem::MicSubsystem::getInstance(mic_setup);
   mic.beginThreadedPinned(4096, 2, 5000, 0);
+#endif
+
+#if ENABLE_MICROROS
+  // --- MicroRosBridge (gyro → /mcu/imu, heartbeat → /mcu/heartbeat2) ---
+  static Subsystem::MicroRosBridgeSetup bridge_setup;
+  bridge_setup.heartbeat_topic = "mcu/heartbeat2";
+#if ENABLE_GYRO
+  bridge_setup.gyro = gyro_ready ? &gyro : nullptr;
+#endif
+  static Subsystem::MicroRosBridge bridge(bridge_setup);
+
+  // --- MicrorosManager ---
+  manager.registerParticipant(&bridge);
+  if (!manager.init()) haltOnFail("MicroRosManager");
+  manager.setStateCallback([](bool connected) {
+    Debug::printf(Debug::Level::INFO, "[Sat] micro-ROS agent %s",
+                  connected ? "CONNECTED" : "DISCONNECTED");
+  });
+  manager.beginThreadedPinned(8192, 3, 10, 1);
+#else
+  Debug::printf(Debug::Level::INFO,
+                "[Sat] micro-ROS disabled (ENABLE_MICROROS=0)");
+#endif
 
   safeModeScheduleClear();
 
@@ -299,13 +406,19 @@ void setup() {
 
 void loop() {
   auto& wifi = Subsystem::ESP32WifiSubsystem::getInstance(wifi_setup);
+#if ENABLE_MICROROS
+  const char* uros_state = manager.getStateStr();
+#else
+  const char* uros_state = "DISABLED";
+#endif
   if (wifi.isConnected()) {
-    Debug::printf(Debug::Level::INFO,
-                  "[Loop] wifi=CONNECTED  ip=%-15s  rssi=%d dBm",
-                  wifi.getLocalIP().toString().c_str(), wifi.getRSSI());
+    Debug::printf(
+        Debug::Level::INFO,
+        "[Loop] wifi=CONNECTED  microros=%-18s  ip=%-15s  rssi=%d dBm",
+        uros_state, wifi.getLocalIP().toString().c_str(), wifi.getRSSI());
   } else {
-    Debug::printf(Debug::Level::INFO, "[Loop] wifi=%s",
-                  wifiStateStr(wifi.getState()));
+    Debug::printf(Debug::Level::INFO, "[Loop] wifi=%-12s  microros=%s",
+                  wifiStateStr(wifi.getState()), uros_state);
   }
   delay(2000);
 }

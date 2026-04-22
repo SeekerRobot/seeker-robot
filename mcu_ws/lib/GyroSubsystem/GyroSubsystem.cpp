@@ -9,14 +9,55 @@
 namespace Subsystem {
 bool GyroSubsystem::init() {
   Threads::Scope lock(i2c_mutex_);
-  if (!setup_.wire_.begin()) {
+  const bool pin_wire = (setup_.sda_pin_ >= 0 && setup_.scl_pin_ >= 0);
+  const bool wire_ok =
+      pin_wire ? setup_.wire_.begin(setup_.sda_pin_, setup_.scl_pin_)
+               : setup_.wire_.begin();
+  if (!wire_ok) {
     Debug::printf(Debug::Level::ERROR, "[BNO085] Wire.begin() failure");
     return false;
   }
   setup_.wire_.setClock(400000);
-  if (!bno08x_.begin_I2C(setup_.addr_, &setup_.wire_)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Failed to find BNO08x chip");
+  // BNO085's SHTP handshake is flaky on cold boot (see
+  // project_pioarduino_bno085_s3_regression memory) and Adafruit_BNO08x's
+  // begin_I2C() can return false on the first attempt even when the chip is
+  // perfectly wired. Retry with a bus recovery delay — test_raw_bno uses the
+  // same pattern and reliably recovers within 2-3 attempts.
+  // Dev boards with the PS0 strap in the "other" position (or swapped units)
+  // are common enough that we also fall back to the alternate address.
+  constexpr int kBeginAttempts = 5;
+  const uint8_t primary_addr = setup_.addr_;
+  const uint8_t fallback_addr =
+      (primary_addr == 0x4A) ? 0x4B : 0x4A;
+  const uint8_t try_addrs[2] = {primary_addr, fallback_addr};
+  bool ok = false;
+  uint8_t found_addr = 0;
+  for (uint8_t which = 0; which < 2 && !ok; which++) {
+    const uint8_t addr = try_addrs[which];
+    for (int attempt = 1; attempt <= kBeginAttempts && !ok; attempt++) {
+      ok = bno08x_.begin_I2C(addr, &setup_.wire_);
+      if (!ok) {
+        Debug::printf(Debug::Level::WARN,
+                      "[BNO085] begin_I2C @ 0x%02X attempt %d/%d failed",
+                      addr, attempt, kBeginAttempts);
+        delay(500);
+      } else {
+        found_addr = addr;
+      }
+    }
+  }
+  if (!ok) {
+    Debug::printf(
+        Debug::Level::ERROR,
+        "[BNO085] Failed to find BNO08x at 0x%02X or 0x%02X (%d attempts each)",
+        primary_addr, fallback_addr, kBeginAttempts);
     return false;
+  }
+  if (found_addr != primary_addr) {
+    Debug::printf(Debug::Level::WARN,
+                  "[BNO085] Found at fallback 0x%02X (expected 0x%02X) — "
+                  "check PS0 strap",
+                  found_addr, primary_addr);
   }
   for (int n = 0; n < bno08x_.prodIds.numEntries; n++) {
     Debug::printf(Debug::Level::INFO,
@@ -29,6 +70,7 @@ bool GyroSubsystem::init() {
   }
   //reset();
   setReorientation();
+#if GYRO_USE_INT
   // Attach ISR before enabling reports: BNO085 INT is active-low and level-
   // held until I2C drain, so if setReports() fires the first report before
   // the ISR is wired up, we miss the FALLING edge and never see another one
@@ -39,10 +81,16 @@ bool GyroSubsystem::init() {
                      FALLING);
   setReports();
   xSemaphoreGive(int_semaphore_);
+#else
+  // Polling mode — update() runs on the ThreadedSubsystem cadence and drains
+  // whatever reports are ready. Caller must pass a non-zero updateDelayMs.
+  setReports();
+#endif
   Debug::printf(Debug::Level::INFO, "[BNO085] Init success");
   return true;
 }
 
+#if GYRO_USE_INT
 void IRAM_ATTR GyroSubsystem::intISR(void* arg) {
   auto* self = static_cast<GyroSubsystem*>(arg);
   self->isr_count_++;
@@ -50,9 +98,12 @@ void IRAM_ATTR GyroSubsystem::intISR(void* arg) {
   xSemaphoreGiveFromISR(self->int_semaphore_, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+#endif
 
 void GyroSubsystem::update() {
+#if GYRO_USE_INT
   xSemaphoreTake(int_semaphore_, portMAX_DELAY);
+#endif
   Threads::Scope i2c_lock(i2c_mutex_);
 
   if (bno08x_.wasReset()) {

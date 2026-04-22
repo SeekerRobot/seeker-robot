@@ -7,7 +7,8 @@
  * Polls local subsystem state (battery voltage, WiFi, micro-ROS, gait) at
  * ~10 Hz and picks a single RobotState by priority:
  *
- *   BOOT > LOW_BATTERY > WIFI_WAIT > MICROROS_WAIT > WALKING > STOPPING > IDLE
+ *   BOOT > LOW_BATTERY > WIFI_WAIT > MICROROS_WAIT > WALKING > STOPPING >
+ *   AUDIO_PLAYING > IDLE
  *
  * On every state transition the mapped LedSubsystem effect is re-applied.
  * When the state is unchanged the effect is left alone so LedSubsystem's
@@ -30,6 +31,7 @@
 #include <FastLED.h>
 #include <RobotConfig.h>
 #include <ThreadedSubsystem.h>
+#include <atomic>
 #include <hal_thread.h>
 
 #include "LedSubsystem.h"
@@ -60,6 +62,7 @@ enum class RobotState : uint8_t {
   MICROROS_WAIT,
   WALKING,
   STOPPING,
+  AUDIO_PLAYING,
   IDLE,
 };
 
@@ -69,6 +72,10 @@ struct StatusLedSetup : public Classes::BaseSetup {
   ESP32WifiSubsystem* wifi = nullptr;               ///< required
   MicrorosManager* manager = nullptr;               ///< required
   Gait::GaitController* gait = nullptr;             ///< optional
+  /// Optional flag watched for the AUDIO_PLAYING state. When true and the
+  /// FSM would otherwise return IDLE, the LEDs pulse cyan faster instead.
+  /// Point at SpeakerSubsystem::playing to mirror on-board speaker output.
+  const std::atomic<bool>* audio_active = nullptr;  ///< optional
 
   float low_batt_volts = 11.1f;   ///< enter LOW_BATTERY below this
   float low_batt_clear = 11.4f;   ///< leave LOW_BATTERY only above this
@@ -146,6 +153,11 @@ class StatusLedController : public Subsystem::ThreadedSubsystem {
       if (gs == Gait::GaitState::STOPPING) return RobotState::STOPPING;
     }
 
+    if (setup_.audio_active &&
+        setup_.audio_active->load(std::memory_order_acquire)) {
+      return RobotState::AUDIO_PLAYING;
+    }
+
     return RobotState::IDLE;
   }
 
@@ -162,7 +174,7 @@ class StatusLedController : public Subsystem::ThreadedSubsystem {
         setup_.leds->setEffect(LedMode::CHASE, CRGB::Red, 256);
         break;
       case RobotState::MICROROS_WAIT:
-        setup_.leds->setEffect(LedMode::PULSE, CRGB::Yellow, 128);
+        setup_.leds->setEffect(LedMode::PULSE, CRGB::Yellow, 1500);
         break;
       case RobotState::WALKING:
         setup_.leds->setEffect(LedMode::CHASE_RAINBOW, CRGB::White, 300);
@@ -170,8 +182,11 @@ class StatusLedController : public Subsystem::ThreadedSubsystem {
       case RobotState::STOPPING:
         setup_.leds->setEffect(LedMode::PULSE, CRGB(255, 80, 0), 200);
         break;
+      case RobotState::AUDIO_PLAYING:
+        setup_.leds->setEffect(LedMode::PULSE, CRGB::Orange, 1500);
+        break;
       case RobotState::IDLE:
-        setup_.leds->setEffect(LedMode::PULSE, CRGB::Cyan, 64);
+        setup_.leds->setEffect(LedMode::PULSE, CRGB::Cyan, 250);
         break;
     }
   }
