@@ -25,7 +25,7 @@ Topics
 
 Parameters
   serve_port     int   8383  HTTP port for audio (same default as tts_node — don't run both)
-  lcd_serve_port int   8384  HTTP port for OLED LCD stream
+  lcd_serve_port int   8390  HTTP port for OLED LCD stream
   threshold      int   127   greyscale → 1-bit cutoff (0-255)
   audio_lead_ms  int   0     ms to wait after audio ESP32 connects before first OLED frame
 """
@@ -129,7 +129,7 @@ class Mp4PlayerNode(Node):
         super().__init__("mp4_player")
 
         self.declare_parameter("serve_port", 8383)
-        self.declare_parameter("lcd_serve_port", 8384)
+        self.declare_parameter("lcd_serve_port", 8390)
         self.declare_parameter("threshold", 127)
         self.declare_parameter("audio_lead_ms", 0)
         self.declare_parameter("eq_bass_hz", 300.0)

@@ -47,7 +47,7 @@ Every subfolder is a PlatformIO library shared across all sketches via `lib_extr
 | `CamMicSubsystem` | Thin wrapper that runs `CameraSubsystem` and `MicSubsystem` side-by-side. |
 | `SpeakerSubsystem` | I²S speaker output; long-polls the ROS host for audio. |
 | `LedSubsystem` | SK6812 RGB LED chain with patterns (solid, pulse, chase, rainbow…). |
-| `OledSubsystem` | SSD1306 128×64 I²C display. Frame + text-overlay model (up to 4 text slots, PROGMEM bitmap frames in `OledFrames.h`), renders CPU-side into a NanoCanvas; only the final `blt()` touches I²C under the shared bus mutex. Also runs an HTTP client task (`lcdFetchTask`) that fetches framebuffers from the ROS 2 host at `GET /lcd_out` (port 8384) — no micro-ROS required for display updates. |
+| `OledSubsystem` | SSD1306 128×64 I²C display. Frame + text-overlay model (up to 4 text slots, PROGMEM bitmap frames in `OledFrames.h`), renders CPU-side into a NanoCanvas; only the final `blt()` touches I²C under the shared bus mutex. Also runs an HTTP client task (`lcdFetchTask`) that fetches framebuffers from the ROS 2 host at `GET /lcd_out` (port 8390) — no micro-ROS required for display updates. |
 | `ESP32WifiSubsystem` | WiFi connect/reconnect state machine with static IP. |
 | `BleDebugSubsystem` | BLE Nordic UART transport for debug output. |
 | `HeartbeatParticipant` | Minimal `IMicroRosParticipant` that just publishes a 1 Hz counter on `/mcu/heartbeat`. |
@@ -73,7 +73,7 @@ Flags default to `0`. Set `-DBRIDGE_ENABLE_FOO=1` in the **sketch's** `platformi
 | `BRIDGE_ENABLE_DEBUG` | Log strings | `/mcu/log` (`std_msgs/String`, event) |
 | `BRIDGE_ENABLE_SERVO` | *(reserved — stubbed)* | — |
 
-> **OLED display** is not part of the bridge. `OledSubsystem` runs its own HTTP client task that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8384, served by `seeker_display` or `seeker_media`). No micro-ROS agent is required for the OLED.
+> **OLED display** is not part of the bridge. `OledSubsystem` runs its own HTTP client task that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8390, served by `seeker_display` or `seeker_media`). No micro-ROS agent is required for the OLED.
 
 Disabled publishers cost zero RAM — the internal state struct becomes `EmptyState` via `std::conditional_t`.
 

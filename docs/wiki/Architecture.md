@@ -53,15 +53,15 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │       ◄── /map, camera feed   ──► NavigateToPose goals                      │
 │                                                                             │
 │  seeker_tts     ──► HTTP :8383 /audio_out ──► ESP32 SpeakerSubsystem         │
-│  seeker_display ──► HTTP :8384 /lcd_out   ──► ESP32 OledSubsystem           │
-│  seeker_media   ──► HTTP :8383 + :8384    ──► ESP32 speaker + OLED          │
+│  seeker_display ──► HTTP :8390 /lcd_out   ──► ESP32 OledSubsystem           │
+│  seeker_media   ──► HTTP :8383 + :8390    ──► ESP32 speaker + OLED          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Key observations:
 
 - The **micro-ROS agent runs inside the Docker container**, not on the ESP32. The firmware acts as an XRCE-DDS client. This is why you must start `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888` **before** the firmware tries to connect.
-- **Camera, mic, speaker, and OLED do not go through micro-ROS.** They are too fat for XRCE-DDS to handle on an ESP32-S3. The firmware exposes HTTP endpoints for camera (`/stream` :80) and mic (`/audio` :81), while the speaker and OLED act as HTTP *clients* that pull data from the host: `SpeakerSubsystem` fetches PCM from `:8383/audio_out` (served by `seeker_tts` or `seeker_media`), and `OledSubsystem` fetches framebuffers from `:8384/lcd_out` (served by `seeker_display` or `seeker_media`).
+- **Camera, mic, speaker, and OLED do not go through micro-ROS.** They are too fat for XRCE-DDS to handle on an ESP32-S3. The firmware exposes HTTP endpoints for camera (`/stream` :80) and mic (`/audio` :81), while the speaker and OLED act as HTTP *clients* that pull data from the host: `SpeakerSubsystem` fetches PCM from `:8383/audio_out` (served by `seeker_tts` or `seeker_media`), and `OledSubsystem` fetches framebuffers from `:8390/lcd_out` (served by `seeker_display` or `seeker_media`).
 - **TF compensation for hexapod body tilt is implicit.** The BNO085 game rotation vector feeds roll/pitch into EKF, which bakes them into `odom → base_footprint`. SLAM Toolbox then un-tilts LiDAR rays automatically when projecting into the `map` frame — no custom filter node is required.
 
 ---
@@ -177,7 +177,7 @@ Each publisher is **gated by a preprocessor flag** so disabled subsystems cost z
 | `BRIDGE_ENABLE_DEBUG=1` | `/mcu/log` (`std_msgs/String`, event-driven) |
 | `BRIDGE_ENABLE_SERVO=1` | Reserved (servo telemetry — currently stubbed) |
 
-> **OLED display** is **not** part of the bridge. `OledSubsystem` runs its own HTTP client that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8384). The host-side server is provided by `seeker_display` (demo sine wave) or `seeker_media` (MP4 playback). No micro-ROS agent is required for the OLED.
+> **OLED display** is **not** part of the bridge. `OledSubsystem` runs its own HTTP client that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8390). The host-side server is provided by `seeker_display` (demo sine wave) or `seeker_media` (MP4 playback). No micro-ROS agent is required for the OLED.
 
 When a flag is `0`, the corresponding state struct inside `MicroRosBridge` is a no-op placeholder via `std::conditional_t<..., FooPublisherState, EmptyState>` — the publisher is completely absent from the binary.
 

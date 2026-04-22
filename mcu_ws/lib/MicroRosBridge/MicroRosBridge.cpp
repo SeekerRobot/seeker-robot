@@ -119,15 +119,18 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
     lidar_.msg.ranges.data = lidar_.ranges_buf;
     lidar_.msg.ranges.size = 0;
     lidar_.msg.ranges.capacity = kLidarMaxPoints;
-    lidar_.msg.intensities.data = lidar_.intensities_buf;
+    // Intensities (LD14P return-strength) intentionally empty: nav2/AMCL don't
+    // consume them, and keeping them doubled the LaserScan payload enough to
+    // overrun the BestEffort MTU.
+    lidar_.msg.intensities.data = nullptr;
     lidar_.msg.intensities.size = 0;
-    lidar_.msg.intensities.capacity = kLidarMaxPoints;
+    lidar_.msg.intensities.capacity = 0;
 
     // Physical limits for the LD14P (metres).
     lidar_.msg.range_min = 0.02f;
     lidar_.msg.range_max = 12.0f;
 
-    rcl_ret_t rc = ctx.createPublisherReliable(
+    rcl_ret_t rc = ctx.createPublisherBestEffort(
         &lidar_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
         setup_.scan_topic);
     if (rc != RCL_RET_OK) {
@@ -292,8 +295,8 @@ void MicroRosBridge::publishAll() {
 
       // LD14P applies geometric correction so angles are not perfectly uniform;
       // compute actual bounds in a single pass while converting scan data.
-      // Stride-3 downsample: 720 pts → 240 pts (~1980 B), fits in the
-      // 2048-byte micro-ROS stream buffer (MTU=512 × STREAM_HISTORY=4).
+      // Stride-3 downsample: 720 pts → 240 pts (~1000 B ranges-only), fits
+      // comfortably within the 2048-byte BestEffort transport MTU.
       static constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
       static constexpr uint16_t kStride = 3;
       uint16_t n =
@@ -304,7 +307,6 @@ void MicroRosBridge::publishAll() {
         if (scan.angles_deg[i] < a_min) a_min = scan.angles_deg[i];
         if (scan.angles_deg[i] > a_max) a_max = scan.angles_deg[i];
         lidar_.ranges_buf[n_out] = scan.distances_mm[i] * 0.001f;  // mm → m
-        lidar_.intensities_buf[n_out] = scan.qualities[i];
       }
       lidar_.msg.angle_min = a_min * kDeg2Rad;
       lidar_.msg.angle_max = a_max * kDeg2Rad;
@@ -318,7 +320,6 @@ void MicroRosBridge::publishAll() {
       }
 
       lidar_.msg.ranges.size = n_out;
-      lidar_.msg.intensities.size = n_out;
 
       int64_t now_ns = rmw_uros_epoch_nanos();
       lidar_.msg.header.stamp.sec = (int32_t)(now_ns / 1000000000LL);

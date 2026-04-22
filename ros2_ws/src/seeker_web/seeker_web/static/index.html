@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Seeker Controller</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>SEEKER</h1>
+    <div id="status-bar">
+      <span class="pill" id="ws-pill">WS: …</span>
+      <span class="pill" id="hb-pill">HB: —</span>
+      <span class="pill" id="batt-pill">BATT: —</span>
+      <span class="pill" id="mcu-pill">MCU: —</span>
+    </div>
+    <button id="estop-btn" title="Immediate zero-velocity Twist">E-STOP</button>
+  </header>
+
+  <main>
+    <section class="panel" id="teleop-panel">
+      <h2>Teleop</h2>
+      <div class="teleop-grid">
+        <canvas id="joystick" width="240" height="240" aria-label="virtual joystick"></canvas>
+        <div class="teleop-controls">
+          <label>linear max <span id="lin-max-lbl">0.15</span> m/s
+            <input id="lin-max" type="range" min="0.01" max="0.40" step="0.01" value="0.15" />
+          </label>
+          <label>yaw max <span id="yaw-max-lbl">1.00</span> rad/s
+            <input id="yaw-max" type="range" min="0.10" max="2.00" step="0.10" value="1.00" />
+          </label>
+          <p class="kbd-hint">Keyboard: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+            &nbsp;yaw <kbd>Q</kbd><kbd>E</kbd> &nbsp;stop <kbd>Space</kbd></p>
+          <pre id="cmd-readout">vx=0.000  vy=0.000  wz=0.000</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="camera-panel">
+      <h2>Camera</h2>
+      <img id="cam-img" alt="MJPEG stream from ESP32" />
+      <p class="panel-note" id="cam-url-note"></p>
+    </section>
+
+    <section class="panel" id="imu-panel">
+      <h2>IMU</h2>
+      <table class="imu-table">
+        <tr><th>Orientation (w x y z)</th><td id="imu-ori">—</td></tr>
+        <tr><th>Angular velocity (rad/s)</th><td id="imu-ang">—</td></tr>
+        <tr><th>Linear acceleration (m/s²)</th><td id="imu-acc">—</td></tr>
+      </table>
+    </section>
+
+    <section class="panel" id="lidar-panel">
+      <h2>Lidar</h2>
+      <canvas id="lidar-canvas" width="320" height="320" aria-label="lidar polar plot"></canvas>
+    </section>
+
+    <section class="panel" id="tts-panel">
+      <h2>Speech</h2>
+      <form id="tts-form">
+        <textarea id="tts-text" rows="2" placeholder="Type and hit Speak (Fish Audio TTS)"></textarea>
+        <button type="submit">Speak</button>
+      </form>
+      <form id="wav-form">
+        <input id="wav-path" type="text" placeholder="/absolute/path/to/file.wav" />
+        <button type="submit">Play WAV</button>
+      </form>
+    </section>
+
+    <section class="panel" id="mic-panel">
+      <h2>Microphone</h2>
+      <button id="mic-btn">Play mic stream</button>
+      <p class="panel-note" id="mic-url-note"></p>
+      <audio id="mic-audio" controls preload="none"></audio>
+    </section>
+
+    <section class="panel" id="log-panel">
+      <h2>Log tail <span class="panel-sub">(/mcu/log)</span></h2>
+      <pre id="log-view" aria-live="polite"></pre>
+      <button id="log-clear">Clear</button>
+    </section>
+
+    <section class="panel" id="api-panel">
+      <h2>API reference</h2>
+      <details open>
+        <summary>REST endpoints</summary>
+        <table class="api-table">
+          <tr><th>GET</th><td><code>/api/config</code></td><td>MCU IP, cam/mic URLs, topic list</td></tr>
+          <tr><th>POST</th><td><code>/api/cmd_vel</code></td><td><code>{vx,vy,wz}</code> → <code>/cmd_vel</code> Twist</td></tr>
+          <tr><th>POST</th><td><code>/api/stop</code></td><td>publish zero Twist</td></tr>
+          <tr><th>POST</th><td><code>/api/tts</code></td><td><code>{text}</code> → <code>/audio_tts_input</code></td></tr>
+          <tr><th>POST</th><td><code>/api/play_wav</code></td><td><code>{path}</code> → <code>/audio_play_file</code></td></tr>
+        </table>
+      </details>
+      <details>
+        <summary>WebSocket <code>/ws</code></summary>
+        <p>Server → client frames: <code>status</code>, <code>imu</code>, <code>lidar</code>, <code>log</code>.</p>
+        <p>Client → server frames (same schema as REST): <code>{"type":"cmd_vel",…}</code>,
+          <code>{"type":"stop"}</code>, <code>{"type":"tts","text":…}</code>,
+          <code>{"type":"play_wav","path":…}</code>.</p>
+      </details>
+      <details>
+        <summary>Direct MCU HTTP endpoints</summary>
+        <p>These are served by the ESP32 itself, not this host. URLs come from <code>/api/config</code>:</p>
+        <table class="api-table">
+          <tr><th>GET</th><td><code>:80/cam</code></td><td>MJPEG video</td></tr>
+          <tr><th>GET</th><td><code>:81/audio</code></td><td>16 kHz 16-bit PCM mic</td></tr>
+          <tr><th>GET</th><td><code>host:8390/lcd_out</code></td><td>OLED framebuffer (host → MCU, pulled by MCU)</td></tr>
+          <tr><th>GET</th><td><code>host:8383</code></td><td>Speaker PCM (host → MCU, pulled by MCU)</td></tr>
+        </table>
+      </details>
+    </section>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

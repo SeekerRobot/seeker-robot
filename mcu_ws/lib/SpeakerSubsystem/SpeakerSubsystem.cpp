@@ -3,17 +3,23 @@
  */
 #include "SpeakerSubsystem.h"
 
-#include <MicSubsystem.h>
-
 namespace Subsystem {
 
+std::atomic<bool> SpeakerSubsystem::playing{false};
+
 bool SpeakerSubsystem::init() {
+  // I2S DMA must be claimed before WiFi/BLE fragment internal DRAM.
+  // The HTTP client that feeds it runs in update() once lwIP is up.
+  if (!initI2s()) {
+    initSuccess_ = false;
+    return false;
+  }
   initSuccess_ = true;
   return true;
 }
 
 void SpeakerSubsystem::begin() {
-  if (!initI2s()) return;
+  if (!i2s_ready_) return;
   Debug::printf(Debug::Level::INFO,
                 "[Speaker] Ready — polling http://%s:%u/audio_out",
                 setup_.host_ip_.toString().c_str(), setup_.host_port_);
@@ -38,36 +44,46 @@ void SpeakerSubsystem::pause() { deinitI2s(); }
 
 void SpeakerSubsystem::reset() {
   deinitI2s();
-  begin();
+  if (init()) begin();
 }
 
 // ---- I2S lifecycle ----------------------------------------------------------
 
 bool SpeakerSubsystem::initI2s() {
-  i2s_config_t i2s_cfg = {
-      .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-      .sample_rate = setup_.sample_rate_,
-      .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-      .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-      .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-      .dma_buf_count = kDmaBufCount,
-      .dma_buf_len = kDmaBufLen,
-      .use_apll = false,
-  };
-  i2s_pin_config_t pin_cfg = {
-      .bck_io_num = setup_.bclk_pin_,
-      .ws_io_num = setup_.lrclk_pin_,
-      .data_out_num = setup_.dout_pin_,
-      .data_in_num = I2S_PIN_NO_CHANGE,
-  };
-
-  if (i2s_driver_install(setup_.i2s_port_, &i2s_cfg, 0, NULL) != ESP_OK ||
-      i2s_set_pin(setup_.i2s_port_, &pin_cfg) != ESP_OK) {
-    Debug::printf(Debug::Level::ERROR, "[Speaker] I2S init failed");
+  i2s_chan_config_t chan_cfg =
+      I2S_CHANNEL_DEFAULT_CONFIG(setup_.i2s_port_, I2S_ROLE_MASTER);
+  chan_cfg.dma_desc_num = kDmaBufCount;
+  chan_cfg.dma_frame_num = kDmaBufLen;
+  // auto_clear: DMA fills with zeros on underrun, so playback tail is silence
+  // instead of the last sample repeating. Replaces i2s_zero_dma_buffer().
+  chan_cfg.auto_clear = true;
+  if (i2s_new_channel(&chan_cfg, &tx_handle_, nullptr) != ESP_OK) {
+    Debug::printf(Debug::Level::ERROR, "[Speaker] i2s_new_channel failed");
     return false;
   }
-  i2s_zero_dma_buffer(setup_.i2s_port_);
+
+  i2s_std_config_t std_cfg = {
+      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(setup_.sample_rate_),
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                      I2S_SLOT_MODE_MONO),
+      .gpio_cfg =
+          {
+              .mclk = I2S_GPIO_UNUSED,
+              .bclk = static_cast<gpio_num_t>(setup_.bclk_pin_),
+              .ws = static_cast<gpio_num_t>(setup_.lrclk_pin_),
+              .dout = static_cast<gpio_num_t>(setup_.dout_pin_),
+              .din = I2S_GPIO_UNUSED,
+              .invert_flags = {},
+          },
+  };
+
+  if (i2s_channel_init_std_mode(tx_handle_, &std_cfg) != ESP_OK ||
+      i2s_channel_enable(tx_handle_) != ESP_OK) {
+    Debug::printf(Debug::Level::ERROR, "[Speaker] I2S init failed");
+    i2s_del_channel(tx_handle_);
+    tx_handle_ = nullptr;
+    return false;
+  }
   i2s_ready_ = true;
   Debug::printf(Debug::Level::INFO,
                 "[Speaker] I2S init OK (%u Hz, BCLK=%d, LRCLK=%d, DOUT=%d)",
@@ -78,7 +94,9 @@ bool SpeakerSubsystem::initI2s() {
 
 void SpeakerSubsystem::deinitI2s() {
   if (i2s_ready_) {
-    i2s_driver_uninstall(setup_.i2s_port_);
+    i2s_channel_disable(tx_handle_);
+    i2s_del_channel(tx_handle_);
+    tx_handle_ = nullptr;
     i2s_ready_ = false;
   }
 }
@@ -124,47 +142,41 @@ bool SpeakerSubsystem::fetchAndPlay() {
 
   // Persistent stream — read chunked data until the connection drops.
   // Each chunk from the TTS server is one complete TTS utterance.
-  bool playing = false;
+  bool is_playing = false;
   while (true) {
     int read = esp_http_client_read(client, reinterpret_cast<char*>(buf),
                                     setup_.chunk_size_);
     if (read < 0) break;   // error
     if (read == 0) break;  // server closed connection
 
-    // Mute mic on first data of a new utterance.
-    if (!playing) {
-      playing = true;
-      if (setup_.mic_) {
-        setup_.mic_->pause();
-        Debug::printf(Debug::Level::INFO, "[Speaker] Mic paused");
-      }
+    if (!is_playing) {
+      is_playing = true;
+      playing.store(true, std::memory_order_release);
       Debug::printf(Debug::Level::INFO, "[Speaker] Playback started");
     }
 
     size_t written = 0;
-    i2s_write(setup_.i2s_port_, buf, read, &written, portMAX_DELAY);
+    i2s_channel_write(tx_handle_, buf, read, &written, portMAX_DELAY);
   }
 
   free(buf);
 
-  if (playing) {
-    // i2s_write() returns once data is in the DMA ring buffer, not after it
-    // has played out. Wait for the full pipeline to drain before zeroing,
-    // otherwise the tail of the audio is silenced mid-playback.
+  if (is_playing) {
+    // i2s_channel_write() returns once data is in the DMA ring buffer, not
+    // after it has played out. Wait for the full pipeline to drain;
+    // auto_clear keeps the tail as silence instead of a repeating sample.
+    // Hold `playing` high for the drain so the mic stays muted until the
+    // last sample has physically left the amp.
     const uint32_t drain_ms =
         (kDmaBufCount * kDmaBufLen * 1000u) / setup_.sample_rate_ + 50u;
     vTaskDelay(pdMS_TO_TICKS(drain_ms));
-    i2s_zero_dma_buffer(setup_.i2s_port_);
+    playing.store(false, std::memory_order_release);
     Debug::printf(Debug::Level::INFO, "[Speaker] Playback finished");
-    if (setup_.mic_) {
-      setup_.mic_->reset();
-      Debug::printf(Debug::Level::INFO, "[Speaker] Mic resumed");
-    }
   }
 
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
-  return playing;
+  return is_playing;
 }
 
 }  // namespace Subsystem

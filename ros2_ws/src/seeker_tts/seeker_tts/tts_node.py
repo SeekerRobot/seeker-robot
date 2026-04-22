@@ -11,7 +11,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool, String
 
 try:
     import requests
@@ -122,6 +123,23 @@ class TtsNode(Node):
         # File playback drops if the queue is full (TTS has priority).
         self._audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=1)
 
+        # Edge-triggered "speaker is currently emitting audio" signal. Host-
+        # side mic consumers (seeker_web → browser mic element) subscribe and
+        # mute while this is true. TRANSIENT_LOCAL + depth 1 so a late-joining
+        # subscriber gets the current state immediately rather than waiting
+        # for the next edge.
+        self._speaker_active_lock = threading.Lock()
+        self._speaker_active = False
+        speaker_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._speaker_active_pub = self.create_publisher(
+            Bool, "/audio_speaker_active", speaker_qos
+        )
+        self._publish_speaker_active(False)
+
         self._start_http_server()
 
         self._tts_sub = self.create_subscription(
@@ -134,6 +152,17 @@ class TtsNode(Node):
             f"TTS node ready — /audio_tts_input (TTS), /audio_play_file (WAV), "
             f"serving on :{self._serve_port}/audio_out"
         )
+
+    # ---- Speaker-active edge publisher ---------------------------------------
+
+    def _publish_speaker_active(self, active: bool):
+        with self._speaker_active_lock:
+            if self._speaker_active == active:
+                return
+            self._speaker_active = active
+        msg = Bool()
+        msg.data = active
+        self._speaker_active_pub.publish(msg)
 
     # ---- TTS callback --------------------------------------------------------
 
@@ -149,6 +178,9 @@ class TtsNode(Node):
             return
 
         pcm = _apply_lowshelf(pcm, self._sample_rate, self._eq_bass_hz, self._eq_bass_db)
+        # Flip the mute gate BEFORE the put so any in-flight /audio_out poll
+        # that wins the race sees active=True before it starts streaming.
+        self._publish_speaker_active(True)
         # Blocking put — waits until previous audio is consumed.
         self._audio_queue.put(pcm)
 
@@ -172,6 +204,8 @@ class TtsNode(Node):
             self.get_logger().warn(
                 f"Dropped file playback — TTS audio still streaming"
             )
+            return
+        self._publish_speaker_active(True)
 
     # ---- Fish Audio TTS ------------------------------------------------------
 
@@ -317,6 +351,9 @@ class TtsNode(Node):
                 try:
                     data = node._audio_queue.get(timeout=25)
                 except queue.Empty:
+                    # Confirm idle state — no pending clip means the mic gate
+                    # should be off. Cheap no-op when already false.
+                    node._publish_speaker_active(False)
                     self.send_response(204)
                     self.end_headers()
                     return
@@ -336,6 +373,12 @@ class TtsNode(Node):
                     node.get_logger().warn(
                         "Client disconnected mid-playback; clip lost"
                     )
+                finally:
+                    # Only lower the gate when the queue is empty — otherwise
+                    # the next clip will re-raise it within ms, causing the
+                    # mic to flicker unmuted between back-to-back utterances.
+                    if node._audio_queue.empty():
+                        node._publish_speaker_active(False)
 
             def log_message(self, format, *args):
                 node.get_logger().debug(format % args)

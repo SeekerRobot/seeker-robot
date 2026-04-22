@@ -99,7 +99,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
       color = effect_color_;
       speed = effect_speed_;
       brightness = global_brightness_;
-      memcpy(colors_snap, colors_, total_leds_ * sizeof(CRGB));
+      ::memcpy(colors_snap, colors_, total_leds_ * sizeof(CRGB));
     }
 
     FastLED.setBrightness(brightness);
@@ -110,7 +110,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
         break;
 
       case LedMode::SOLID:
-        memcpy(leds_, colors_snap, total_leds_ * sizeof(CRGB));
+        ::memcpy(leds_, colors_snap, total_leds_ * sizeof(CRGB));
         break;
 
       case LedMode::PULSE: {
@@ -159,7 +159,7 @@ class LedSubsystem : public Subsystem::ThreadedSubsystem {
     // Copy render buffer → display buffer, then show.
     // FastLED's async DMA reads display_[] while the next frame renders into
     // leds_[].
-    memcpy(display_, leds_, total_leds_ * sizeof(CRGB));
+    ::memcpy(display_, leds_, total_leds_ * sizeof(CRGB));
     FastLED.show();
   }
 

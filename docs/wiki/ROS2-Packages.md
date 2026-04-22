@@ -25,7 +25,7 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 **Messages** (`msg/`):
 
 - `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT` / `DANCE`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner or the vision node (DANCE on target detection).
-- `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, page-major, 8 pages) framebuffer for the onboard OLED. Used by `seeker_display` and `seeker_media` to generate frames; the ESP32 receives them via plain HTTP (`GET /lcd_out` on port 8384), not via micro-ROS.
+- `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, page-major, 8 pages) framebuffer for the onboard OLED. Used by `seeker_display` and `seeker_media` to generate frames; the ESP32 receives them via plain HTTP (`GET /lcd_out` on port 8390), not via micro-ROS.
 - `ExampleMsg.msg` — scaffolding example.
 
 **Services** (`srv/`):
@@ -44,7 +44,7 @@ colcon build --packages-select mcu_msgs
 
 **Build type:** `ament_python`
 
-OLED display nodes and the shared HTTP LCD server used by `seeker_media`. The ESP32 `OledSubsystem` connects as an HTTP client to `GET /lcd_out` on port 8384 and reads 1024-byte SSD1306 framebuffers continuously — no micro-ROS agent required.
+OLED display nodes and the shared HTTP LCD server used by `seeker_media`. The ESP32 `OledSubsystem` connects as an HTTP client to `GET /lcd_out` on port 8390 and reads 1024-byte SSD1306 framebuffers continuously — no micro-ROS agent required.
 
 **Nodes:**
 
@@ -58,7 +58,7 @@ OLED display nodes and the shared HTTP LCD server used by `seeker_media`. The ES
 
 | Parameter | Default | Notes |
 |---|---|---|
-| `lcd_serve_port` | `8384` | HTTP port for the LCD stream |
+| `lcd_serve_port` | `8390` | HTTP port for the LCD stream |
 
 ```bash
 colcon build --packages-select seeker_display
@@ -137,14 +137,14 @@ MP4 media player node. Decodes video to 128×64 SSD1306 framebuffers served over
 
 **Nodes:**
 
-- `mp4_player` (`seeker_media/mp4_player_node.py`) — subscribes to `/media/play` (`std_msgs/String`, absolute file path) to trigger playback and `/media/stop` (`std_msgs/Empty`) to abort. Video frames are dithered to 1-bit and served via the LCD HTTP server on port 8384. Audio is extracted via `ffmpeg`, optionally EQ'd with a low-shelf filter, and served on port 8383 (same port as `seeker_tts` — don't run both simultaneously). The video pipeline blocks until the ESP32 audio client connects so the first frame and first audio byte arrive together.
+- `mp4_player` (`seeker_media/mp4_player_node.py`) — subscribes to `/media/play` (`std_msgs/String`, absolute file path) to trigger playback and `/media/stop` (`std_msgs/Empty`) to abort. Video frames are dithered to 1-bit and served via the LCD HTTP server on port 8390. Audio is extracted via `ffmpeg`, optionally EQ'd with a low-shelf filter, and served on port 8383 (same port as `seeker_tts` — don't run both simultaneously). The video pipeline blocks until the ESP32 audio client connects so the first frame and first audio byte arrive together.
 
 **Parameters:**
 
 | Parameter | Default | Notes |
 |---|---|---|
 | `serve_port` | `8383` | HTTP port for audio (shared with `seeker_tts`) |
-| `lcd_serve_port` | `8384` | HTTP port for OLED LCD stream |
+| `lcd_serve_port` | `8390` | HTTP port for OLED LCD stream |
 | `threshold` | `127` | Greyscale → 1-bit cutoff (0–255) |
 | `audio_lead_ms` | `0` | ms to delay video after audio connects (compensates for I2S DMA latency) |
 | `eq_bass_hz` | `300.0` | Low-shelf EQ corner frequency |

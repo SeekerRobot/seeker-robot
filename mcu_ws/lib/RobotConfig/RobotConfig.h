@@ -22,7 +22,7 @@ constexpr static int rx = D7;
 constexpr static int spk_bclk = D8;   // I2S1 bit clock (SPI SCK)
 constexpr static int spk_lrclk = D9;  // I2S1 word select (SPI MISO)
 constexpr static int spk_dout = D10;  // I2S1 data out (SPI MOSI)
-constexpr static int gyro_addr = 0x4A;
+constexpr static int gyro_addr = 0x4B;
 constexpr static uint8_t pca_addr = 0x40;
 constexpr static uint8_t oled_addr = 0x3C;
 // Onboard PDM microphone (MSM261D3526H1CPM)
@@ -42,6 +42,16 @@ constexpr static int rx = 16;    // UART2 RX
 constexpr static int gyro_addr = 0x4B;
 constexpr static uint8_t pca_addr = 0x40;
 constexpr static uint8_t oled_addr = 0x3C;
+#endif
+
+#ifdef ENV_ESP32CAM
+// AI-Thinker ESP32-CAM — camera occupies most pins (see camera macro block
+// below). Gyro uses the SD-slot pins, which only works if the microSD slot is
+// unpopulated. ENABLE_MIC must stay 0 — no PDM hardware on this board.
+constexpr static int sda = 15;          // BNO085 I2C SDA (SD_CMD when SD used)
+constexpr static int scl = 14;          // BNO085 I2C SCL (SD_CLK when SD used)
+constexpr static int gyro_int = 13;     // BNO085 INT (SD_DAT3 when SD used)
+constexpr static int gyro_addr = 0x4B;  // BNO085 dev board has ADDR pulled high
 #endif
 
 // ---------------------------------------------------------------------------

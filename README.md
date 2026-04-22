@@ -127,9 +127,9 @@ seeker-robot/
 |---------|---------|
 | `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg` with STAND/WALK/SIT/DANCE modes, `OledFrame.msg`) |
 | `seeker_description` | URDF/Xacro hexapod model, `display.launch.py` for RViz |
-| `seeker_display` | OLED display nodes: `oled_sine_node` (animated demo) + `lcd_http_server` (HTTP framebuffer server on port 8384 for the ESP32 OLED) |
+| `seeker_display` | OLED display nodes: `oled_sine_node` (animated demo) + `lcd_http_server` (HTTP framebuffer server on port 8390 for the ESP32 OLED) |
 | `seeker_gazebo` | Gazebo Harmonic simulation, sensor bridges, simulation launch files |
-| `seeker_media` | MP4 player: decodes video → OLED framebuffers (HTTP :8384) + audio → PCM stream (HTTP :8383), with A/V sync |
+| `seeker_media` | MP4 player: decodes video → OLED framebuffers (HTTP :8390) + audio → PCM stream (HTTP :8383), with A/V sync |
 | `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` mission planner, real robot launch |
 | `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
 | `seeker_tts` | Fish Audio TTS + local WAV file playback, re-served as a chunked HTTP PCM stream for the ESP32 speaker |
@@ -144,7 +144,7 @@ seeker-robot/
 |--------|---------|
 | `test_bridge_all` | All sensor publishers (heartbeat, IMU, battery, LiDAR, debug) + I2S speaker + OLED HTTP display. Use for SLAM/navigation testing. |
 | `test_bridge_gait` | Gait + micro-ROS. Subscribes to `/cmd_vel` for walking. No sensor publishing. |
-| `test_bridge_oled` | WiFi + OLED HTTP streaming test (no micro-ROS). Fetches framebuffers from host at `AGENT_IP:8384/lcd_out`. |
+| `test_bridge_oled` | WiFi + OLED HTTP streaming test (no micro-ROS). Fetches framebuffers from host at `AGENT_IP:8390/lcd_out`. |
 | `test_bridge_media` | Placeholder for media bridge test (platformio.ini only, no source yet). |
 | `test_all` | Full integration: micro-ROS bridge + camera + mic + speaker + OLED, all running concurrently. |
 | `build_microros` | Placeholder sketch for pre-building the micro-ROS library. |

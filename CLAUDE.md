@@ -14,7 +14,7 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `seeker_gazebo` — Gazebo Harmonic simulation, sensor bridges, and simulation launch files.
   - `seeker_navigation` — Nav2, SLAM Toolbox, EKF configs, and `ball_searcher` mission planner.
   - `seeker_sim` — `fake_mcu_node`: simulates ESP32 gait for testing without hardware.
-  - `seeker_display` — OLED display nodes: `oled_sine_node` (animated sine wave demo) and `lcd_http_server` (shared helper that serves SSD1306 framebuffers over HTTP on port 8384 for the ESP32 `OledSubsystem`).
+  - `seeker_display` — OLED display nodes: `oled_sine_node` (animated sine wave demo) and `lcd_http_server` (shared helper that serves SSD1306 framebuffers over HTTP on port 8390 for the ESP32 `OledSubsystem`).
   - `seeker_media` — MP4 media player node (`mp4_player_node`): decodes video to 128×64 SSD1306 framebuffers streamed over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync.
   - `seeker_tts` — Fish Audio TTS node plus a local-WAV playback topic, both re-served as an HTTP PCM stream for the ESP32 `SpeakerSubsystem`.
   - `seeker_vision` — YOLO object detection (`vision_node`, `gazebo_vision_node`), DeepFace emotion detection (`emotion_node`), and an MJPEG camera proxy (`cam_proxy`) that bridges the ESP32 camera stream to localhost. Three launch files: `mcu_cam.launch.py` (ESP32 camera via proxy), `gazebo_cam.launch.py` (Gazebo `/camera/image`), `local_cam.launch.py` (host webcam).
@@ -124,7 +124,7 @@ The manager runs a 4-state reconnection machine: `WAITING_AGENT → AGENT_AVAILA
 ### MicroRosBridge — compile-time plugin pattern (`mcu_ws/lib/MicroRosBridge/`)
 `MicroRosBridge` implements `IMicroRosParticipant` and is the sole owner of all hardware publishers. Non-ROS-aware subsystems (gyro, battery, lidar) expose thread-safe getters; the bridge reads them and publishes at configured rates.
 
-Each publisher is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEARTBEAT`, `BRIDGE_ENABLE_GYRO`, `BRIDGE_ENABLE_BATTERY`, `BRIDGE_ENABLE_SERVO`, `BRIDGE_ENABLE_LIDAR`, `BRIDGE_ENABLE_DEBUG`. Disabled publishers cost zero RAM — the state struct becomes an `EmptyState` placeholder via `std::conditional_t`. The OLED display is **not** part of the bridge — `OledSubsystem` runs its own HTTP client that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8384, served by `seeker_display` or `seeker_media`). To add a new subsystem publisher:
+Each publisher is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEARTBEAT`, `BRIDGE_ENABLE_GYRO`, `BRIDGE_ENABLE_BATTERY`, `BRIDGE_ENABLE_SERVO`, `BRIDGE_ENABLE_LIDAR`, `BRIDGE_ENABLE_DEBUG`. Disabled publishers cost zero RAM — the state struct becomes an `EmptyState` placeholder via `std::conditional_t`. The OLED display is **not** part of the bridge — `OledSubsystem` runs its own HTTP client that fetches 1024-byte SSD1306 framebuffers from the ROS 2 host at `GET /lcd_out` (port 8390, served by `seeker_display` or `seeker_media`). To add a new subsystem publisher:
 
 1. Add `#ifndef BRIDGE_ENABLE_FOO / #define BRIDGE_ENABLE_FOO 0` in `MicroRosBridge.h`
 2. Conditionally include the subsystem header and define `FooPublisherState`

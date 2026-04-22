@@ -14,6 +14,14 @@
 #include <hal_thread.h>
 #include <sh2.h>
 
+// Boards where the BNO INT line isn't wired (e.g., ESP32-CAM satellite with
+// all GPIOs spoken for by the camera) build with -DGYRO_USE_INT=0. update()
+// then polls the chip on the ThreadedSubsystem cadence — callers MUST pass a
+// non-zero updateDelayMs (~5 ms for 200 Hz headroom) to beginThreadedPinned.
+#ifndef GYRO_USE_INT
+#define GYRO_USE_INT 1
+#endif
+
 namespace Subsystem {
 
 struct ImuData {
@@ -32,15 +40,26 @@ class GyroSetup : public Classes::BaseSetup {
   /// @param wire TwoWire Wire bus.
   /// @param addr BNO085 Address.
   /// @param int_pin Interrupt pin used (required)
-  GyroSetup(TwoWire& wire, uint8_t addr, int8_t int_pin)
+  /// @param sda_pin Optional SDA pin. Pass -1 (default) to let Wire use the
+  ///                board's default SDA. Required on boards whose default
+  ///                Wire pins collide with other peripherals (ESP32-CAM
+  ///                defaults to GPIO21 = camera Y5, so pass Config::sda
+  ///                there).
+  /// @param scl_pin Optional SCL pin. Same semantics as sda_pin.
+  GyroSetup(TwoWire& wire, uint8_t addr, int8_t int_pin, int8_t sda_pin = -1,
+            int8_t scl_pin = -1)
       : Classes::BaseSetup("GyroSubsystem"),
         wire_(wire),
         addr_(addr),
-        int_pin_(int_pin) {}
+        int_pin_(int_pin),
+        sda_pin_(sda_pin),
+        scl_pin_(scl_pin) {}
 
   TwoWire& wire_;
   uint8_t addr_;
   int8_t int_pin_;
+  int8_t sda_pin_;
+  int8_t scl_pin_;
 };
 
 class GyroSubsystem : public Subsystem::ThreadedSubsystem {
@@ -68,13 +87,47 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
   ///        Safe to call from any task (e.g., the microROS manager task).
   ImuData getImuData() const;
 
+  /// @brief Count of intISR invocations since boot. Lets external code
+  ///        confirm the INT line is actually firing without touching
+  ///        update() — handy after the pioarduino/IDF migration.
+  ///        Always 0 when built with GYRO_USE_INT=0.
+  uint32_t getIsrCount() const {
+#if GYRO_USE_INT
+    return isr_count_;
+#else
+    return 0;
+#endif
+  }
+
+  /// @brief Current logic level on the BNO INT pin. BNO drives LOW when a
+  ///        report is queued; returns HIGH when the bus has been drained.
+  ///        Returns -1 when built with GYRO_USE_INT=0 (pin not in use).
+  int readIntPin() const {
+#if GYRO_USE_INT
+    return digitalRead(setup_.int_pin_);
+#else
+    return -1;
+#endif
+  }
+
+  /// @brief Diagnostic: poll the BNO once without waiting on the semaphore.
+  ///        Returns the number of sensor events drained this call. If this
+  ///        returns >0 while getIsrCount() stays at 0, the chip is producing
+  ///        data but the INT line isn't reaching the MCU pin.
+  int pollOnce();
+
  private:
   // Constructor moved to private to prevent multiple creations
   explicit GyroSubsystem(const GyroSetup& setup, Threads::Mutex& i2c_mutex)
       : ThreadedSubsystem(setup),
         setup_(setup),
-        i2c_mutex_(i2c_mutex),
-        int_semaphore_(xSemaphoreCreateBinary()) {}
+        i2c_mutex_(i2c_mutex)
+#if GYRO_USE_INT
+        ,
+        int_semaphore_(xSemaphoreCreateBinary())
+#endif
+  {
+  }
 
   const GyroSetup setup_;
   Threads::Mutex& i2c_mutex_;
@@ -85,10 +138,15 @@ class GyroSubsystem : public Subsystem::ThreadedSubsystem {
 
   Adafruit_BNO08x bno08x_;
   ImuData imu_data_ = {};
+#if GYRO_USE_INT
   SemaphoreHandle_t int_semaphore_;
+  volatile uint32_t isr_count_ = 0;
+#endif
   elapsedMillis since_last_log_;
 
+#if GYRO_USE_INT
   static void IRAM_ATTR intISR(void* arg);
+#endif
 
   /// @brief Set the BNO085 reports.
   void setReports();
