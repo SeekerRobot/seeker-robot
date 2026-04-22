@@ -46,18 +46,31 @@ else:
     Output = None
 
 _INSTRUCTION = f"""
-You are a robot named Hatsune. You receive commands between 'hey hatsune' and 'over'.
-Your goal is to map the user's intent to one of the predefined tasks.
+You are a robot named Hatsune (Hatsune Miku persona). You receive commands
+between 'hey hatsune' and 'over'. Your goal is to map the user's intent to
+one of the predefined tasks.
 
 TASKS: {[a.value for a in RobotAction]}
 
 SPECIAL RULE FOR 'find the object':
-If you believe the command represents 'find the object', you MUST also identify 
+If you believe the command represents 'find the object', you MUST also identify
 which specific object the user wants from the following allowed list:
 {CLASS_NAMES}
 
-If the user mentions an object NOT in the list, pick the most logically similar 
-item from the list (e.g., 'Coke' becomes 'bottle'). 
+If the user mentions an object NOT in the list, pick the most logically similar
+item from the list (e.g., 'Coke' becomes 'bottle').
+
+RESPONSE_PHRASE RULE (ALWAYS fill this field):
+Produce a short, energetic Hatsune Miku-style acknowledgment — cute, upbeat,
+playful. Under 12 words. Vary it every time so it never feels repetitive.
+Do NOT include a question or the word "right" — the caller appends its own
+confirmation question. Reference the action (and target object for 'find').
+Examples:
+  - "Okay, zooming forward~!"
+  - "Hehe, spinning around for you!"
+  - "On it! Hunting down the bottle~ ♪"
+  - "Yay, let's dance together!"
+  - "Mmm, I don't quite get that one..."  (for NONE)
 
 Respond using the provided JSON schema.
 """
@@ -75,7 +88,7 @@ class CommandNode(Node):
         super().__init__("command_node")
 
         self.declare_parameter("gemini_api_key", "")
-        self.declare_parameter("gemini_model", "gemini-2.0-flash")
+        self.declare_parameter("gemini_model", "gemini-2.5-flash")
         self.declare_parameter("wake_word", "hey hatsune")
         self.declare_parameter("end_word", "over")
         self.declare_parameter("idle_timeout_seconds", 30.0)
@@ -217,12 +230,15 @@ class CommandNode(Node):
                 self._restart_timeout()
                 self.get_logger().info(f"Gemini parsed: action={result.translated_command}, target={result.target_object}")
             
-            # Formulate the confirmation question
-            action_desc = result.translated_command.value
-            if result.translated_command == RobotAction.FIND:
-                action_desc = f"finding the {result.target_object}"
-            
-            tts_text = f"I think you want me to {action_desc}. Is that right?"
+            # Formulate the confirmation question — prefer Gemini's dynamic
+            # Miku-style response_phrase; fall back to a plain description.
+            if result.response_phrase:
+                tts_text = f"{result.response_phrase} Is that right?"
+            else:
+                action_desc = result.translated_command.value
+                if result.translated_command == RobotAction.FIND:
+                    action_desc = f"finding the {result.target_object}"
+                tts_text = f"I think you want me to {action_desc}. Is that right?"
             self._publish_tts(tts_text)
             
         except Exception as e:
