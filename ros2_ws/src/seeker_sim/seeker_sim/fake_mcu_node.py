@@ -37,6 +37,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64
+from mcu_msgs.msg import HexapodCmd
 
 # ── Gait tuning ───────────────────────────────────────────────────────────────
 
@@ -78,6 +79,11 @@ LEG_SIDE = [1, -1, 1, -1, 1, -1]
 GROUP_A = [0, 3, 4]   # FL, MR, RL
 GROUP_B = [1, 2, 5]   # FR, ML, RR
 
+# Dance: override /cmd_vel with a yaw oscillation so the hexapod spins in place
+DANCE_DURATION = 3.0              # seconds
+DANCE_WZ_AMPLITUDE = 1.2           # rad/s peak
+DANCE_WZ_FREQ = 1.0                # Hz
+
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 
@@ -91,6 +97,10 @@ class FakeMcuNode(Node):
         self._wz = 0.0
         self._vz = 0.0
         self._neutral_knee = NEUTRAL_KNEE   # adjustable at runtime via t/b keys
+
+        # Dance override: when active, ignore /cmd_vel wz and oscillate yaw
+        self._dance_until = 0.0     # wall-clock-style node time; 0 = not dancing
+        self._dance_start = 0.0
 
         # Per-leg gait phase ∈ [0, 1)
         self._phase = [0.0 if i in GROUP_A else 0.5 for i in range(6)]
@@ -106,6 +116,7 @@ class FakeMcuNode(Node):
 
 
         self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, 10)
+        self.create_subscription(HexapodCmd, '/mcu/hexapod_cmd', self._hexapod_cmd_cb, 10)
 
         self._last_t = self.get_clock().now().nanoseconds * 1e-9
         self.create_timer(1.0 / 100, self._update)
@@ -118,12 +129,29 @@ class FakeMcuNode(Node):
         self._wz = msg.angular.z
         self._vz = msg.linear.z
 
+    def _hexapod_cmd_cb(self, msg: HexapodCmd):
+        if msg.mode == HexapodCmd.MODE_DANCE:
+            now = self.get_clock().now().nanoseconds * 1e-9
+            self._dance_start = now
+            self._dance_until = now + DANCE_DURATION
+            self.get_logger().info(f'fake_mcu: dancing for {DANCE_DURATION:.1f}s')
+        else:
+            # Any other gait command cancels the dance
+            self._dance_until = 0.0
+
     def _update(self):
         now = self.get_clock().now().nanoseconds * 1e-9
         dt  = min(max(now - self._last_t, 0.0), 0.1)
         self._last_t = now
 
         vx, wz = self._vx, self._wz
+        if self._dance_until > 0.0:
+            if now < self._dance_until:
+                phase = 2.0 * math.pi * DANCE_WZ_FREQ * (now - self._dance_start)
+                vx = 0.0
+                wz = DANCE_WZ_AMPLITUDE * math.sin(phase)
+            else:
+                self._dance_until = 0.0
         moving = (abs(vx) + abs(self._vy) + abs(wz)) > DEAD_BAND
 
         # t/b keys → linear.z: positive = raise body (decrease knee angle),

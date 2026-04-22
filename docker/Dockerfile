@@ -126,6 +126,15 @@ RUN pip install --break-system-packages \
     deepface \
     tf-keras
 
+# Voice pipeline dependencies (seeker_voice package)
+# faster-whisper: on-device speech-to-text (Whisper via CTranslate2)
+# google-genai: Gemini API client for intent classification
+# sounddevice: local microphone capture (local_mic.launch.py mode)
+RUN pip install --break-system-packages \
+    faster-whisper \
+    google-genai \
+    sounddevice
+
 COPY scripts/register_cuda_libs.py /tmp/register_cuda_libs.py
 RUN python3 /tmp/register_cuda_libs.py && ldconfig
 

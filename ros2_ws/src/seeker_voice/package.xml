@@ -1,24 +1,16 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>seeker_sim</name>
+  <name>seeker_voice</name>
   <version>1.0.0</version>
-  <description>
-    Simulation stand-in for the Seeker hexapod MCU.
-    fake_mcu_node re-implements the tripod gait in Python, publishing
-    /mcu/joint_states and commanding Gazebo joints so the full ROS 2 stack
-    can be tested without hardware.
-  </description>
+  <description>Voice command pipeline: ESP32/local mic → Whisper transcription → Gemini intent classification → TTS</description>
   <maintainer email="todo@todo.com">seeker</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
-  <exec_depend>mcu_msgs</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
