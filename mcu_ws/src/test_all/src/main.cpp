@@ -149,17 +149,28 @@ static constexpr char kSafeModeReason[] = "last_reason";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
   switch (r) {
-    case ESP_RST_POWERON:   return "POWERON";
-    case ESP_RST_EXT:       return "EXT_RESET";
-    case ESP_RST_SW:        return "SW_RESTART";
-    case ESP_RST_PANIC:     return "PANIC";
-    case ESP_RST_INT_WDT:   return "INT_WDT";
-    case ESP_RST_TASK_WDT:  return "TASK_WDT";
-    case ESP_RST_WDT:       return "WDT";
-    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-    case ESP_RST_BROWNOUT:  return "BROWNOUT";
-    case ESP_RST_SDIO:      return "SDIO";
-    default:                return "UNKNOWN";
+    case ESP_RST_POWERON:
+      return "POWERON";
+    case ESP_RST_EXT:
+      return "EXT_RESET";
+    case ESP_RST_SW:
+      return "SW_RESTART";
+    case ESP_RST_PANIC:
+      return "PANIC";
+    case ESP_RST_INT_WDT:
+      return "INT_WDT";
+    case ESP_RST_TASK_WDT:
+      return "TASK_WDT";
+    case ESP_RST_WDT:
+      return "WDT";
+    case ESP_RST_DEEPSLEEP:
+      return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:
+      return "BROWNOUT";
+    case ESP_RST_SDIO:
+      return "SDIO";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -254,8 +265,8 @@ static void safeModeScheduleClear() {
     uint32_t now = millis();
     if (now - last_status >= 5000) {
       last_status = now;
-      String wifi_str = wifi.isConnected() ? wifi.getLocalIP().toString()
-                                           : String("waiting");
+      String wifi_str =
+          wifi.isConnected() ? wifi.getLocalIP().toString() : String("waiting");
       Debug::printf(Debug::Level::ERROR,
                     "[SafeMode] boot=%u reason=%s prev=%s wifi=%s — OTA or "
                     "`nc -u <ip> %u` to recover",
@@ -333,8 +344,8 @@ static void logTaskStackHighWater() {
   for (size_t i = 0; i < s_stack_track_count; i++) {
     const auto& t = s_stack_tracks[i];
     uint32_t free_bytes = uxTaskGetStackHighWaterMark(t.handle);
-    uint32_t used = t.reserved_bytes > free_bytes ? t.reserved_bytes - free_bytes
-                                                  : 0;
+    uint32_t used =
+        t.reserved_bytes > free_bytes ? t.reserved_bytes - free_bytes : 0;
     Debug::printf(Debug::Level::INFO,
                   "[StackHWM] %-10s  used=%5u / reserved=%5u B  free=%5u",
                   t.name, (unsigned)used, (unsigned)t.reserved_bytes,
@@ -357,8 +368,7 @@ static void pbufWatchdogTask(void*) {
     uint32_t now = millis();
     if ((dma_largest < 8192 || int_free < 20000) &&
         now - last_low_log_ms > 500) {
-      Debug::printf(Debug::Level::WARN,
-                    "[PBUF-LOW] dma_largest=%u int_free=%u",
+      Debug::printf(Debug::Level::WARN, "[PBUF-LOW] dma_largest=%u int_free=%u",
                     (unsigned)dma_largest, (unsigned)int_free);
       last_low_log_ms = now;
     }
@@ -522,9 +532,10 @@ void setup() {
   // (~10 KB internal DRAM funcs table) can allocate contiguous memory while
   // internal DRAM is still whole. Deferring to end-of-setup() causes
   // `BLE_INIT: Malloc failed / esp_bt_controller_init -2`.
-  // NimBLE host allocations go to PSRAM via CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL.
-  // Non-fatal: a failed init is logged and ignored so the safe-mode counter
-  // still clears on the 10 s stable-run timer at the end of setup().
+  // NimBLE host allocations go to PSRAM via
+  // CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL. Non-fatal: a failed init is
+  // logged and ignored so the safe-mode counter still clears on the 10 s
+  // stable-run timer at the end of setup().
   auto& ble = Subsystem::BleDebugSubsystem::getInstance(ble_setup);
   if (!ble.init()) {
     Debug::printf(Debug::Level::WARN,
@@ -735,7 +746,8 @@ void loop() {
   size_t heap_dma_largest = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
   size_t heap_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   size_t heap_psram_min = heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
-  size_t heap_psram_largest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  size_t heap_psram_largest =
+      heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
 
   if (wifi.isConnected()) {
     Debug::printf(
@@ -744,9 +756,8 @@ void loop() {
         "heap_int=%u min=%u  dma=%u largest=%u  psram=%u min=%u largest=%u",
         manager.getStateStr(), wifi.getLocalIP().toString().c_str(),
         wifi.getRSSI(), (unsigned)heap_int, (unsigned)heap_int_min,
-        (unsigned)heap_dma, (unsigned)heap_dma_largest,
-        (unsigned)heap_psram, (unsigned)heap_psram_min,
-        (unsigned)heap_psram_largest);
+        (unsigned)heap_dma, (unsigned)heap_dma_largest, (unsigned)heap_psram,
+        (unsigned)heap_psram_min, (unsigned)heap_psram_largest);
   } else {
     Debug::printf(
         Debug::Level::INFO,
@@ -755,9 +766,8 @@ void loop() {
         wifi.getState() == Subsystem::WifiState::CONNECTING ? "CONNECTING"
                                                             : "DISCONNECTED",
         manager.getStateStr(), (unsigned)heap_int, (unsigned)heap_int_min,
-        (unsigned)heap_dma, (unsigned)heap_dma_largest,
-        (unsigned)heap_psram, (unsigned)heap_psram_min,
-        (unsigned)heap_psram_largest);
+        (unsigned)heap_dma, (unsigned)heap_dma_largest, (unsigned)heap_psram,
+        (unsigned)heap_psram_min, (unsigned)heap_psram_largest);
   }
 
   // Stack HWM dump every ~10 s (loop cadence is 1 s now, so every 10 loops).

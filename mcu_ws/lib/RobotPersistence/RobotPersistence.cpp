@@ -23,13 +23,12 @@ bool loadAll(RobotPrefs& out, const RobotPrefs& defaults) {
     for (int i = 0; i < 13; i++) out.servos[i] = defaults.servos[i];
   }
 
-  out.budget = have_cfg ? p.getFloat(kBudgetKey, defaults.budget)
-                        : defaults.budget;
+  out.budget =
+      have_cfg ? p.getFloat(kBudgetKey, defaults.budget) : defaults.budget;
 
   // Gait tuning is per-field so migrating to a new default set is painless.
   out.gait = defaults.gait;
-  out.gait.step_height_mm =
-      p.getFloat(kStepHKey, defaults.gait.step_height_mm);
+  out.gait.step_height_mm = p.getFloat(kStepHKey, defaults.gait.step_height_mm);
   out.gait.cycle_time_s = p.getFloat(kCycleKey, defaults.gait.cycle_time_s);
   out.gait.step_scale = p.getFloat(kScaleKey, defaults.gait.step_scale);
 

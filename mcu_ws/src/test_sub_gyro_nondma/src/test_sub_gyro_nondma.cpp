@@ -39,8 +39,8 @@ void loop() {
     Debug::printf(
         Debug::Level::INFO,
         "[Probe] INT pin (GPIO %d) level=%d  isr_count=%u  polled=%d events",
-        Config::gyro_int, g_gyro->readIntPin(),
-        (unsigned)g_gyro->getIsrCount(), drained);
+        Config::gyro_int, g_gyro->readIntPin(), (unsigned)g_gyro->getIsrCount(),
+        drained);
   }
   delay(1000);
 }

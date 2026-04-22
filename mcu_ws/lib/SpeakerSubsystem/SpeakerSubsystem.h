@@ -27,10 +27,11 @@
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
 #include <WiFi.h>
-#include <atomic>
 #include <driver/i2s_std.h>
 #include <esp_http_client.h>
 #include <freertos/FreeRTOS.h>
+
+#include <atomic>
 
 namespace Subsystem {
 

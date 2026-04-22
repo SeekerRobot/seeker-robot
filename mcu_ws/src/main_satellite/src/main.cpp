@@ -43,8 +43,8 @@
 #include <ESP32WifiSubsystem.h>
 #include <Preferences.h>
 #include <RobotConfig.h>
-#include <Wire.h>
 #include <WiFiUdp.h>
+#include <Wire.h>
 #include <esp_system.h>
 #include <hal_thread.h>
 
@@ -87,7 +87,8 @@
 // GATEWAY / SUBNET are shared.
 // ---------------------------------------------------------------------------
 #ifndef SATELLITE_IP
-#error "SATELLITE_IP not defined — add `satellite_ip = { a, b, c, d }` to network_config.ini"
+#error \
+    "SATELLITE_IP not defined — add `satellite_ip = { a, b, c, d }` to network_config.ini"
 #endif
 
 static IPAddress static_ip SATELLITE_IP;
@@ -116,17 +117,28 @@ static constexpr char kSafeModeUdpMagic[] = "SEEKER_CLEAR_SM";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
   switch (r) {
-    case ESP_RST_POWERON:   return "POWERON";
-    case ESP_RST_EXT:       return "EXT_RESET";
-    case ESP_RST_SW:        return "SW_RESTART";
-    case ESP_RST_PANIC:     return "PANIC";
-    case ESP_RST_INT_WDT:   return "INT_WDT";
-    case ESP_RST_TASK_WDT:  return "TASK_WDT";
-    case ESP_RST_WDT:       return "WDT";
-    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-    case ESP_RST_BROWNOUT:  return "BROWNOUT";
-    case ESP_RST_SDIO:      return "SDIO";
-    default:                return "UNKNOWN";
+    case ESP_RST_POWERON:
+      return "POWERON";
+    case ESP_RST_EXT:
+      return "EXT_RESET";
+    case ESP_RST_SW:
+      return "SW_RESTART";
+    case ESP_RST_PANIC:
+      return "PANIC";
+    case ESP_RST_INT_WDT:
+      return "INT_WDT";
+    case ESP_RST_TASK_WDT:
+      return "TASK_WDT";
+    case ESP_RST_WDT:
+      return "WDT";
+    case ESP_RST_DEEPSLEEP:
+      return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:
+      return "BROWNOUT";
+    case ESP_RST_SDIO:
+      return "SDIO";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -180,8 +192,9 @@ static Threads::Mutex i2c_mutex;  // shared by gyro (BNO085) on Wire
 static Classes::BaseSetup blink_setup("blink");
 static Subsystem::BlinkSubsystem blink(blink_setup);
 
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "sat_wifi", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("sat_wifi", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 #if ENABLE_MICROROS
 static Subsystem::MicrorosManagerSetup manager_setup("microros",
@@ -221,11 +234,16 @@ static Subsystem::GyroSetup gyro_setup(Wire, Config::gyro_addr,
 
 static const char* wifiStateStr(Subsystem::WifiState s) {
   switch (s) {
-    case Subsystem::WifiState::DISCONNECTED: return "DISCONNECTED";
-    case Subsystem::WifiState::CONNECTING:   return "CONNECTING";
-    case Subsystem::WifiState::CONNECTED:    return "CONNECTED";
-    case Subsystem::WifiState::RECONNECTING: return "RECONNECTING";
-    case Subsystem::WifiState::FAILED:       return "FAILED";
+    case Subsystem::WifiState::DISCONNECTED:
+      return "DISCONNECTED";
+    case Subsystem::WifiState::CONNECTING:
+      return "CONNECTING";
+    case Subsystem::WifiState::CONNECTED:
+      return "CONNECTED";
+    case Subsystem::WifiState::RECONNECTING:
+      return "RECONNECTING";
+    case Subsystem::WifiState::FAILED:
+      return "FAILED";
   }
   return "UNKNOWN";
 }
@@ -257,20 +275,19 @@ static const char* wifiStateStr(Subsystem::WifiState s) {
     if (wifi.isConnected() && !udp_bound) {
       udp_bound = reset_udp.begin(kSafeModeUdpPort);
       Debug::printf(udp_bound ? Debug::Level::INFO : Debug::Level::ERROR,
-                    "[SafeMode] UDP reset listener on :%u %s",
-                    kSafeModeUdpPort, udp_bound ? "ready" : "bind failed");
+                    "[SafeMode] UDP reset listener on :%u %s", kSafeModeUdpPort,
+                    udp_bound ? "ready" : "bind failed");
     }
     if (udp_bound) {
       int len = reset_udp.parsePacket();
       if (len > 0) {
         char buf[32];
-        int n = reset_udp.read(reinterpret_cast<uint8_t*>(buf),
-                               sizeof(buf) - 1);
+        int n =
+            reset_udp.read(reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1);
         if (n > 0) buf[n] = '\0';
         constexpr int kMagicLen =
             static_cast<int>(sizeof(kSafeModeUdpMagic)) - 1;
-        if (n == kMagicLen &&
-            memcmp(buf, kSafeModeUdpMagic, kMagicLen) == 0) {
+        if (n == kMagicLen && memcmp(buf, kSafeModeUdpMagic, kMagicLen) == 0) {
           reset_udp.beginPacket(reset_udp.remoteIP(), reset_udp.remotePort());
           reset_udp.print("OK_RESTARTING");
           reset_udp.endPacket();
@@ -289,8 +306,7 @@ static const char* wifiStateStr(Subsystem::WifiState s) {
     if (now - last_status >= 5000) {
       last_status = now;
       const char* wifi_str =
-          wifi.isConnected() ? wifi.getLocalIP().toString().c_str()
-                             : "waiting";
+          wifi.isConnected() ? wifi.getLocalIP().toString().c_str() : "waiting";
       Debug::printf(Debug::Level::ERROR,
                     "[SafeMode] boot=%u reason=%s prev=%s wifi=%s — OTA or "
                     "UDP :%u reset to recover",

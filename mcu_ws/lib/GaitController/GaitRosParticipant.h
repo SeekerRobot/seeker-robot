@@ -47,9 +47,9 @@ struct GaitRosParticipantSetup {
   ///        Mirrors test_sub_movement::applyVelClamp so the ROS cmd_vel path
   ///        produces the same motion as the console's `forward/move` commands.
   ///        Zero disables that axis's cap.
-  float max_vx = 0.0f;    // m/s
-  float max_vy = 0.0f;    // m/s
-  float max_wz = 0.0f;    // rad/s
+  float max_vx = 0.0f;  // m/s
+  float max_vy = 0.0f;  // m/s
+  float max_wz = 0.0f;  // rad/s
 
   /// @brief Combined horizontal speed cap — if sqrt(vx^2+vy^2) exceeds this
   ///        after per-axis clamping, (vx, vy) are scaled down jointly. Zero

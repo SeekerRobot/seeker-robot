@@ -24,11 +24,12 @@
 
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
-#include <atomic>
 #include <driver/i2s_pdm.h>
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+
+#include <atomic>
 
 namespace Subsystem {
 

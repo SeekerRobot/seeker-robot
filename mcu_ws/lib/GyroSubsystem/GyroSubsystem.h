@@ -46,8 +46,8 @@ class GyroSetup : public Classes::BaseSetup {
   ///                defaults to GPIO21 = camera Y5, so pass Config::sda
   ///                there).
   /// @param scl_pin Optional SCL pin. Same semantics as sda_pin.
-  GyroSetup(TwoWire& wire, uint8_t addr, int8_t int_pin,
-            int8_t sda_pin = -1, int8_t scl_pin = -1)
+  GyroSetup(TwoWire& wire, uint8_t addr, int8_t int_pin, int8_t sda_pin = -1,
+            int8_t scl_pin = -1)
       : Classes::BaseSetup("GyroSubsystem"),
         wire_(wire),
         addr_(addr),

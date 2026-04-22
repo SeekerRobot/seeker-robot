@@ -13,27 +13,27 @@
  *   :8390), micro-ROS bridge (heartbeat + IMU + battery + lidar + log) and
  *   GaitRosParticipant (subscribes to /cmd_vel).
  *
- * Feature gates (S3 Sense only — non-S3 boards skip cam/mic/spk unconditionally):
- *   ENABLE_CAM  — OV2640 MJPEG server (default 1)
- *   ENABLE_MIC  — PDM microphone PCM server (default 1)
- *   ENABLE_SPK  — I2S speaker HTTP client (default 1)
- *   ENABLE_GYRO — BNO085 IMU (default 1; disabled across all current envs)
- * Set any of these to 0 via -D in platformio.ini to offload that subsystem to
- * a satellite board. The `esp32s3sense_offload` env ships with only the
- * camera offloaded; mic, speaker, OLED, and gait all stay on the main board.
+ * Feature gates (S3 Sense only — non-S3 boards skip cam/mic/spk
+ * unconditionally): ENABLE_CAM  — OV2640 MJPEG server (default 1) ENABLE_MIC  —
+ * PDM microphone PCM server (default 1) ENABLE_SPK  — I2S speaker HTTP client
+ * (default 1) ENABLE_GYRO — BNO085 IMU (default 1; disabled across all current
+ * envs) Set any of these to 0 via -D in platformio.ini to offload that
+ * subsystem to a satellite board. The `esp32s3sense_offload` env ships with
+ * only the camera offloaded; mic, speaker, OLED, and gait all stay on the main
+ * board.
  *
  * Boot LED sequence (visible state ladder):
  *   rainbow pulse → red chase (wifi) → yellow pulse (micro-ROS) →
  *   cyan slow pulse (idle). Cyan fast pulse during speaker playback.
  *   Red fast pulse at any point = low battery.
  *
- * ROS verify (after `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`):
- *   ros2 topic echo /mcu/heartbeat1       # main board
- *   ros2 topic echo /mcu/heartbeat2       # satellite board
- *   ros2 topic echo /mcu/battery_voltage
+ * ROS verify (after `ros2 run micro_ros_agent micro_ros_agent udp4 --port
+ * 8888`): ros2 topic echo /mcu/heartbeat1       # main board ros2 topic echo
+ * /mcu/heartbeat2       # satellite board ros2 topic echo /mcu/battery_voltage
  *   ros2 topic hz   /mcu/scan             # ~6 Hz
  *   ros2 topic echo /mcu/log
- *   ros2 topic pub  /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.05}}' --once
+ *   ros2 topic pub  /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.05}}'
+ * --once
  */
 #include <Arduino.h>
 #include <BatterySubsystem.h>
@@ -98,8 +98,8 @@
 #include <RobotPersistence.h>
 #include <ServoSubsystem.h>
 #include <StatusLedController.h>
-#include <Wire.h>
 #include <WiFiUdp.h>
+#include <Wire.h>
 #include <esp_system.h>
 #include <hal_thread.h>
 #include <microros_manager_robot.h>
@@ -133,20 +133,20 @@ static constexpr float kDefaultTotalAngle = 180.0f;
 // M-port ↔ HexapodConfig::kServoConfigs index (lifted from test_sub_movement).
 // Index 0 is unused (M-ports start at 1); index 13 has no physical header.
 static constexpr uint8_t kMPortToHexIdx[14] = {
-    255,              //  [0]  — unused
-    0,                //  M1  → FL Hip
-    4,                //  M2  → ML Hip
-    8,                //  M3  → RL Hip
-    10,               //  M4  → RR Hip
-    6,                //  M5  → MR Hip
-    2,                //  M6  → FR Hip
-    11,               //  M7  → RR Knee
-    1,                //  M8  → FL Knee
-    5,                //  M9  → ML Knee
-    9,                //  M10 → RL Knee
-    7,                //  M11 → MR Knee
-    3,                //  M12 → FR Knee
-    255,              //  M13 — unassigned
+    255,  //  [0]  — unused
+    0,    //  M1  → FL Hip
+    4,    //  M2  → ML Hip
+    8,    //  M3  → RL Hip
+    10,   //  M4  → RR Hip
+    6,    //  M5  → MR Hip
+    2,    //  M6  → FR Hip
+    11,   //  M7  → RR Knee
+    1,    //  M8  → FL Knee
+    5,    //  M9  → ML Knee
+    9,    //  M10 → RL Knee
+    7,    //  M11 → MR Knee
+    3,    //  M12 → FR Knee
+    255,  //  M13 — unassigned
 };
 
 // Leg index → ServoSubsystem index in the 13-entry M-port layout.
@@ -175,8 +175,9 @@ static Subsystem::LidarSetup lidar_setup(Serial2, Config::rx, Config::tx,
                                          /*scan_freq_hz=*/6.0f);
 static Subsystem::OledSetup oled_setup(i2c_mutex, agent_ip, 8390);
 
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "wifi", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 static Subsystem::MicrorosManagerSetup manager_setup("microros",
                                                      "seeker_main_node");
@@ -233,17 +234,28 @@ static constexpr char kSafeModeUdpMagic[] = "SEEKER_CLEAR_SM";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
   switch (r) {
-    case ESP_RST_POWERON:   return "POWERON";
-    case ESP_RST_EXT:       return "EXT_RESET";
-    case ESP_RST_SW:        return "SW_RESTART";
-    case ESP_RST_PANIC:     return "PANIC";
-    case ESP_RST_INT_WDT:   return "INT_WDT";
-    case ESP_RST_TASK_WDT:  return "TASK_WDT";
-    case ESP_RST_WDT:       return "WDT";
-    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-    case ESP_RST_BROWNOUT:  return "BROWNOUT";
-    case ESP_RST_SDIO:      return "SDIO";
-    default:                return "UNKNOWN";
+    case ESP_RST_POWERON:
+      return "POWERON";
+    case ESP_RST_EXT:
+      return "EXT_RESET";
+    case ESP_RST_SW:
+      return "SW_RESTART";
+    case ESP_RST_PANIC:
+      return "PANIC";
+    case ESP_RST_INT_WDT:
+      return "INT_WDT";
+    case ESP_RST_TASK_WDT:
+      return "TASK_WDT";
+    case ESP_RST_WDT:
+      return "WDT";
+    case ESP_RST_DEEPSLEEP:
+      return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:
+      return "BROWNOUT";
+    case ESP_RST_SDIO:
+      return "SDIO";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -326,20 +338,19 @@ static void safeModeScheduleClear() {
     if (wifi.isConnected() && !udp_bound) {
       udp_bound = reset_udp.begin(kSafeModeUdpPort);
       Debug::printf(udp_bound ? Debug::Level::INFO : Debug::Level::ERROR,
-                    "[SafeMode] UDP reset listener on :%u %s",
-                    kSafeModeUdpPort, udp_bound ? "ready" : "bind failed");
+                    "[SafeMode] UDP reset listener on :%u %s", kSafeModeUdpPort,
+                    udp_bound ? "ready" : "bind failed");
     }
     if (udp_bound) {
       int len = reset_udp.parsePacket();
       if (len > 0) {
         char buf[32];
-        int n = reset_udp.read(reinterpret_cast<uint8_t*>(buf),
-                               sizeof(buf) - 1);
+        int n =
+            reset_udp.read(reinterpret_cast<uint8_t*>(buf), sizeof(buf) - 1);
         if (n > 0) buf[n] = '\0';
         constexpr int kMagicLen =
             static_cast<int>(sizeof(kSafeModeUdpMagic)) - 1;
-        if (n == kMagicLen &&
-            memcmp(buf, kSafeModeUdpMagic, kMagicLen) == 0) {
+        if (n == kMagicLen && memcmp(buf, kSafeModeUdpMagic, kMagicLen) == 0) {
           reset_udp.beginPacket(reset_udp.remoteIP(), reset_udp.remotePort());
           reset_udp.print("OK_RESTARTING");
           reset_udp.endPacket();
@@ -358,8 +369,7 @@ static void safeModeScheduleClear() {
     if (now - last_status >= 5000) {
       last_status = now;
       const char* wifi_str =
-          wifi.isConnected() ? wifi.getLocalIP().toString().c_str()
-                             : "waiting";
+          wifi.isConnected() ? wifi.getLocalIP().toString().c_str() : "waiting";
       Debug::printf(Debug::Level::ERROR,
                     "[SafeMode] boot=%u reason=%s prev=%s wifi=%s — OTA or "
                     "UDP :%u reset to recover",

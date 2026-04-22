@@ -1119,8 +1119,7 @@ void setup() {
   printAll("Config: %s\r\n",
            cfg_from_prefs ? "LOADED FROM NVS (srvtest)" : "defaults");
   printAll("Gait: step=%.1f mm  cycle=%.2f s  scale=%.2f\r\n",
-           cfg.gait.step_height_mm, cfg.gait.cycle_time_s,
-           cfg.gait.step_scale);
+           cfg.gait.step_height_mm, cfg.gait.cycle_time_s, cfg.gait.step_scale);
   printAll("Body height: %.1f mm\r\n", body_height_mm);
   printHelp();
 }

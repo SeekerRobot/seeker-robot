@@ -36,10 +36,10 @@
 #endif
 #include <ESP32WifiSubsystem.h>
 #include <GaitController.h>
+#include <GaitRosParticipant.h>
 #include <GyroSubsystem.h>
 #include <HexapodConfig.h>
 #include <HexapodKinematics.h>
-#include <GaitRosParticipant.h>
 #include <LedSubsystem.h>
 #include <LidarSubsystem.h>
 #include <MicroRosBridge.h>
@@ -82,20 +82,20 @@ static constexpr float kDefaultTotalAngle = 180.0f;
 // M-port ↔ HexapodConfig::kServoConfigs index (lifted from test_sub_movement).
 // Index 0 is unused (M-ports start at 1); index 13 has no physical header.
 static constexpr uint8_t kMPortToHexIdx[14] = {
-    255,              //  [0]  — unused
-    0,                //  M1  → FL Hip
-    4,                //  M2  → ML Hip
-    8,                //  M3  → RL Hip
-    10,               //  M4  → RR Hip
-    6,                //  M5  → MR Hip
-    2,                //  M6  → FR Hip
-    11,               //  M7  → RR Knee
-    1,                //  M8  → FL Knee
-    5,                //  M9  → ML Knee
-    9,                //  M10 → RL Knee
-    7,                //  M11 → MR Knee
-    3,                //  M12 → FR Knee
-    255,              //  M13 — unassigned
+    255,  //  [0]  — unused
+    0,    //  M1  → FL Hip
+    4,    //  M2  → ML Hip
+    8,    //  M3  → RL Hip
+    10,   //  M4  → RR Hip
+    6,    //  M5  → MR Hip
+    2,    //  M6  → FR Hip
+    11,   //  M7  → RR Knee
+    1,    //  M8  → FL Knee
+    5,    //  M9  → ML Knee
+    9,    //  M10 → RL Knee
+    7,    //  M11 → MR Knee
+    3,    //  M12 → FR Knee
+    255,  //  M13 — unassigned
 };
 
 // Leg index → ServoSubsystem index in the 13-entry M-port layout.
@@ -128,8 +128,9 @@ static Subsystem::BlinkSubsystem blink(blink_setup);
 static Subsystem::LedSetup led_setup(/*num_leds=*/5);
 static Subsystem::LedSubsystem<Config::rgb_data> leds(led_setup);
 
-static Subsystem::ESP32WifiSubsystemSetup wifi_setup(
-    "wifi", WIFI_SSID, WIFI_PASSWORD, static_ip, gateway, subnet);
+static Subsystem::ESP32WifiSubsystemSetup wifi_setup("wifi", WIFI_SSID,
+                                                     WIFI_PASSWORD, static_ip,
+                                                     gateway, subnet);
 
 static Subsystem::MicrorosManagerSetup manager_setup("microros",
                                                      "main_add_node");
@@ -170,17 +171,28 @@ static constexpr char kSafeModeReason[] = "last_reason";
 
 static const char* resetReasonStr(esp_reset_reason_t r) {
   switch (r) {
-    case ESP_RST_POWERON:   return "POWERON";
-    case ESP_RST_EXT:       return "EXT_RESET";
-    case ESP_RST_SW:        return "SW_RESTART";
-    case ESP_RST_PANIC:     return "PANIC";
-    case ESP_RST_INT_WDT:   return "INT_WDT";
-    case ESP_RST_TASK_WDT:  return "TASK_WDT";
-    case ESP_RST_WDT:       return "WDT";
-    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-    case ESP_RST_BROWNOUT:  return "BROWNOUT";
-    case ESP_RST_SDIO:      return "SDIO";
-    default:                return "UNKNOWN";
+    case ESP_RST_POWERON:
+      return "POWERON";
+    case ESP_RST_EXT:
+      return "EXT_RESET";
+    case ESP_RST_SW:
+      return "SW_RESTART";
+    case ESP_RST_PANIC:
+      return "PANIC";
+    case ESP_RST_INT_WDT:
+      return "INT_WDT";
+    case ESP_RST_TASK_WDT:
+      return "TASK_WDT";
+    case ESP_RST_WDT:
+      return "WDT";
+    case ESP_RST_DEEPSLEEP:
+      return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:
+      return "BROWNOUT";
+    case ESP_RST_SDIO:
+      return "SDIO";
+    default:
+      return "UNKNOWN";
   }
 }
 
@@ -288,8 +300,8 @@ static void safeModeScheduleClear() {
     uint32_t now = millis();
     if (now - last_status >= 5000) {
       last_status = now;
-      String wifi_str = wifi.isConnected() ? wifi.getLocalIP().toString()
-                                           : String("waiting");
+      String wifi_str =
+          wifi.isConnected() ? wifi.getLocalIP().toString() : String("waiting");
       Debug::printf(Debug::Level::ERROR,
                     "[SafeMode] boot=%u reason=%s prev=%s wifi=%s — OTA or "
                     "`nc -u <ip> %u` to recover",
@@ -426,7 +438,8 @@ static void ledPhaseApply(LedPhase next) {
 // ---------------------------------------------------------------------------
 void setup() {
   Serial.begin(921600);
-  delay(2000); // long delay to allow serial monitors to attach before any output
+  delay(
+      2000);  // long delay to allow serial monitors to attach before any output
 
   // --- Safe-mode arbitration (must run before any risky bring-up) ---
   uint8_t boots = safeModeTickOnBoot();

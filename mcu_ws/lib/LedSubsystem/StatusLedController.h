@@ -31,8 +31,9 @@
 #include <FastLED.h>
 #include <RobotConfig.h>
 #include <ThreadedSubsystem.h>
-#include <atomic>
 #include <hal_thread.h>
+
+#include <atomic>
 
 #include "LedSubsystem.h"
 
@@ -67,20 +68,20 @@ enum class RobotState : uint8_t {
 };
 
 struct StatusLedSetup : public Classes::BaseSetup {
-  LedSubsystem<Config::rgb_data>* leds = nullptr;   ///< required
-  BatterySubsystem* battery = nullptr;              ///< optional
-  ESP32WifiSubsystem* wifi = nullptr;               ///< required
-  MicrorosManager* manager = nullptr;               ///< required
-  Gait::GaitController* gait = nullptr;             ///< optional
+  LedSubsystem<Config::rgb_data>* leds = nullptr;  ///< required
+  BatterySubsystem* battery = nullptr;             ///< optional
+  ESP32WifiSubsystem* wifi = nullptr;              ///< required
+  MicrorosManager* manager = nullptr;              ///< required
+  Gait::GaitController* gait = nullptr;            ///< optional
   /// Optional flag watched for the AUDIO_PLAYING state. When true and the
   /// FSM would otherwise return IDLE, the LEDs pulse cyan faster instead.
   /// Point at SpeakerSubsystem::playing to mirror on-board speaker output.
   const std::atomic<bool>* audio_active = nullptr;  ///< optional
 
-  float low_batt_volts = 11.1f;   ///< enter LOW_BATTERY below this
-  float low_batt_clear = 11.4f;   ///< leave LOW_BATTERY only above this
-  uint32_t boot_hold_ms = 2000;   ///< show BOOT for at least this long
-  uint8_t brightness = 96;        ///< FastLED global brightness
+  float low_batt_volts = 11.1f;  ///< enter LOW_BATTERY below this
+  float low_batt_clear = 11.4f;  ///< leave LOW_BATTERY only above this
+  uint32_t boot_hold_ms = 2000;  ///< show BOOT for at least this long
+  uint8_t brightness = 96;       ///< FastLED global brightness
 
   StatusLedSetup() : Classes::BaseSetup("StatusLedController") {}
 };

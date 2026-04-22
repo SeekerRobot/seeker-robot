@@ -19,7 +19,8 @@ class CameraSetup : public Classes::BaseSetup {
  public:
   CameraSetup() = delete;
 
-  /// @param config             Camera hardware config (pins, pixel format, etc.)
+  /// @param config             Camera hardware config (pins, pixel format,
+  /// etc.)
   /// @param port               HTTP port for the /cam endpoint (default 80).
   /// @param ctrl_port          httpd internal control socket port — must be
   ///                           unique across all httpd instances.

@@ -1,6 +1,6 @@
+#include <Adafruit_BNO08x.h>
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_BNO08x.h>
 
 // XIAO ESP32-S3 default I2C: SDA=GPIO5 (D4), SCL=GPIO6 (D5)
 // Change here if wiring is different.
@@ -18,7 +18,9 @@
 #define BNO08X_INT 5
 #endif
 
-struct euler_t { float yaw, pitch, roll; } ypr;
+struct euler_t {
+  float yaw, pitch, roll;
+} ypr;
 
 Adafruit_BNO08x bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
@@ -48,12 +50,17 @@ void setReports(sh2_SensorId_t t, long interval) {
   }
 }
 
-void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
+void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr,
+                       bool degrees = false) {
   float sqr = sq(qr), sqi = sq(qi), sqj = sq(qj), sqk = sq(qk);
   ypr->yaw = atan2(2.0 * (qi * qj + qk * qr), (sqi - sqj - sqk + sqr));
   ypr->pitch = asin(-2.0 * (qi * qk - qj * qr) / (sqi + sqj + sqk + sqr));
   ypr->roll = atan2(2.0 * (qj * qk + qi * qr), (-sqi - sqj + sqk + sqr));
-  if (degrees) { ypr->yaw *= RAD_TO_DEG; ypr->pitch *= RAD_TO_DEG; ypr->roll *= RAD_TO_DEG; }
+  if (degrees) {
+    ypr->yaw *= RAD_TO_DEG;
+    ypr->pitch *= RAD_TO_DEG;
+    ypr->roll *= RAD_TO_DEG;
+  }
 }
 
 void setup(void) {
@@ -66,12 +73,10 @@ void setup(void) {
   // Datasheet: ~300 ms to reach operational state. Give it plenty.
   delay(800);
 
-
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(400000);  // slow for reliability
   delay(100);
   scanI2C();
-
 
   // Retry begin_I2C — one cold-boot failure shouldn't end the sketch.
   Serial.println("Attempting BNO08x @ 0x4B...");

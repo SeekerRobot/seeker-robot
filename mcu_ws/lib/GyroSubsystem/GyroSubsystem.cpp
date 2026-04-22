@@ -27,8 +27,7 @@ bool GyroSubsystem::init() {
   // are common enough that we also fall back to the alternate address.
   constexpr int kBeginAttempts = 5;
   const uint8_t primary_addr = setup_.addr_;
-  const uint8_t fallback_addr =
-      (primary_addr == 0x4A) ? 0x4B : 0x4A;
+  const uint8_t fallback_addr = (primary_addr == 0x4A) ? 0x4B : 0x4A;
   const uint8_t try_addrs[2] = {primary_addr, fallback_addr};
   bool ok = false;
   uint8_t found_addr = 0;
@@ -38,8 +37,8 @@ bool GyroSubsystem::init() {
       ok = bno08x_.begin_I2C(addr, &setup_.wire_);
       if (!ok) {
         Debug::printf(Debug::Level::WARN,
-                      "[BNO085] begin_I2C @ 0x%02X attempt %d/%d failed",
-                      addr, attempt, kBeginAttempts);
+                      "[BNO085] begin_I2C @ 0x%02X attempt %d/%d failed", addr,
+                      attempt, kBeginAttempts);
         delay(500);
       } else {
         found_addr = addr;
@@ -68,7 +67,7 @@ bool GyroSubsystem::init() {
                   bno08x_.prodIds.entry[n].swVersionPatch,
                   bno08x_.prodIds.entry[n].swBuildNumber);
   }
-  //reset();
+  // reset();
   setReorientation();
 #if GYRO_USE_INT
   // Attach ISR before enabling reports: BNO085 INT is active-low and level-
@@ -182,10 +181,10 @@ void GyroSubsystem::logImuData() {
   const float sinp = 2.0f * (qw * qy - qz * qx);
   const float pitch =
       (fabsf(sinp) >= 1.0f) ? copysignf(M_PI_2, sinp) : asinf(sinp);
-  const float roll = atan2f(2.0f * (qw * qx + qy * qz),
-                            1.0f - 2.0f * (qx * qx + qy * qy));
-  const float yaw = atan2f(2.0f * (qw * qz + qx * qy),
-                           1.0f - 2.0f * (qy * qy + qz * qz));
+  const float roll =
+      atan2f(2.0f * (qw * qx + qy * qz), 1.0f - 2.0f * (qx * qx + qy * qy));
+  const float yaw =
+      atan2f(2.0f * (qw * qz + qx * qy), 1.0f - 2.0f * (qy * qy + qz * qz));
   constexpr float kRad2Deg = 180.0f / static_cast<float>(M_PI);
   Debug::printf(Debug::Level::VERBOSE,
                 "[BNO085] RPY: roll=%+7.2f pitch=%+7.2f yaw=%+7.2f deg",
@@ -251,20 +250,15 @@ void GyroSubsystem::tareYaw() {
 }
 
 void GyroSubsystem::setReports() {
-  Debug::printf(Debug::Level::INFO,
-                "[BNO085] enableReport GYRO_CAL      -> %d",
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport GYRO_CAL      -> %d",
                 bno08x_.enableReport(SH2_GYROSCOPE_CALIBRATED));
-  Debug::printf(Debug::Level::INFO,
-                "[BNO085] enableReport LIN_ACCEL     -> %d",
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport LIN_ACCEL     -> %d",
                 bno08x_.enableReport(SH2_LINEAR_ACCELERATION));
-  Debug::printf(Debug::Level::INFO,
-                "[BNO085] enableReport GRAVITY       -> %d",
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport GRAVITY       -> %d",
                 bno08x_.enableReport(SH2_GRAVITY));
-  Debug::printf(Debug::Level::INFO,
-                "[BNO085] enableReport GAME_ROT_VEC  -> %d",
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport GAME_ROT_VEC  -> %d",
                 bno08x_.enableReport(SH2_GAME_ROTATION_VECTOR));
-  Debug::printf(Debug::Level::INFO,
-                "[BNO085] enableReport STABILITY     -> %d",
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport STABILITY     -> %d",
                 bno08x_.enableReport(SH2_STABILITY_CLASSIFIER));
   Debug::printf(Debug::Level::INFO, "[BNO085] Reports set");
 }
