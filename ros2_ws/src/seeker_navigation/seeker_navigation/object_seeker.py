@@ -106,6 +106,15 @@ class ObjectSeeker(Node):
 
         cb_group = ReentrantCallbackGroup()
 
+        # cmd_vel caps (belt-and-braces; MCU also clamps). Defaults match the
+        # hexapod gait controller's safe envelope. Override via ros-args.
+        self.declare_parameter("max_linear_x", 0.1)
+        self.declare_parameter("max_linear_y", 0.05)
+        self.declare_parameter("max_angular_z_rad", 0.524)  # ~30 deg/s
+        self._max_lin_x = float(self.get_parameter("max_linear_x").value)
+        self._max_lin_y = float(self.get_parameter("max_linear_y").value)
+        self._max_ang_z = float(self.get_parameter("max_angular_z_rad").value)
+
         # -- Publishers / subscribers --
         self._cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self._hex_pub = self.create_publisher(HexapodCmd, "/mcu/hexapod_cmd", 10)
@@ -961,10 +970,11 @@ class ObjectSeeker(Node):
         q.z = math.sin(yaw / 2.0)
         return q
 
-    def _publish_cmd(self, linear: float, angular: float):
+    def _publish_cmd(self, linear: float, angular: float, linear_y: float = 0.0):
         msg = Twist()
-        msg.linear.x = linear
-        msg.angular.z = angular
+        msg.linear.x = max(-self._max_lin_x, min(self._max_lin_x, linear))
+        msg.linear.y = max(-self._max_lin_y, min(self._max_lin_y, linear_y))
+        msg.angular.z = max(-self._max_ang_z, min(self._max_ang_z, angular))
         self._cmd_pub.publish(msg)
 
 

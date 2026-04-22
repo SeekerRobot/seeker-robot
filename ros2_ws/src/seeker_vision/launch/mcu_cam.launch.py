@@ -4,8 +4,13 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # Camera is on the satellite ESP32 (192.168.8.51); flip 180° because the
+    # cam is mounted upside down on our chassis and YOLO regresses on inverted
+    # frames. Override --source / --flip on the CLI if the mount changes.
     cam_proxy = ExecuteProcess(
-        cmd=["ros2", "run", "seeker_vision", "cam_proxy"],
+        cmd=["ros2", "run", "seeker_vision", "cam_proxy",
+             "--source", "http://192.168.8.51/cam",
+             "--flip"],
         output="screen",
     )
 

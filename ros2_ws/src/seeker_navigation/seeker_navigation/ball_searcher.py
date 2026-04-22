@@ -95,6 +95,14 @@ class BallSearcher(Node):
     def __init__(self):
         super().__init__("ball_searcher")
 
+        # -- Velocity clamps (MCU also clamps; this is a defence-in-depth cap) --
+        self.declare_parameter("max_linear_x", 0.1)
+        self.declare_parameter("max_linear_y", 0.05)
+        self.declare_parameter("max_angular_z_rad", 0.524)  # ~30 deg/s
+        self._max_lin_x = float(self.get_parameter("max_linear_x").value)
+        self._max_lin_y = float(self.get_parameter("max_linear_y").value)
+        self._max_ang_z = float(self.get_parameter("max_angular_z_rad").value)
+
         # -- Publishers / subscribers --
         self._bridge = CvBridge()
         self._cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
@@ -739,8 +747,8 @@ class BallSearcher(Node):
 
     def _publish_cmd(self, linear: float, angular: float):
         msg = Twist()
-        msg.linear.x = linear
-        msg.angular.z = angular
+        msg.linear.x = max(-self._max_lin_x, min(self._max_lin_x, linear))
+        msg.angular.z = max(-self._max_ang_z, min(self._max_ang_z, angular))
         self._cmd_pub.publish(msg)
 
 
