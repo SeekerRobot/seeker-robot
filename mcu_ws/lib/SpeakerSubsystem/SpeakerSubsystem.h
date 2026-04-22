@@ -4,18 +4,20 @@
  *
  * Connects to an HTTP endpoint on the micro-ROS agent (host PC) to receive
  * raw 16-bit PCM audio, then plays it through I2S to an external amplifier
- * (e.g. MAX98357A). Optionally mutes the MicSubsystem while audio is playing.
+ * (e.g. MAX98357A).
  *
  * The ESP32 acts as an HTTP client — it already knows the host IP via the
  * AGENT_IP build macro from network_config.ini, so no extra configuration is
- * needed.
+ * needed. Host-side mic gating (muting the mic stream during playback) lives
+ * in the ROS 2 stack now that mic and speaker are on different boards — see
+ * /audio_speaker_active published by seeker_tts.
  *
  * Usage:
  * @code
  * static Subsystem::SpeakerSetup spk_setup(
  *     I2S_NUM_1, 16000,
  *     Config::spk_bclk, Config::spk_lrclk, Config::spk_dout,
- *     IPAddress(AGENT_IP), 8383, 2048, &mic);
+ *     IPAddress(AGENT_IP), 8383, 2048);
  * auto& spk = Subsystem::SpeakerSubsystem::getInstance(spk_setup);
  * spk.beginThreadedPinned(4096, 2, 100, 1);
  * @endcode
@@ -25,13 +27,13 @@
 #include <CustomDebug.h>
 #include <ThreadedSubsystem.h>
 #include <WiFi.h>
-#include <driver/i2s.h>
+#include <driver/i2s_std.h>
 #include <esp_http_client.h>
 #include <freertos/FreeRTOS.h>
 
-namespace Subsystem {
+#include <atomic>
 
-class MicSubsystem;
+namespace Subsystem {
 
 class SpeakerSetup : public Classes::BaseSetup {
  public:
@@ -45,11 +47,9 @@ class SpeakerSetup : public Classes::BaseSetup {
   /// @param host_ip     IP address of the ROS 2 host (use AGENT_IP macro).
   /// @param host_port   Port the TTS server listens on.
   /// @param chunk_size  Bytes per HTTP read / I2S write cycle.
-  /// @param mic         Optional MicSubsystem to pause during playback.
   SpeakerSetup(i2s_port_t i2s_port, uint32_t sample_rate, int bclk_pin,
                int lrclk_pin, int dout_pin, IPAddress host_ip,
-               uint16_t host_port = 8383, size_t chunk_size = 2048,
-               MicSubsystem* mic = nullptr)
+               uint16_t host_port = 8383, size_t chunk_size = 2048)
       : Classes::BaseSetup("SpeakerSubsystem"),
         i2s_port_(i2s_port),
         sample_rate_(sample_rate),
@@ -58,8 +58,7 @@ class SpeakerSetup : public Classes::BaseSetup {
         dout_pin_(dout_pin),
         host_ip_(host_ip),
         host_port_(host_port),
-        chunk_size_(chunk_size),
-        mic_(mic) {}
+        chunk_size_(chunk_size) {}
 
   const i2s_port_t i2s_port_;
   const uint32_t sample_rate_;
@@ -69,7 +68,6 @@ class SpeakerSetup : public Classes::BaseSetup {
   const IPAddress host_ip_;
   const uint16_t host_port_;
   const size_t chunk_size_;
-  MicSubsystem* const mic_;
 };
 
 class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
@@ -91,6 +89,11 @@ class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
 
   bool isI2sReady() const { return i2s_ready_; }
 
+  /// True while a playback stream is actively writing PCM to I2S. Externally
+  /// readable (e.g. by MicSubsystem) so on-board mic capture can be muted
+  /// during speaker output to prevent acoustic feedback.
+  static std::atomic<bool> playing;
+
  private:
   explicit SpeakerSubsystem(const SpeakerSetup& setup)
       : ThreadedSubsystem(setup), setup_(setup) {}
@@ -100,6 +103,7 @@ class SpeakerSubsystem : public Subsystem::ThreadedSubsystem {
   bool fetchAndPlay();
 
   const SpeakerSetup setup_;
+  i2s_chan_handle_t tx_handle_ = nullptr;
   bool i2s_ready_ = false;
   uint32_t last_log_ms_ = 0;
   uint32_t last_fail_ms_ = 0;

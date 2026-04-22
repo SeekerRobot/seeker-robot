@@ -15,18 +15,17 @@ static const char* kStreamPart =
 namespace Subsystem {
 
 bool CameraSubsystem::init() {
-  initSuccess_ = true;
-  return true;
-}
-
-void CameraSubsystem::begin() {
-  startServer();
-
+  // Claim the 16 KB internal-DRAM DMA buffer now — must run before WiFi/BLE
+  // fragment the heap. The HTTP server is deferred to begin() because lwIP
+  // isn't up until the WiFi driver is initialized.
   camera_config_t cfg = setup_.config_;
 
   if (psramFound()) {
-    cfg.frame_size = FRAMESIZE_VGA;
-    cfg.jpeg_quality = 10;
+    // QVGA (320x240) vs VGA: ~4x less encode work + ~4x smaller JPEGs =
+    // dramatically less PBUF churn on the MJPEG send path. Sufficient for
+    // teleop + most remote YOLO pipelines (they downsample anyway).
+    cfg.frame_size = FRAMESIZE_QVGA;
+    cfg.jpeg_quality = 12;  // 10->12: ~15% smaller frames, imperceptible.
     cfg.fb_count = 2;
     cfg.fb_location = CAMERA_FB_IN_PSRAM;
   } else {
@@ -34,16 +33,34 @@ void CameraSubsystem::begin() {
     cfg.fb_count = 1;
     cfg.fb_location = CAMERA_FB_IN_DRAM;
   }
+  // Sketch-level overrides take precedence. Satellite boards run no micro-ROS
+  // stack, so they can push a bigger frame and lower quality number.
+  if (setup_.frame_size_ != FRAMESIZE_INVALID) {
+    cfg.frame_size = setup_.frame_size_;
+  }
+  if (setup_.jpeg_quality_ != 0) {
+    cfg.jpeg_quality = setup_.jpeg_quality_;
+  }
+  // CAMERA_GRAB_LATEST: drop stale frames under slow-consumer pressure
+  // instead of queueing. Keeps PBUFs from stacking up when WiFi congests.
+  cfg.grab_mode = CAMERA_GRAB_LATEST;
 
   esp_err_t err = esp_camera_init(&cfg);
   if (err != ESP_OK) {
     Debug::printf(Debug::Level::ERROR, "[Camera] Init failed: 0x%x", err);
-    stopServer();
-    return;
+    initSuccess_ = false;
+    return false;
   }
   camera_ready_ = true;
   Debug::printf(Debug::Level::INFO, "[Camera] Init OK (PSRAM: %s)",
                 psramFound() ? "yes" : "no");
+  initSuccess_ = true;
+  return true;
+}
+
+void CameraSubsystem::begin() {
+  // Server needs lwIP — called only after WiFi has initialized the stack.
+  if (camera_ready_) startServer();
 }
 
 void CameraSubsystem::update() {
@@ -64,14 +81,14 @@ void CameraSubsystem::reset() {
     esp_camera_deinit();
     camera_ready_ = false;
   }
-  begin();
+  if (init()) begin();
 }
 
 void CameraSubsystem::startServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = setup_.port_;
   config.ctrl_port = setup_.ctrl_port_;
-  config.send_wait_timeout = 30;
+  config.send_wait_timeout = 2;
   config.max_open_sockets = 2;
 
   httpd_uri_t stream_uri = {.uri = "/cam",
@@ -136,6 +153,12 @@ esp_err_t CameraSubsystem::streamHandler(httpd_req_t* req) {
     }
 
     if (res != ESP_OK) break;
+
+    // Yield between frames. The tight loop otherwise monopolises the TCP TX
+    // path and starves the lwIP PBUF pool, which in turn makes micro-ROS UDP
+    // sends fail with ENOMEM. The interval is per-setup so satellite boards
+    // (no micro-ROS) can stream faster than the primary.
+    vTaskDelay(pdMS_TO_TICKS(self->setup_.frame_interval_ms_));
   }
   return res;
 }

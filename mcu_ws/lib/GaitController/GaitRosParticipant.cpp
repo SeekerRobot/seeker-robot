@@ -77,10 +77,40 @@ void GaitRosParticipant::twistCb(const void* msg_in) {
   float vy = static_cast<float>(msg->linear.y);
   float wz = static_cast<float>(msg->angular.z);
 
+  // Mirrors test_sub_movement::applyVelClamp: per-axis caps, then a combined
+  // (vx, vy) magnitude cap that scales both components proportionally.
+  const auto& s = s_instance_->setup_;
+  if (s.max_vx > 0.0f) {
+    if (vx > s.max_vx)
+      vx = s.max_vx;
+    else if (vx < -s.max_vx)
+      vx = -s.max_vx;
+  }
+  if (s.max_vy > 0.0f) {
+    if (vy > s.max_vy)
+      vy = s.max_vy;
+    else if (vy < -s.max_vy)
+      vy = -s.max_vy;
+  }
+  if (s.max_wz > 0.0f) {
+    if (wz > s.max_wz)
+      wz = s.max_wz;
+    else if (wz < -s.max_wz)
+      wz = -s.max_wz;
+  }
+  if (s.max_hvel > 0.0f) {
+    float mag = sqrtf(vx * vx + vy * vy);
+    if (mag > s.max_hvel) {
+      float k = s.max_hvel / mag;
+      vx *= k;
+      vy *= k;
+    }
+  }
+
   s_instance_->setup_.gait->setVelocity(vx, vy, wz);
 
   float magnitude = fabsf(vx) + fabsf(vy) + fabsf(wz);
-  if (magnitude > s_instance_->setup_.vel_dead_band) {
+  if (magnitude > s.vel_dead_band) {
     s_instance_->setup_.gait->enable();
   } else {
     s_instance_->setup_.gait->disable();

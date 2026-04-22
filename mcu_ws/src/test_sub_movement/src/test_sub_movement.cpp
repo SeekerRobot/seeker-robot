@@ -30,6 +30,7 @@
 #include <HexapodKinematics.h>
 #include <Preferences.h>
 #include <RobotConfig.h>
+#include <RobotPersistence.h>
 #include <ServoSubsystem.h>
 #include <Wire.h>
 #include <hal_thread.h>
@@ -83,15 +84,9 @@ static constexpr uint8_t kLegServoKnee[6] = {
     7, 11, 8, 10, 9, 6};  // M8, M12, M9, M11, M10, M7
 
 // ---------------------------------------------------------------------------
-// NVS Preferences
+// NVS — servo/gait/height go through RobotPersistence. Velocity caps live
+// only in this sketch, so they keep sketch-local keys under the same namespace.
 // ---------------------------------------------------------------------------
-static constexpr char kPrefsNs[] = "srvtest";
-static constexpr char kPrefsCfgKey[] = "cfg";
-static constexpr char kPrefsBudgetKey[] = "budget";
-static constexpr char kPrefsStepHKey[] = "g_step_h";
-static constexpr char kPrefsCycleKey[] = "g_cycle";
-static constexpr char kPrefsScaleKey[] = "g_scale";
-static constexpr char kPrefsHeightKey[] = "m_height";
 static constexpr char kPrefsMaxVxKey[] = "m_maxvx";
 static constexpr char kPrefsMaxVyKey[] = "m_maxvy";
 static constexpr char kPrefsMaxWzKey[] = "m_maxwz";
@@ -830,18 +825,15 @@ static void cmdGaitStatus() {
 // Persistence — namespace "srvtest" shared with test_sub_servo
 // ---------------------------------------------------------------------------
 static void cmdSave() {
-  Subsystem::ServoConfig saved[13];
-  for (uint8_t i = 0; i < 13; i++) saved[i] = servos->getConfig(i);
+  Persistence::RobotPrefs bundle{};
+  for (uint8_t i = 0; i < 13; i++) bundle.servos[i] = servos->getConfig(i);
+  bundle.budget = servos->getTotalRateBudget();
+  bundle.gait = gait->getGaitConfig();
+  bundle.height_mm = body_height_mm;
+  Persistence::saveAll(bundle);
 
-  Gait::GaitConfig gc = gait->getGaitConfig();
-
-  prefs.begin(kPrefsNs, /*readOnly=*/false);
-  prefs.putBytes(kPrefsCfgKey, saved, sizeof(saved));
-  prefs.putFloat(kPrefsBudgetKey, servos->getTotalRateBudget());
-  prefs.putFloat(kPrefsStepHKey, gc.step_height_mm);
-  prefs.putFloat(kPrefsCycleKey, gc.cycle_time_s);
-  prefs.putFloat(kPrefsScaleKey, gc.step_scale);
-  prefs.putFloat(kPrefsHeightKey, body_height_mm);
+  // Velocity caps live only in this sketch, but under the same namespace.
+  prefs.begin(Persistence::kNs, /*readOnly=*/false);
   prefs.putFloat(kPrefsMaxVxKey, max_vx);
   prefs.putFloat(kPrefsMaxVyKey, max_vy);
   prefs.putFloat(kPrefsMaxWzKey, max_wz);
@@ -851,9 +843,7 @@ static void cmdSave() {
 }
 
 static void cmdClearPrefs() {
-  prefs.begin(kPrefsNs, /*readOnly=*/false);
-  prefs.clear();
-  prefs.end();
+  Persistence::clearAll();
   printOk("NVS cleared — defaults will load on next boot");
 }
 
@@ -985,29 +975,29 @@ static void processBle() {
 // ---------------------------------------------------------------------------
 // Config helpers
 // ---------------------------------------------------------------------------
-static void buildDefaults(float& budget_out, Gait::GaitConfig& gc_out,
-                          float& height_out) {
-  budget_out = kDefaultBudget;
+static Persistence::RobotPrefs buildDefaults() {
+  Persistence::RobotPrefs d{};
+  d.budget = kDefaultBudget;
   for (uint8_t m = 1; m <= 13; m++) {
     uint8_t hi = kMPortToHexIdx[m];
     if (hi != 255) {
-      servo_configs[m - 1] = HexapodConfig::kServoConfigs[hi];
-      const float total = servo_configs[m - 1].total_angle_deg;
+      d.servos[m - 1] = HexapodConfig::kServoConfigs[hi];
+      const float total = d.servos[m - 1].total_angle_deg;
       const float scale = (kDefaultMaxPwm - kDefaultMinPwm) / total;
-      if (servo_configs[m - 1].min_angle < 0.0f) {
+      if (d.servos[m - 1].min_angle < 0.0f) {
         const float center = (kDefaultMinPwm + kDefaultMaxPwm) / 2.0f;
-        servo_configs[m - 1].min_pwm =
-            (uint16_t)roundf(center + servo_configs[m - 1].min_angle * scale);
-        servo_configs[m - 1].max_pwm =
-            (uint16_t)roundf(center + servo_configs[m - 1].max_angle * scale);
+        d.servos[m - 1].min_pwm =
+            (uint16_t)roundf(center + d.servos[m - 1].min_angle * scale);
+        d.servos[m - 1].max_pwm =
+            (uint16_t)roundf(center + d.servos[m - 1].max_angle * scale);
       } else {
-        servo_configs[m - 1].min_pwm = (uint16_t)roundf(
-            kDefaultMinPwm + servo_configs[m - 1].min_angle * scale);
-        servo_configs[m - 1].max_pwm = (uint16_t)roundf(
-            kDefaultMinPwm + servo_configs[m - 1].max_angle * scale);
+        d.servos[m - 1].min_pwm = (uint16_t)roundf(
+            kDefaultMinPwm + d.servos[m - 1].min_angle * scale);
+        d.servos[m - 1].max_pwm = (uint16_t)roundf(
+            kDefaultMinPwm + d.servos[m - 1].max_angle * scale);
       }
     } else {
-      servo_configs[m - 1] = {
+      d.servos[m - 1] = {
           .channel = Config::mPort(m),
           .min_angle = 0.0f,
           .max_angle = kDefaultTotalAngle,
@@ -1021,43 +1011,25 @@ static void buildDefaults(float& budget_out, Gait::GaitConfig& gc_out,
     }
   }
 
-  gc_out = HexapodConfig::kGaitConfig;
-  // Override leg_servo_*[] to index into the 13-entry M-port layout.
+  d.gait = HexapodConfig::kGaitConfig;
   for (uint8_t i = 0; i < 6; i++) {
-    gc_out.leg_servo_hip[i] = kLegServoHip[i];
-    gc_out.leg_servo_knee[i] = kLegServoKnee[i];
+    d.gait.leg_servo_hip[i] = kLegServoHip[i];
+    d.gait.leg_servo_knee[i] = kLegServoKnee[i];
   }
 
-  height_out = 0.0f;
+  d.height_mm = 0.0f;
+  return d;
 }
 
-/// Returns true if the servo config blob was present (valid calibration).
-/// All gait/height keys are optional and fall back silently to defaults.
-static bool loadFromPrefs(float& budget_out, Gait::GaitConfig& gc_out,
-                          float& height_out) {
-  prefs.begin(kPrefsNs, /*readOnly=*/true);
-
-  bool have_cfg = prefs.isKey(kPrefsCfgKey);
-  if (have_cfg) {
-    size_t n =
-        prefs.getBytes(kPrefsCfgKey, servo_configs, sizeof(servo_configs));
-    if (n != sizeof(servo_configs)) have_cfg = false;
-  }
-  if (have_cfg) {
-    budget_out = prefs.getFloat(kPrefsBudgetKey, kDefaultBudget);
-  }
-
-  gc_out.step_height_mm = prefs.getFloat(kPrefsStepHKey, gc_out.step_height_mm);
-  gc_out.cycle_time_s = prefs.getFloat(kPrefsCycleKey, gc_out.cycle_time_s);
-  gc_out.step_scale = prefs.getFloat(kPrefsScaleKey, gc_out.step_scale);
-  height_out = prefs.getFloat(kPrefsHeightKey, 0.0f);
+/// Reads velocity caps — the sketch-local keys that live alongside the
+/// RobotPersistence-managed bundle in the same "srvtest" namespace.
+static void loadVelocityCaps() {
+  prefs.begin(Persistence::kNs, /*readOnly=*/true);
   max_vx = prefs.getFloat(kPrefsMaxVxKey, max_vx);
   max_vy = prefs.getFloat(kPrefsMaxVyKey, max_vy);
   max_wz = prefs.getFloat(kPrefsMaxWzKey, max_wz);
   max_hvel = prefs.getFloat(kPrefsMaxHvelKey, max_hvel);
-
   prefs.end();
-  return have_cfg;
 }
 
 // ---------------------------------------------------------------------------
@@ -1068,10 +1040,12 @@ void setup() {
   delay(1000);
 
   // Build defaults, then overlay any NVS-saved values.
-  float budget = kDefaultBudget;
-  Gait::GaitConfig gc;
-  buildDefaults(budget, gc, body_height_mm);
-  bool cfg_from_prefs = loadFromPrefs(budget, gc, body_height_mm);
+  Persistence::RobotPrefs defaults = buildDefaults();
+  Persistence::RobotPrefs cfg = defaults;
+  bool cfg_from_prefs = Persistence::loadAll(cfg, defaults);
+  for (uint8_t i = 0; i < 13; i++) servo_configs[i] = cfg.servos[i];
+  body_height_mm = cfg.height_mm;
+  loadVelocityCaps();
 
   // Heartbeat
   blink.beginThreadedPinned(2048, 1, 500, 1);
@@ -1097,7 +1071,7 @@ void setup() {
   // Servo subsystem
   static Subsystem::ServoSetup servo_setup(Wire, Config::pca_addr,
                                            Config::servo_en, servo_configs, 13,
-                                           budget, kDefaultFreqHz);
+                                           cfg.budget, kDefaultFreqHz);
   auto& srv = Subsystem::ServoSubsystem::getInstance(servo_setup, i2c_mutex);
   // Pre-attach all 12 hexapod servos so gait standNeutral/arm can succeed.
   for (uint8_t m = 1; m <= 12; m++) srv.attach(m - 1);
@@ -1113,7 +1087,7 @@ void setup() {
   kinematics = &kin;
 
   // Gait
-  static Gait::GaitSetup gait_setup(gc, kinematics, &srv);
+  static Gait::GaitSetup gait_setup(cfg.gait, kinematics, &srv);
   static Gait::GaitController gait_ctrl(gait_setup);
   gait = &gait_ctrl;
   if (!gait->init()) {
@@ -1145,7 +1119,7 @@ void setup() {
   printAll("Config: %s\r\n",
            cfg_from_prefs ? "LOADED FROM NVS (srvtest)" : "defaults");
   printAll("Gait: step=%.1f mm  cycle=%.2f s  scale=%.2f\r\n",
-           gc.step_height_mm, gc.cycle_time_s, gc.step_scale);
+           cfg.gait.step_height_mm, cfg.gait.cycle_time_s, cfg.gait.step_scale);
   printAll("Body height: %.1f mm\r\n", body_height_mm);
   printHelp();
 }

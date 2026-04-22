@@ -16,7 +16,8 @@
 	url = https://github.com/pfeerick/elapsedMillis.git
 [submodule "mcu_ws/lib/ssd1306"]
 	path = mcu_ws/lib/ssd1306
-	url = https://github.com/lexus2k/ssd1306
+	url = https://github.com/SeekerRobot/ssd1306
+	branch = seeker
 [submodule "mcu_ws/lib/SEC-Base-Classes"]
 	path = mcu_ws/lib/SEC-Base-Classes
 	url = https://github.com/IEEE-UCF/SEC-Base-Classes.git

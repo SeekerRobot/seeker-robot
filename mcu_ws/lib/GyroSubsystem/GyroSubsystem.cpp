@@ -1,19 +1,62 @@
 #include "GyroSubsystem.h"
 
+// BNO085 soft-reset caused cold-boot hangs on our boards — default OFF. Flip
+// via -DGYRO_ENABLE_SOFT_RESET=1 if you need to exercise the code path.
+#ifndef GYRO_ENABLE_SOFT_RESET
+#define GYRO_ENABLE_SOFT_RESET 0
+#endif
+
 namespace Subsystem {
 bool GyroSubsystem::init() {
   Threads::Scope lock(i2c_mutex_);
-  if (!setup_.wire_.begin()) {
+  const bool pin_wire = (setup_.sda_pin_ >= 0 && setup_.scl_pin_ >= 0);
+  const bool wire_ok =
+      pin_wire ? setup_.wire_.begin(setup_.sda_pin_, setup_.scl_pin_)
+               : setup_.wire_.begin();
+  if (!wire_ok) {
     Debug::printf(Debug::Level::ERROR, "[BNO085] Wire.begin() failure");
     return false;
   }
-  if (!setup_.wire_.setClock(400000)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Wire.setClock() failure");
+  setup_.wire_.setClock(400000);
+  // BNO085's SHTP handshake is flaky on cold boot (see
+  // project_pioarduino_bno085_s3_regression memory) and Adafruit_BNO08x's
+  // begin_I2C() can return false on the first attempt even when the chip is
+  // perfectly wired. Retry with a bus recovery delay — test_raw_bno uses the
+  // same pattern and reliably recovers within 2-3 attempts.
+  // Dev boards with the PS0 strap in the "other" position (or swapped units)
+  // are common enough that we also fall back to the alternate address.
+  constexpr int kBeginAttempts = 5;
+  const uint8_t primary_addr = setup_.addr_;
+  const uint8_t fallback_addr = (primary_addr == 0x4A) ? 0x4B : 0x4A;
+  const uint8_t try_addrs[2] = {primary_addr, fallback_addr};
+  bool ok = false;
+  uint8_t found_addr = 0;
+  for (uint8_t which = 0; which < 2 && !ok; which++) {
+    const uint8_t addr = try_addrs[which];
+    for (int attempt = 1; attempt <= kBeginAttempts && !ok; attempt++) {
+      ok = bno08x_.begin_I2C(addr, &setup_.wire_);
+      if (!ok) {
+        Debug::printf(Debug::Level::WARN,
+                      "[BNO085] begin_I2C @ 0x%02X attempt %d/%d failed", addr,
+                      attempt, kBeginAttempts);
+        delay(500);
+      } else {
+        found_addr = addr;
+      }
+    }
+  }
+  if (!ok) {
+    Debug::printf(
+        Debug::Level::ERROR,
+        "[BNO085] Failed to find BNO08x at 0x%02X or 0x%02X (%d attempts each)",
+        primary_addr, fallback_addr, kBeginAttempts);
     return false;
   }
-  if (!bno08x_.begin_I2C(setup_.addr_, &setup_.wire_)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Failed to find BNO08x chip");
-    return false;
+  if (found_addr != primary_addr) {
+    Debug::printf(Debug::Level::WARN,
+                  "[BNO085] Found at fallback 0x%02X (expected 0x%02X) — "
+                  "check PS0 strap",
+                  found_addr, primary_addr);
   }
   for (int n = 0; n < bno08x_.prodIds.numEntries; n++) {
     Debug::printf(Debug::Level::INFO,
@@ -24,25 +67,42 @@ bool GyroSubsystem::init() {
                   bno08x_.prodIds.entry[n].swVersionPatch,
                   bno08x_.prodIds.entry[n].swBuildNumber);
   }
-  reset();
+  // reset();
   setReorientation();
-  setReports();
+#if GYRO_USE_INT
+  // Attach ISR before enabling reports: BNO085 INT is active-low and level-
+  // held until I2C drain, so if setReports() fires the first report before
+  // the ISR is wired up, we miss the FALLING edge and never see another one
+  // (the line stays LOW). Kick the semaphore once so update()'s first pass
+  // drains whatever is already queued and releases INT back to HIGH.
   pinMode(setup_.int_pin_, INPUT_PULLUP);
   attachInterruptArg(digitalPinToInterrupt(setup_.int_pin_), intISR, this,
                      FALLING);
+  setReports();
+  xSemaphoreGive(int_semaphore_);
+#else
+  // Polling mode — update() runs on the ThreadedSubsystem cadence and drains
+  // whatever reports are ready. Caller must pass a non-zero updateDelayMs.
+  setReports();
+#endif
   Debug::printf(Debug::Level::INFO, "[BNO085] Init success");
   return true;
 }
 
+#if GYRO_USE_INT
 void IRAM_ATTR GyroSubsystem::intISR(void* arg) {
   auto* self = static_cast<GyroSubsystem*>(arg);
+  self->isr_count_++;
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   xSemaphoreGiveFromISR(self->int_semaphore_, &xHigherPriorityTaskWoken);
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+#endif
 
 void GyroSubsystem::update() {
+#if GYRO_USE_INT
   xSemaphoreTake(int_semaphore_, portMAX_DELAY);
+#endif
   Threads::Scope i2c_lock(i2c_mutex_);
 
   if (bno08x_.wasReset()) {
@@ -95,6 +155,16 @@ ImuData GyroSubsystem::getImuData() const {
   return imu_data_;
 }
 
+int GyroSubsystem::pollOnce() {
+  Threads::Scope i2c_lock(i2c_mutex_);
+  sh2_SensorValue_t sensorValue;
+  int drained = 0;
+  while (bno08x_.getSensorEvent(&sensorValue)) {
+    ++drained;
+  }
+  return drained;
+}
+
 void GyroSubsystem::reset() {
   Threads::Scope lock(i2c_mutex_);
   Debug::printf(Debug::Level::INFO, "[BNO085] Software resetting");
@@ -103,6 +173,22 @@ void GyroSubsystem::reset() {
 }
 
 void GyroSubsystem::logImuData() {
+  const float qx = imu_data_.gameRotationVector.i;
+  const float qy = imu_data_.gameRotationVector.j;
+  const float qz = imu_data_.gameRotationVector.k;
+  const float qw = imu_data_.gameRotationVector.real;
+  // ZYX intrinsic (roll-pitch-yaw), ROS REP 103 convention.
+  const float sinp = 2.0f * (qw * qy - qz * qx);
+  const float pitch =
+      (fabsf(sinp) >= 1.0f) ? copysignf(M_PI_2, sinp) : asinf(sinp);
+  const float roll =
+      atan2f(2.0f * (qw * qx + qy * qz), 1.0f - 2.0f * (qx * qx + qy * qy));
+  const float yaw =
+      atan2f(2.0f * (qw * qz + qx * qy), 1.0f - 2.0f * (qy * qy + qz * qz));
+  constexpr float kRad2Deg = 180.0f / static_cast<float>(M_PI);
+  Debug::printf(Debug::Level::VERBOSE,
+                "[BNO085] RPY: roll=%+7.2f pitch=%+7.2f yaw=%+7.2f deg",
+                roll * kRad2Deg, pitch * kRad2Deg, yaw * kRad2Deg);
   Debug::printf(
       Debug::Level::VERBOSE, "[BNO085] GRV: i=%.3f j=%.3f k=%.3f r=%.3f",
       imu_data_.gameRotationVector.i, imu_data_.gameRotationVector.j,
@@ -164,26 +250,16 @@ void GyroSubsystem::tareYaw() {
 }
 
 void GyroSubsystem::setReports() {
-  if (!bno08x_.enableReport(SH2_GYROSCOPE_CALIBRATED)) {
-    Debug::printf(Debug::Level::ERROR, "[BNO085] Could not enable gyroscope");
-  }
-  if (!bno08x_.enableReport(SH2_LINEAR_ACCELERATION)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable linear acceleration");
-  }
-  if (!bno08x_.enableReport(SH2_GRAVITY)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable gravity vector");
-  }
-  if (!bno08x_.enableReport(SH2_GAME_ROTATION_VECTOR)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable game rotation vector");
-  }
-  if (!bno08x_.enableReport(SH2_STABILITY_CLASSIFIER)) {
-    Debug::printf(Debug::Level::ERROR,
-                  "[BNO085] Could not enable stability classifier");
-  }
-Debug:
-  printf(Debug::Level::INFO, "[BNO085] Reports set");
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport GYRO_CAL      -> %d",
+                bno08x_.enableReport(SH2_GYROSCOPE_CALIBRATED));
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport LIN_ACCEL     -> %d",
+                bno08x_.enableReport(SH2_LINEAR_ACCELERATION));
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport GRAVITY       -> %d",
+                bno08x_.enableReport(SH2_GRAVITY));
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport GAME_ROT_VEC  -> %d",
+                bno08x_.enableReport(SH2_GAME_ROTATION_VECTOR));
+  Debug::printf(Debug::Level::INFO, "[BNO085] enableReport STABILITY     -> %d",
+                bno08x_.enableReport(SH2_STABILITY_CLASSIFIER));
+  Debug::printf(Debug::Level::INFO, "[BNO085] Reports set");
 }
 };  // namespace Subsystem
