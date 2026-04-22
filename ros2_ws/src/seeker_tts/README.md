@@ -39,6 +39,16 @@ are written to match her energetic, upbeat character.
 | Periodic variety (~25% of chimes) | random phrase | Fish TTS (live) |
 | Frontier → coverage | "Let me try a wider sweep!" | Fish TTS (live) |
 
+### Dynamic replies on voice commands (seeker_voice)
+`command_node.py` now publishes a unique Miku-style line to
+`/audio_tts_input` on every recognised voice command. Gemini is instructed
+to always fill the `response_phrase` field of the structured output with a
+short, in-character acknowledgment (e.g. *"Hehe, spinning around for
+you~!"*, *"Searching for that bottle, yay~!"*); that phrase is used for
+both the confirmation prompt and the execution feedback, so no two command
+interactions sound the same. When Gemini is offline the heuristic fallback
+still fires with static phrasing.
+
 ### Static WAVs (`sounds/`)
 Pre-rendered once via `tools/generate_sounds.py`. Playback requires no API
 call so latency is instant. Re-generate only when phrases change.
