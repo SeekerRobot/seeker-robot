@@ -62,9 +62,9 @@ from mcu_msgs.action import SeekObject
 
 ROTATION_SPEED = 0.2            # rad/s — slow enough for SLAM scan matching to keep up
 
-MIN_BBOX_AREA      = 2500.0     # px² — min bbox area to trigger approach
+MIN_BBOX_AREA      = 1000.0     # px² — min bbox area to trigger approach
 REACHED_BBOX_AREA  = 18000.0    # px² — bbox this big = close enough
-MIN_CONFIDENCE     = 0.35       # YOLO confidence threshold
+MIN_CONFIDENCE     = 0.20       # YOLO confidence threshold
 
 APPROACH_DISTANCE = 0.5         # metres per approach step
 CAMERA_HFOV       = 1.396       # rad — matches seeker_hexapod.urdf.xacro
@@ -285,17 +285,23 @@ class ObjectSeeker(Node):
     # ------------------------------------------------------------------
 
     def _on_detections(self, msg: DetectedObjectArray):
-        if self._mode != Mode.SEEK or not self._target_class:
+        if self._mode != Mode.SEEK:
+            # self.get_logger().info(f"Ignoring detection: mode={self._mode.name}", throttle_duration_sec=2.0)
             return
+        if not self._target_class:
+            return
+            
         if self._substate in (SubState.WAITING_FOR_NAV2, SubState.INITIAL_ROTATION,
                               SubState.OBJECT_REACHED):
             return
 
         best = None
         for d in msg.detections:
+            # self.get_logger().info(f"Seen: {d.class_name} (conf={d.confidence:.2f})")
             if d.class_name != self._target_class:
                 continue
             if d.confidence < MIN_CONFIDENCE:
+                self.get_logger().info(f"Target '{d.class_name}' conf too low: {d.confidence:.2f} < {MIN_CONFIDENCE}", throttle_duration_sec=1.0)
                 continue
             if best is None or d.confidence > best.confidence:
                 best = d
@@ -304,6 +310,7 @@ class ObjectSeeker(Node):
             return
 
         area = float(best.bbox_w * best.bbox_h)
+        self.get_logger().info(f"MATCH: '{self._target_class}' area={area:.0f} (min={MIN_BBOX_AREA})", throttle_duration_sec=0.5)
         offset = (best.bbox_cx - best.image_width / 2.0) / best.image_width
         bearing = -offset * CAMERA_HFOV
 
