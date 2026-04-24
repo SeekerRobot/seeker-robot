@@ -55,6 +55,18 @@ def generate_launch_description():
         arguments=['0', '0', '0', '0', '0', '0', 'odom', 'base_footprint'],
     )
 
+    # scan_tilt_filter republishes /mcu/scan → /mcu/scan_filtered (SLAM config
+    # points at the filtered topic). With no EKF the tilt filter's roll/pitch
+    # lookup returns zero (identity TF), so no rays get dropped — it's a pass-
+    # through but needs to run so /mcu/scan_filtered exists for SLAM.
+    scan_tilt_filter_node = Node(
+        package='seeker_navigation',
+        executable='scan_tilt_filter',
+        name='scan_tilt_filter',
+        parameters=[{'use_sim_time': False}],
+        output='screen',
+    )
+
     # ── t=3s: SLAM Toolbox ────────────────────────────────────────────────────
     # Delayed to allow micro-ROS agent to deliver first /mcu/scan messages
     slam_toolbox = TimerAction(
@@ -75,9 +87,17 @@ def generate_launch_description():
         actions=[
             ExecuteProcess(
                 cmd=['bash', '-c',
-                     'ros2 lifecycle set /slam_toolbox configure '
-                     '&& sleep 2 '
-                     '&& ros2 lifecycle set /slam_toolbox activate'],
+                     'for i in 1 2 3 4 5 6 7 8 9 10; do '
+                     '  ros2 lifecycle set /slam_toolbox configure >/dev/null 2>&1 && break; '
+                     '  sleep 2; '
+                     'done; '
+                     'sleep 2; '
+                     'for i in 1 2 3 4 5 6 7 8 9 10; do '
+                     '  ros2 lifecycle set /slam_toolbox activate >/dev/null 2>&1 && break; '
+                     '  sleep 2; '
+                     'done; '
+                     'echo "[slam_activate] slam_toolbox state: "'
+                     '  "$(ros2 lifecycle get /slam_toolbox 2>&1)"'],
                 output='screen',
             )
         ],
@@ -108,6 +128,7 @@ def generate_launch_description():
     return LaunchDescription([
         robot_state_pub,
         static_odom_tf,
+        scan_tilt_filter_node,
         slam_toolbox,
         slam_activate,
         rviz,

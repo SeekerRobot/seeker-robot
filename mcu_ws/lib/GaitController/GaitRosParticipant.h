@@ -55,6 +55,12 @@ struct GaitRosParticipantSetup {
   ///        after per-axis clamping, (vx, vy) are scaled down jointly. Zero
   ///        disables.
   float max_hvel = 0.0f;  // m/s
+
+  /// @brief Dead-man watchdog applied to GaitController (ms). If no cmd_vel
+  ///        arrives for this long while walking, the gait auto-disables.
+  ///        Prevents a dropped publisher (e.g. a killed `ros2 topic pub`)
+  ///        from leaving the robot walking forever. Zero disables.
+  uint32_t cmd_watchdog_ms = 500;
 };
 
 class GaitRosParticipant : public Subsystem::IMicroRosParticipant {

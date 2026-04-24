@@ -58,9 +58,19 @@ RUN mkdir -p /home/$USER_NAME/ros2_workspaces/src
 WORKDIR /home/$USER_NAME/ros2_workspaces
 RUN git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git src/micro_ros_setup
 
-# Install dependencies for the workspace
+# Install dependencies for the workspace. The --only-upgrade pass on fastcdr
+# + typesupport ensures the micro_ros_agent build (a few steps down) links
+# against the *current* Jazzy snapshot rather than whatever fastcdr was
+# cached in the ros:jazzy-ros-base image — a stale cached version ships
+# binaries that break at runtime once apt later upgrades fastcdr for Nav2
+# (symptom: "undefined symbol: Cdr::serialize(char*)" or stack smashing in
+# the agent). Keeping every stage on the same fastcdr keeps ABIs aligned.
 RUN . /opt/ros/$ROS_DISTRO/setup.sh && \
     apt-get update && \
+    apt-get install -y --only-upgrade \
+        ros-$ROS_DISTRO-fastcdr \
+        ros-$ROS_DISTRO-rosidl-typesupport-fastrtps-c \
+        ros-$ROS_DISTRO-rosidl-typesupport-fastrtps-cpp && \
     rosdep update && \
     rosdep install --from-paths src --ignore-src -y && \
     rm -rf /var/lib/apt/lists/*
@@ -126,6 +136,15 @@ RUN pip install --break-system-packages \
     deepface \
     tf-keras
 
+# Voice pipeline dependencies (seeker_voice package)
+# faster-whisper: on-device speech-to-text (Whisper via CTranslate2)
+# google-genai: Gemini API client for intent classification
+# sounddevice: local microphone capture (local_mic.launch.py mode)
+RUN pip install --break-system-packages \
+    faster-whisper \
+    google-genai \
+    sounddevice
+
 COPY scripts/register_cuda_libs.py /tmp/register_cuda_libs.py
 RUN python3 /tmp/register_cuda_libs.py && ldconfig
 
@@ -153,7 +172,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Cleanup apt caches
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    # Install rqt graph, teleop tools, and Nav2 navigation stack
+    # Install rqt graph, teleop tools, and Nav2 navigation stack.
+    # fastcdr + typesupport were already aligned to the current Jazzy
+    # snapshot in the base stage before the agent was built, so Nav2
+    # layers on top cleanly without introducing a second ABI drift.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-$ROS_DISTRO-rqt-graph \
     ros-$ROS_DISTRO-teleop-twist-keyboard \

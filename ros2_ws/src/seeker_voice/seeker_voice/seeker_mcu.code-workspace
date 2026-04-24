@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../../../../mcu_workspaces/seeker_mcu"
+		},
+		{
+			"path": "../../.."
+		}
+	],
+	"settings": {}
+}
