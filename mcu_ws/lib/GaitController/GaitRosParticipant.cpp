@@ -57,7 +57,8 @@ bool GaitRosParticipant::onCreate(Subsystem::MicroRosContext& ctx) {
   setup_.gait->setCommandTimeout(setup_.cmd_watchdog_ms);
 
   initialized_ = true;
-  Debug::printf(Debug::Level::INFO, "[GaitRos] onCreate OK -> %s (watchdog %u ms)",
+  Debug::printf(Debug::Level::INFO,
+                "[GaitRos] onCreate OK -> %s (watchdog %u ms)",
                 setup_.cmd_vel_topic, (unsigned)setup_.cmd_watchdog_ms);
   return true;
 }
