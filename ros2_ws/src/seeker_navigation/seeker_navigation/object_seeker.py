@@ -82,7 +82,10 @@ VISITED_RADIUS        = 0.3
 MAX_VISITED_FRONTIERS = 100
 
 COVERAGE_SPACING    = 0.5    # denser grid — more waypoints in small rooms
-COVERAGE_MARGIN     = 0.12   # just above the loosened Nav2 robot_radius (0.10)
+# Must exceed Nav2 robot_radius (0.13) plus some inflation buffer, otherwise
+# generated waypoints sit in inflated cost and RPP fires "collision ahead"
+# before the robot takes a single step.
+COVERAGE_MARGIN     = 0.25
 NEAR_UNKNOWN_MARGIN = 1.5
 
 DANCE_SPIN_RATE = 1.0           # rad/s during a PERFORM_MOVE dance
@@ -129,6 +132,28 @@ class ObjectSeeker(Node):
         # exploration even without a goal — the original WANDER behaviour.
         self.declare_parameter("auto_wander", True)
         self._auto_wander = bool(self.get_parameter("auto_wander").value)
+
+        # -- Simple visual-servoing tracker (APPROACH_OBJECT) --------------
+        # When true, APPROACH_OBJECT drives /cmd_vel directly from the bbox
+        # offset instead of sending Nav2 goals: object on image-right → turn
+        # left (angular.z > 0), object centred → drive forward, object lost
+        # for > timeout → fall back to Nav2 approach goal (same math as
+        # before, with existing retry + costmap-clear on failure).
+        #
+        # tracking_angular_gain is applied to the NORMALISED offset ([-0.5,
+        # 0.5] where 0 = centred, +0.5 = right edge). Positive gain → turn
+        # left on right-side objects. Flip the sign if your camera flip
+        # convention is the other way.
+        self.declare_parameter("use_simple_tracking", True)
+        self.declare_parameter("tracking_angular_gain", 1.2)
+        self.declare_parameter("tracking_linear_speed", 0.10)
+        self.declare_parameter("tracking_centered_offset", 0.15)
+        self.declare_parameter("tracking_detection_timeout_s", 1.5)
+        self._use_simple_tracking = bool(self.get_parameter("use_simple_tracking").value)
+        self._tracking_gain = float(self.get_parameter("tracking_angular_gain").value)
+        self._tracking_linear = float(self.get_parameter("tracking_linear_speed").value)
+        self._tracking_centered = float(self.get_parameter("tracking_centered_offset").value)
+        self._tracking_timeout_s = float(self.get_parameter("tracking_detection_timeout_s").value)
 
         # -- Publishers / subscribers --
         # Feeds velocity_smoother on /cmd_vel_nav so the smoother is the only
@@ -221,6 +246,13 @@ class ObjectSeeker(Node):
         # Detection tracking (target class only)
         self._target_bearing = 0.0
         self._target_bbox_area = 0.0
+        # Normalised bbox offset [-0.5..+0.5] and timestamp of the most
+        # recent matching detection — used by the simple tracker in _tick().
+        self._last_detection_offset = 0.0
+        self._last_detection_time_ns = 0
+        # When True, the simple tracker is currently driving cmd_vel; flips
+        # to False on detection timeout → Nav2 fallback.
+        self._tracking_active = False
         self._approach_attempts = 0
         self._max_approach_attempts = 15
 
@@ -351,7 +383,13 @@ class ObjectSeeker(Node):
                 elif self._substate == SubState.COVERAGE_NAV:
                     self._send_next_coverage_goal()
 
-        # COVERAGE_NAV, APPROACH_OBJECT, OBJECT_REACHED: goal-driven, no tick work
+        elif (self._substate == SubState.APPROACH_OBJECT
+              and self._use_simple_tracking
+              and self._tracking_active):
+            self._tick_simple_approach()
+
+        # COVERAGE_NAV, OBJECT_REACHED and Nav2-fallback APPROACH_OBJECT:
+        # goal-driven, no tick work.
 
     # ------------------------------------------------------------------
     # Detections callback — filters by current target_class when in SEEK
@@ -389,6 +427,8 @@ class ObjectSeeker(Node):
 
         self._target_bearing = bearing
         self._target_bbox_area = area
+        self._last_detection_offset = offset
+        self._last_detection_time_ns = self.get_clock().now().nanoseconds
 
         if area >= REACHED_BBOX_AREA:
             self._on_object_reached(area)
@@ -396,6 +436,11 @@ class ObjectSeeker(Node):
 
         if area >= MIN_BBOX_AREA and self._substate != SubState.APPROACH_OBJECT:
             self._start_approach()
+        elif (self._substate == SubState.APPROACH_OBJECT
+              and self._use_simple_tracking
+              and not self._tracking_active):
+            # Re-acquired target after a Nav2 fallback — resume simple tracking.
+            self._resume_simple_tracking()
 
     def _start_approach(self):
         self._voice.say_event("object_spotted", thing=self._target_class)
@@ -411,13 +456,77 @@ class ObjectSeeker(Node):
             self._current_goal_handle = None
             self._navigating = False
 
+        if self._use_simple_tracking:
+            # Visual servoing — cmd_vel driven from bbox offset in _tick().
+            # Skips Nav2 entirely unless the target is lost (timeout in
+            # _tick_simple_approach → Nav2 fallback).
+            self._tracking_active = True
+            self.get_logger().info(
+                f"Simple tracker ENGAGED for '{self._target_class}' "
+                f"(gain={self._tracking_gain}, linear={self._tracking_linear} m/s)"
+            )
+            return
+
         self._send_approach_goal()
+
+    def _resume_simple_tracking(self):
+        self._tracking_active = True
+        self.get_logger().info(
+            f"Re-acquired '{self._target_class}' — resuming simple tracker"
+        )
+        if self._current_goal_handle is not None:
+            self._current_goal_handle.cancel_goal_async()
+            self._current_goal_handle = None
+            self._navigating = False
+
+    def _tick_simple_approach(self):
+        """Visual-servoing tick. Falls back to Nav2 when detections go stale."""
+        now_ns = self.get_clock().now().nanoseconds
+        age_s = (now_ns - self._last_detection_time_ns) * 1e-9
+
+        if age_s > self._tracking_timeout_s or self._last_detection_time_ns == 0:
+            self._publish_cmd(0.0, 0.0)
+            self.get_logger().warning(
+                f"Simple tracker lost '{self._target_class}' "
+                f"({age_s:.1f}s stale) — falling back to Nav2 approach goal"
+            )
+            self._tracking_active = False
+            # Reset attempt counter so the Nav2 fallback gets a full retry
+            # budget rather than inheriting prior approach attempts.
+            self._approach_attempts = 0
+            self._send_approach_goal()
+            return
+
+        offset = self._last_detection_offset
+        if abs(offset) < self._tracking_centered:
+            # Centred — drive straight toward target. cmd_vel +x works here
+            # because the MCU gait already maps +x to physical forward
+            # (= camera direction); see object_seeker approach-goal comment.
+            self._publish_cmd(self._tracking_linear, 0.0)
+            self.get_logger().info(
+                f"TRACK forward  offset={offset:+.2f}",
+                throttle_duration_sec=0.5,
+            )
+        else:
+            # Off-axis — turn in place toward target. Positive offset
+            # (bowl on image-right) → positive angular.z (turn LEFT/CCW).
+            angular = self._tracking_gain * offset
+            self._publish_cmd(0.0, angular)
+            self.get_logger().info(
+                f"TRACK turn     offset={offset:+.2f}  ω={angular:+.2f} rad/s",
+                throttle_duration_sec=0.5,
+            )
 
     def _send_approach_goal(self):
         if self._approach_attempts >= self._max_approach_attempts:
             self.get_logger().warning(
-                "Max approach attempts reached — target may be unreachable"
+                f"Max approach attempts ({self._max_approach_attempts}) reached — "
+                f"clearing costmaps one last time and reverting substate"
             )
+            # Final costmap wipe — stops stale inflation / ghost obstacles
+            # from poisoning the next frontier/coverage pass.
+            self._clear_nav2_costmaps()
+            self._tracking_active = False
             self._substate = self._prior_substate or SubState.COVERAGE_NAV
             self._on_goal_finished()
             return
@@ -426,7 +535,14 @@ class ObjectSeeker(Node):
 
         robot_x, robot_y = self._get_robot_position()
         robot_yaw = self._get_yaw("map", default=0.0)
-        target_yaw = robot_yaw + self._target_bearing
+        # Camera's optical axis points along -X of base_footprint IRL (URDF
+        # currently lies about this — camera_joint rpy=0 but the physical
+        # mount is rotated 180° around Z). Detection `bearing` is measured
+        # from the camera's forward, so the map-frame direction to the
+        # target is robot_yaw + π + bearing, not robot_yaw + bearing.
+        # Fix this at the URDF level (camera_joint rpy="0 0 ${pi}") and the
+        # +π here becomes redundant.
+        target_yaw = robot_yaw + math.pi + self._target_bearing
         goal_x = robot_x + APPROACH_DISTANCE * math.cos(target_yaw)
         goal_y = robot_y + APPROACH_DISTANCE * math.sin(target_yaw)
 
@@ -443,6 +559,7 @@ class ObjectSeeker(Node):
 
     def _on_object_reached(self, bbox_area: float):
         self._substate = SubState.OBJECT_REACHED
+        self._tracking_active = False
 
         if self._current_goal_handle is not None:
             self.get_logger().info("Cancelling Nav2 goal — object reached!")

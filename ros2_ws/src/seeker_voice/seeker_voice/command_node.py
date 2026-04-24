@@ -89,7 +89,7 @@ class CommandNode(Node):
 
         self.declare_parameter("gemini_api_key", "")
         self.declare_parameter("gemini_model", "gemini-2.5-flash")
-        self.declare_parameter("wake_word", "hey hatsune")
+        self.declare_parameter("wake_word", "hey billy")
         self.declare_parameter("end_word", "over")
         self.declare_parameter("idle_timeout_seconds", 30.0)
 

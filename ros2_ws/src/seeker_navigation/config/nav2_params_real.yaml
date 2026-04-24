@@ -79,18 +79,23 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.3
       regulated_linear_scaling_min_speed: 0.05
-      # Start slowing further from inflated cost (match inflation_radius) and
-      # weight inflation more aggressively so RPP steers away from walls
-      # rather than just slowing next to them.
-      cost_scaling_dist: 0.4
+      # Slowing starts ~25 cm from inflated cost; inflation weighting kept
+      # moderate so RPP nudges away from walls without panicking at every
+      # inflated cell on the planned path.
+      cost_scaling_dist: 0.25
       cost_scaling_gain: 1.0
-      inflation_cost_scaling_factor: 5.0
+      inflation_cost_scaling_factor: 3.0
 
       # Goal behaviour
       transform_tolerance: 0.5
-      use_collision_detection: true
-      # 2 s @ 0.10 m/s = 20 cm collision-check horizon (was 10 cm).
-      max_allowed_time_to_collision_up_to_carrot: 2.0
+      # RPP's collision detector simulates forward along the carrot path and
+      # aborts if the footprint hits lethal/inscribed cost. With a tight
+      # indoor map and any inflation, this fires constantly. We rely on the
+      # planner's inflated path for safety instead. Set back to `true` with
+      # a small horizon if you want defensive braking near real obstacles.
+      use_collision_detection: false
+      # 0.5 s @ 0.10 m/s = 5 cm horizon. Only in effect if use_collision_detection=true.
+      max_allowed_time_to_collision_up_to_carrot: 0.5
 
 # ------------------------------------------------------------------
 # planner_server (NavfnPlanner)
@@ -171,14 +176,11 @@ local_costmap:
           obstacle_min_range: 0.1
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # Softer cost gradient (was 15.0, razor-thin) — cost now decays over
-        # the full inflation_radius so paths feel a continuous push from
-        # walls instead of a step at the edge.
         cost_scaling_factor: 3.0
-        # Inflation must be > robot_radius for the inflation layer to have
-        # any effect beyond the footprint. 0.30 m leaves ~17 cm of "soft"
-        # buffer beyond the 0.13 m robot body.
-        inflation_radius: 0.30
+        # Local inflation: 2 cm soft buffer past the 0.13 m footprint. The
+        # global costmap still plans conservative 40 cm-offset paths; the
+        # local one only needs enough margin to catch late-arriving obstacles.
+        inflation_radius: 0.15
 
 # ------------------------------------------------------------------
 # global_costmap
