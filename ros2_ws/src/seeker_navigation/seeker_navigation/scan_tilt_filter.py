@@ -32,6 +32,12 @@ class ScanTiltFilter(Node):
         self.declare_parameter('max_tilt_rad', 0.06)  # ~3.5 deg; tune per gait amplitude
         self._max_tilt: float = self.get_parameter('max_tilt_rad').value
 
+        # Cap effective scan range. Returns past this distance are replaced
+        # with inf (= no return), which keeps SLAM and Nav2 from inflating
+        # spurious far-away returns into ghost walls. Tune per environment.
+        self.declare_parameter('max_range_m', 1.0)
+        self._max_range_m: float = float(self.get_parameter('max_range_m').value)
+
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
 
@@ -77,6 +83,7 @@ class ScanTiltFilter(Node):
         inc = msg.angle_increment
         dropped = 0
 
+        max_range = self._max_range_m
         for i in range(len(ranges)):
             # Effective elevation of this ray given body roll/pitch:
             #   ray body-frame direction: [cos(a), sin(a), 0]
@@ -85,6 +92,10 @@ class ScanTiltFilter(Node):
             if abs(elevation) > threshold:
                 ranges[i] = float('inf')
                 dropped += 1
+            elif ranges[i] > max_range:
+                # Drop returns beyond the configured range — keeps far-away
+                # noise out of the SLAM map without changing the wire format.
+                ranges[i] = float('inf')
             angle += inc
 
         # Normalise scan length against the first-seen count so Karto doesn't

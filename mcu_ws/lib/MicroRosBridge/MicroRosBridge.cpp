@@ -285,28 +285,27 @@ void MicroRosBridge::publishAll() {
       lidar_.last_scan_count = scan.scan_count;
       lidar_.elapsed = 0;
 
-      // Split the full rotation into kLidarChunkCount CompactScan messages so
-      // each serialises to ~820 B (single IP frame) and the host reassembles
-      // by scan_id. Ranges go out as uint16 mm (0 == no return), halving the
-      // payload vs float32 metres.
-      static constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
+      // Canonical scan layout — every published chunk has identical geometry
+      // regardless of how many points the LD14P actually delivered this
+      // rotation. SLAM Toolbox / Karto compares each scan's
+      // (angle_min, angle_max, angle_increment, ranges.size); any drift
+      // between scans causes "LaserRangeScan contains N, expected M" warnings
+      // and a slowly rotating map. Fixed-by-design here:
+      //   angle_min          = 0                  (every scan)
+      //   angle_increment    = 2π / kLidarMaxPoints  (every scan)
+      //   chunk ranges.size  = kLidarMaxChunkSize (every chunk, every scan)
+      //
+      // Index reversal undoes the LD14P's CW spin (REP-103 / LaserScan expects
+      // CCW positive), unmirroring the scan in the lidar frame so left-side
+      // walls land at +Y bearings.
       static constexpr float kTwoPi = 6.28318530717958647f;
-      const uint16_t n =
+      static constexpr float kCanonicalIncRad =
+          kTwoPi / (float)kLidarMaxPoints;
+      const uint16_t actual_n =
           (scan.count < kLidarMaxPoints) ? scan.count : kLidarMaxPoints;
 
       const float freq = setup_.lidar->getCurrentScanFreqHz();
       const float scan_time = (freq > 0.0f) ? (1.0f / freq) : 0.0f;
-      // LD14P covers a full 2π rotation per scan. Deriving angle_increment
-      // from (angles[n-1] - angles[0])/(n-1) breaks when the driver's angle
-      // stream wraps across 0°/360° mid-scan — computed increment collapses
-      // toward zero and every ray projects to the same bearing (looks like a
-      // straight line in RViz). Uniform 2π/n is wrap-safe.
-      const float full_inc_rad = (n > 1) ? (kTwoPi / (float)n) : 0.0f;
-      // Absolute start bearing of ranges[0] in the lidar frame. Per-chunk
-      // angle_min is derived from this + start * inc so mid-scan wraps don't
-      // leak into chunk metadata.
-      const float scan_angle_min_rad =
-          (n > 0) ? (scan.angles_deg[0] * kDeg2Rad) : 0.0f;
 
       // Shared across chunks so the host can correlate.
       const int64_t now_ns = rmw_uros_epoch_nanos();
@@ -315,31 +314,38 @@ void MicroRosBridge::publishAll() {
       lidar_.msg.scan_id = (uint16_t)scan.scan_count;
       lidar_.msg.chunk_count = kLidarChunkCount;
       lidar_.msg.scan_time = scan_time;
-      lidar_.msg.time_increment = (n > 0) ? (scan_time / n) : 0.0f;
-      lidar_.msg.angle_increment = full_inc_rad;
+      lidar_.msg.time_increment =
+          (kLidarMaxPoints > 0) ? (scan_time / (float)kLidarMaxPoints) : 0.0f;
+      lidar_.msg.angle_increment = kCanonicalIncRad;
 
       for (uint8_t chunk = 0; chunk < kLidarChunkCount; ++chunk) {
-        const uint16_t start =
-            (uint16_t)((uint32_t)chunk * n / kLidarChunkCount);
-        const uint16_t end =
-            (uint16_t)((uint32_t)(chunk + 1) * n / kLidarChunkCount);
-        const uint16_t chunk_n = (end > start) ? (end - start) : 0;
-        if (chunk_n == 0) continue;
+        // Output indices in the FULL canonical 720-ray space:
+        const uint16_t out_start =
+            (uint16_t)((uint32_t)chunk * kLidarMaxPoints / kLidarChunkCount);
+        const uint16_t out_end = (uint16_t)((uint32_t)(chunk + 1) *
+                                            kLidarMaxPoints / kLidarChunkCount);
+        const uint16_t out_n = out_end - out_start;
 
-        for (uint16_t i = start, j = 0; i < end; ++i, ++j) {
-          // LD14P reports 0 mm for no-return; pass through as the sentinel.
-          float d = scan.distances_mm[i];
-          lidar_.ranges_buf[j] = (d > 65535.0f || d < 0.0f)
-                                     ? (uint16_t)0
-                                     : (uint16_t)(d + 0.5f);
+        for (uint16_t j = 0; j < out_n; ++j) {
+          // Mirror: output position (out_start + j) maps to LD14P sample
+          // (kLidarMaxPoints - 1 - (out_start + j)). Pad with 0 (no-return
+          // sentinel) for any positions the LD14P didn't deliver this scan.
+          const uint16_t out_index = out_start + j;
+          const uint16_t mirrored = kLidarMaxPoints - 1 - out_index;
+          if (mirrored < actual_n) {
+            float d = scan.distances_mm[mirrored];
+            lidar_.ranges_buf[j] = (d > 65535.0f || d < 0.0f)
+                                       ? (uint16_t)0
+                                       : (uint16_t)(d + 0.5f);
+          } else {
+            lidar_.ranges_buf[j] = 0;
+          }
         }
 
         lidar_.msg.chunk_index = chunk;
-        lidar_.msg.angle_min =
-            scan_angle_min_rad + (float)start * full_inc_rad;
-        lidar_.msg.angle_max =
-            scan_angle_min_rad + (float)(end - 1) * full_inc_rad;
-        lidar_.msg.ranges_mm.size = chunk_n;
+        lidar_.msg.angle_min = (float)out_start * kCanonicalIncRad;
+        lidar_.msg.angle_max = (float)(out_end - 1) * kCanonicalIncRad;
+        lidar_.msg.ranges_mm.size = out_n;
 
         rcl_ret_t rc = rcl_publish(&lidar_.pub, &lidar_.msg, nullptr);
         if (rc != RCL_RET_OK) {

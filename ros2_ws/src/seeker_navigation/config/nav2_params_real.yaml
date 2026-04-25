@@ -177,10 +177,11 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        # Local inflation: 2 cm soft buffer past the 0.13 m footprint. The
-        # global costmap still plans conservative 40 cm-offset paths; the
-        # local one only needs enough margin to catch late-arriving obstacles.
-        inflation_radius: 0.15
+        # Local inflation: 12 cm soft buffer past the 0.13 m footprint —
+        # gives the controller a wider cost gradient near walls so it
+        # carves trajectories with more clearance during recovery / tight
+        # passage. Was 0.15 (2 cm).
+        inflation_radius: 0.25
 
 # ------------------------------------------------------------------
 # global_costmap
@@ -217,10 +218,10 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        # Global inflation slightly wider than local — the planner will
-        # carve paths ~40 cm from walls while the local costmap (0.30 m)
-        # allows tighter recovery / passage if needed.
-        inflation_radius: 0.40
+        # Global inflation: planner carves paths ~42 cm from walls. Wider
+        # than local so high-level paths stay generously clear and the
+        # local costmap only handles late-arriving obstacles. Was 0.40.
+        inflation_radius: 0.55
 
 # ------------------------------------------------------------------
 # velocity_smoother

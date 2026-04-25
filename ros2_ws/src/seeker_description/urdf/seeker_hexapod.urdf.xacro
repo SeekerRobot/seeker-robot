@@ -263,7 +263,10 @@
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="lidar_link"/>
-    <origin xyz="0 0 ${body_z/2}" rpy="0 0 0"/>
+    <!-- Physical LD14P is mounted with its 0° mark pointing toward the
+         rear of the chassis, so rotate the LiDAR frame 180° about Z to
+         keep "lidar_link +X" == "base_link forward". -->
+    <origin xyz="0 0 ${body_z/2}" rpy="0 0 ${pi}"/>
   </joint>
 
   <!-- Gazebo LiDAR sensor → /gz/scan, bridged to /mcu/scan -->

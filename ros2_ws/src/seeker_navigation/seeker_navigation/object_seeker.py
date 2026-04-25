@@ -130,8 +130,24 @@ class ObjectSeeker(Node):
         # /seek_object goal arrives. When true (default), it autonomously
         # enters INITIAL_ROTATION → FRONTIER_NAV / COVERAGE_NAV for map
         # exploration even without a goal — the original WANDER behaviour.
-        self.declare_parameter("auto_wander", True)
+        self.declare_parameter("auto_wander", False)
         self._auto_wander = bool(self.get_parameter("auto_wander").value)
+
+        # Visual-coverage bias for frontier scoring. 0 = pure map-frontier
+        # behaviour (legacy); >0 nudges the seeker toward frontiers near
+        # cells the camera hasn't pointed through yet. See visual_coverage_node.
+        self.declare_parameter("visual_gain_weight", 1.0)
+        self._visual_gain_weight = float(
+            self.get_parameter("visual_gain_weight").value
+        )
+        # Radius around a candidate frontier in which we count unseen cells
+        # for the gain term — matches the camera range the coverage node
+        # raycasts to, so the score reflects what would actually become
+        # visible from the frontier pose.
+        self.declare_parameter("visual_view_radius_m", 4.0)
+        self._visual_view_radius_m = float(
+            self.get_parameter("visual_view_radius_m").value
+        )
 
         # -- Simple visual-servoing tracker (APPROACH_OBJECT) --------------
         # When true, APPROACH_OBJECT drives /cmd_vel directly from the bbox
@@ -192,6 +208,13 @@ class ObjectSeeker(Node):
         self.create_subscription(
             OccupancyGrid, "/map", self._on_map, map_qos, callback_group=cb_group,
         )
+        # visual_coverage_node publishes with the same TRANSIENT_LOCAL QoS
+        # as /map; if the node isn't running, _latest_visual_coverage stays
+        # None and frontier scoring + goal yaw fall back to legacy behaviour.
+        self.create_subscription(
+            OccupancyGrid, "/visual_coverage", self._on_visual_coverage,
+            map_qos, callback_group=cb_group,
+        )
 
         # -- Nav2 action client --
         self._nav_client = ActionClient(
@@ -217,6 +240,11 @@ class ObjectSeeker(Node):
             "/local_costmap/clear_entirely_local_costmap",
             callback_group=cb_group,
         )
+        # Resets the visual-coverage map at the start of each new SEEK so the
+        # robot re-sweeps the environment for the new target class.
+        self._clear_visual_coverage_client = self.create_client(
+            Trigger, "/visual_coverage/clear", callback_group=cb_group,
+        )
 
         # -- TF --
         self._tf_buffer = Buffer()
@@ -230,6 +258,7 @@ class ObjectSeeker(Node):
         self._target_class: str = ""
 
         self._latest_map = None
+        self._latest_visual_coverage: OccupancyGrid | None = None
         self._visited_frontiers: deque[tuple[float, float]] = deque(maxlen=MAX_VISITED_FRONTIERS)
 
         self._last_yaw = None
@@ -594,6 +623,14 @@ class ObjectSeeker(Node):
             )
         self._latest_map = msg
 
+    def _on_visual_coverage(self, msg: OccupancyGrid):
+        if self._latest_visual_coverage is None:
+            self.get_logger().info(
+                f"First visual_coverage received: "
+                f"{msg.info.width}×{msg.info.height}"
+            )
+        self._latest_visual_coverage = msg
+
     # ------------------------------------------------------------------
     # Frontier detection
     # ------------------------------------------------------------------
@@ -637,7 +674,13 @@ class ObjectSeeker(Node):
             map_x = origin_x + centroid_col * resolution
             map_y = origin_y + centroid_row * resolution
             dist = math.hypot(map_x - robot_x, map_y - robot_y)
-            candidates.append((map_x, map_y, len(cells) / max(dist, 0.1)))
+            visual_gain = self._count_unseen_in_radius(
+                map_x, map_y, self._visual_view_radius_m
+            )
+            score = (
+                len(cells) + self._visual_gain_weight * visual_gain
+            ) / max(dist, 0.1)
+            candidates.append((map_x, map_y, score))
 
         if not candidates:
             return None
@@ -682,6 +725,96 @@ class ObjectSeeker(Node):
                                 queue.append((nr, nc))
                     clusters.append(cluster)
         return clusters
+
+    # ------------------------------------------------------------------
+    # Visual coverage helpers
+    # ------------------------------------------------------------------
+
+    def _count_unseen_in_radius(self, wx: float, wy: float, radius_m: float) -> int:
+        """Count unseen-free cells within radius_m of (wx, wy) in /visual_coverage.
+
+        Returns 0 if no coverage map yet (so frontier scoring degrades to the
+        legacy size/distance behaviour). Counts cells with value _VAL_UNSEEN
+        (0) — i.e. free in the underlying /map but never camera-covered.
+        """
+        cov = self._latest_visual_coverage
+        if cov is None or self._visual_gain_weight <= 0.0:
+            return 0
+        info = cov.info
+        res = info.resolution
+        if res <= 0.0:
+            return 0
+        h, w = info.height, info.width
+        cx_cell = int(round((wx - info.origin.position.x) / res))
+        cy_cell = int(round((wy - info.origin.position.y) / res))
+        r_cells = max(1, int(round(radius_m / res)))
+        x0 = max(0, cx_cell - r_cells)
+        x1 = min(w, cx_cell + r_cells + 1)
+        y0 = max(0, cy_cell - r_cells)
+        y1 = min(h, cy_cell + r_cells + 1)
+        if x1 <= x0 or y1 <= y0:
+            return 0
+        data = np.array(cov.data, dtype=np.int8).reshape((h, w))
+        patch = data[y0:y1, x0:x1]
+        # Circular mask within the bounding box
+        ys, xs = np.ogrid[y0:y1, x0:x1]
+        circle = (xs - cx_cell) ** 2 + (ys - cy_cell) ** 2 <= r_cells ** 2
+        return int(np.count_nonzero((patch == 0) & circle))
+
+    def _best_yaw_for_unseen_coverage(
+        self, gx: float, gy: float, default: float
+    ) -> float:
+        """Return the bearing from (gx, gy) that aims the camera FOV at the
+        largest unseen-free region. Falls back to `default` if no coverage map
+        is available, the bias is disabled, or no unseen cells are nearby.
+        """
+        cov = self._latest_visual_coverage
+        if cov is None or self._visual_gain_weight <= 0.0:
+            return default
+        info = cov.info
+        res = info.resolution
+        if res <= 0.0:
+            return default
+        h, w = info.height, info.width
+
+        gx_cell = int(round((gx - info.origin.position.x) / res))
+        gy_cell = int(round((gy - info.origin.position.y) / res))
+        r_cells = max(1, int(round(self._visual_view_radius_m / res)))
+        x0 = max(0, gx_cell - r_cells)
+        x1 = min(w, gx_cell + r_cells + 1)
+        y0 = max(0, gy_cell - r_cells)
+        y1 = min(h, gy_cell + r_cells + 1)
+        if x1 <= x0 or y1 <= y0:
+            return default
+
+        data = np.array(cov.data, dtype=np.int8).reshape((h, w))
+        patch = (data[y0:y1, x0:x1] == 0)
+        ys, xs = np.ogrid[y0:y1, x0:x1]
+        # Mask out the goal cell itself (avoid atan2(0,0)) and anything beyond
+        # the view radius.
+        dx = xs - gx_cell
+        dy = ys - gy_cell
+        dist2 = dx * dx + dy * dy
+        valid = patch & (dist2 > 0) & (dist2 <= r_cells ** 2)
+        if not np.any(valid):
+            return default
+
+        # Histogram of bearings: bin width matches the camera FOV so the
+        # "best bin" answer is "the bearing whose FOV cone contains the most
+        # unseen cells from the goal pose."
+        n_bins = max(8, int(round(2.0 * math.pi / CAMERA_HFOV)))
+        bearings = np.arctan2(dy, dx)  # broadcasts to (y1-y0, x1-x0)
+        bin_idx = np.floor(
+            (bearings + math.pi) / (2.0 * math.pi) * n_bins
+        ).astype(int)
+        bin_idx = np.clip(bin_idx, 0, n_bins - 1)
+        flat_bins = bin_idx[valid]
+        counts = np.bincount(flat_bins, minlength=n_bins)
+        best_bin = int(np.argmax(counts))
+        if counts[best_bin] == 0:
+            return default
+        # Bin centre → world bearing
+        return -math.pi + (best_bin + 0.5) * (2.0 * math.pi / n_bins)
 
     # ------------------------------------------------------------------
     # Coverage waypoints
@@ -780,7 +913,15 @@ class ObjectSeeker(Node):
 
     def _send_nav_goal(self, goal_x: float, goal_y: float, label: str):
         robot_x, robot_y = self._get_robot_position()
-        yaw = math.atan2(goal_y - robot_y, goal_x - robot_x)
+        # Default heading: face the goal from the robot's current pose.
+        approach_yaw = math.atan2(goal_y - robot_y, goal_x - robot_x)
+        # If we have a coverage map, prefer the bearing from the goal pose
+        # that maximises camera exposure to as-yet-unseen cells. Falls back
+        # to approach_yaw when no coverage map is available or no unseen
+        # cells are nearby.
+        yaw = self._best_yaw_for_unseen_coverage(
+            goal_x, goal_y, default=approach_yaw
+        )
 
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = "map"
@@ -944,6 +1085,21 @@ class ObjectSeeker(Node):
             if not future.done():
                 self.get_logger().warning(f"{label} costmap clear timed out")
 
+    def _clear_visual_coverage(self, timeout: float = 1.0) -> None:
+        """Reset the visual-coverage map so the camera re-sweeps for a new target."""
+        client = self._clear_visual_coverage_client
+        if not client.wait_for_service(timeout_sec=timeout):
+            self.get_logger().warning(
+                "visual_coverage clear service unavailable — skipping"
+            )
+            return
+        future = client.call_async(Trigger.Request())
+        deadline = time.monotonic() + timeout
+        while not future.done() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if not future.done():
+            self.get_logger().warning("visual_coverage clear timed out")
+
     # ------------------------------------------------------------------
     # SeekObject action server
     # ------------------------------------------------------------------
@@ -996,6 +1152,10 @@ class ObjectSeeker(Node):
             # Scan matching keeps the occupancy grid fresh; we don't need a
             # bulk wipe per seek goal.
             self._clear_nav2_costmaps()
+            # Reset visual-coverage history: previous target SEEN cells are
+            # stale because YOLO only fired for that class. The robot must
+            # re-sweep for the new target.
+            self._clear_visual_coverage()
 
             self._visited_frontiers.clear()
             self._coverage_waypoints = []

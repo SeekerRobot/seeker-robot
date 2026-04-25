@@ -43,7 +43,29 @@ docker exec -it $CTR bash -c "source /home/ubuntu/ros2_workspaces/install/setup.
 docker exec -it $CTR bash -c "source /home/ubuntu/ros2_workspaces/install/setup.bash && ros2 action send_goal /seek_object mcu_msgs/action/SeekObject \"{class_name: 'teddy bear', timeout_sec: 300.0}\" --feedback"
 ```
 
-## 3. Monitoring & Debugging
+## 3. Thorough Seek (visual-coverage exploration)
+Launches the full autonomy stack with visual-coverage-biased frontier exploration —
+the robot tracks every cell the camera has ever pointed at and prefers frontiers
+near unseen-free regions, so it actively *looks* in every direction rather than
+just mapping LiDAR coverage. The visual-coverage map is reset automatically on
+every new SEEK goal, so each search re-sweeps for the new target class.
+
+**Default (dead-reckoning odom, no gyro):**
+```bash
+docker exec -it -e DISPLAY=:0 $CTR bash -c "source /home/ubuntu/ros2_workspaces/install/setup.bash && ros2 launch seeker_navigation real_object_seek_thorough.launch.py"
+```
+
+**With gyro / EKF odometry fusion:**
+```bash
+docker exec -it -e DISPLAY=:0 $CTR bash -c "source /home/ubuntu/ros2_workspaces/install/setup.bash && ros2 launch seeker_navigation real_object_seek_thorough.launch.py gyro:=true"
+```
+
+**Disable the visual-coverage bias (pure map-frontier baseline, useful for A/B):**
+```bash
+docker exec -it -e DISPLAY=:0 $CTR bash -c "source /home/ubuntu/ros2_workspaces/install/setup.bash && ros2 launch seeker_navigation real_object_seek_thorough.launch.py visual_gain_weight:=0.0"
+```
+
+## 4. Monitoring & Debugging
 Check the robot's internal state machine and search progress.
 
 **Live Feedback (State & Area):**

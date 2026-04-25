@@ -15,20 +15,23 @@ slam_toolbox:
     ceres_dogleg_type: TRADITIONAL_DOGLEG
     ceres_loss_function: None
 
-    # Mapping — allow first scan without movement. Keep thresholds at 0 so
-    # SLAM isn't gated by a (potentially broken) odom source; redundant scans
-    # during static periods are cheap.
-    mode: mapping
-    minimum_travel_distance: 0.0
-    minimum_travel_heading: 0.0
+    # Lifelong mode — slam_toolbox continuously prunes low-quality nodes from
+    # the pose graph, so ghost walls created by a transient bad scan get
+    # replaced when the robot revisits the area with cleaner data. mapping
+    # mode never forgets, which leaves spurious returns in the map forever.
+    mode: lifelong
+    minimum_travel_distance: 0.05  # m — skip redundant scans while stationary
+    minimum_travel_heading: 0.05   # rad (~2.9°) — same, for in-place rotation
     minimum_time_interval: 0.0
 
-    # Scan matching
+    # Scan matching — bar raised so transient bad scans don't get accepted into
+    # the map. link_match_minimum_response_fine 0.1 → 0.4: only scans whose
+    # fine-resolution match score clears 0.4 are linked into the graph.
     use_scan_matching: true
     use_scan_barycenter: true
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
-    link_match_minimum_response_fine: 0.1
+    link_match_minimum_response_fine: 0.4
     link_scan_maximum_distance: 1.5
     loop_search_maximum_distance: 3.0
     do_loop_closing: true
@@ -36,6 +39,19 @@ slam_toolbox:
     loop_match_maximum_variance_coarse: 3.0
     loop_match_minimum_response_coarse: 0.35
     loop_match_minimum_response_fine: 0.45
+
+    # Lifelong tuning — controls how aggressively old/redundant nodes are
+    # pruned. Defaults from slam_toolbox examples; raise nearby_penalty or
+    # node_removal_score to prune more aggressively, lower them to be more
+    # conservative if the map starts losing legitimate features.
+    lifelong_search_use_tree: false
+    lifelong_minimum_score: 0.1
+    lifelong_iou_match: 0.85
+    lifelong_node_removal_score: 0.04
+    lifelong_overlap_score_scale: 0.06
+    lifelong_constraint_multiplier: 0.08
+    lifelong_nearby_penalty: 0.001
+    lifelong_candidates_scale: 0.03
 
     # Correlation Parameters
     correlation_search_space_dimension: 0.5
@@ -63,7 +79,7 @@ slam_toolbox:
     transform_publish_period: 0.02
     map_update_interval: 1.0
     resolution: 0.05
-    max_laser_range: 8.0
+    max_laser_range: 1.0
     transform_timeout: 0.2
     tf_buffer_duration: 30.0
     stack_size_to_use: 40000000

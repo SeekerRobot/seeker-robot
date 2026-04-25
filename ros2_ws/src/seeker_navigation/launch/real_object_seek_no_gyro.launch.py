@@ -40,7 +40,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     auto_wander_arg = DeclareLaunchArgument(
-        'auto_wander', default_value='true',
+        'auto_wander', default_value='false',
         description='If false, object_seeker stays idle until a /seek_object goal arrives.'
     )
 
