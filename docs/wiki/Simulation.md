@@ -14,7 +14,7 @@ source ~/ros2_workspaces/install/setup.bash
 You must have built at least:
 
 ```bash
-colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_vision seeker_web
+colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_test_cmd_vel seeker_vision seeker_voice seeker_web
 ```
 
 ---
@@ -169,6 +169,44 @@ ros2 topic echo /cmd_vel
 
 **RViz fixed frame:** `map`
 Recommended displays: `Map` (`/map`, Transient Local), `LaserScan` (`/mcu/scan`), `RobotModel`, `TF`, `Path` (`/plan`), `Costmap (local)` (`/local_costmap/costmap`), `Costmap (global)` (`/global_costmap/costmap`).
+
+---
+
+## `sim_ball_search` — autonomous red ball hunt
+
+Same as `sim_object_seek` but uses `ball_searcher` instead of `object_seeker`. The ball searcher does frontier exploration and approaches a red ball when detected. No YOLO — detection is simpler and lighter.
+
+```bash
+ros2 launch seeker_gazebo sim_ball_search.launch.py
+```
+
+**Timeline:**
+
+```
+t=0s   Gazebo + fake_mcu + robot_state_publisher + gz_bridge
+t=2s   EKF
+t=5s   SLAM Toolbox
+t=10s  SLAM configured + activated
+t=13s  Nav2 stack
+t=15s  Nav2 lifecycle manager
+t=25s  ball_searcher (frontier exploration → red ball approach)
+```
+
+**RViz fixed frame:** `map`
+
+---
+
+## `sim_integrated_medium` — integrated YOLO simulation (no command_node)
+
+Same stack as `sim_object_seek` but structured as a standalone "medium" integration launch. The brain (`command_node`) is not included to save resources — use the `find` CLI to send seek goals manually.
+
+```bash
+ros2 launch seeker_gazebo sim_integrated_medium.launch.py
+# in another terminal:
+ros2 run seeker_navigation find sports_ball --feedback
+```
+
+**RViz fixed frame:** `map`
 
 ---
 

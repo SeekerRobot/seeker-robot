@@ -160,7 +160,10 @@ All launches live in `seeker_navigation/launch/`.
 |---|---|---|
 | `real_slam_raw.launch.py` | robot_state_publisher + **static** `odom → base_footprint` + SLAM Toolbox | First SLAM bring-up without EKF complications |
 | `real_slam_ekf.launch.py` | robot_state_publisher + EKF (fuses `/mcu/imu`) + SLAM Toolbox | Best default; matches the real-hardware pipeline |
-| `real_ball_search.launch.py` | `real_slam_ekf` + Nav2 + `ball_searcher` | Full autonomy demo |
+| `real_ball_search.launch.py` | `real_slam_ekf` + Nav2 + `ball_searcher` | Full autonomy demo (frontier exploration + red ball approach) |
+| `real_object_seek.launch.py` | `real_slam_ekf` + Nav2 + YOLO vision + `object_seeker` | Full autonomy with YOLO object seeking (Brain–Body `SeekObject` action pipeline) |
+| `real_object_seek_no_gyro.launch.py` | Dead-reckoning odom (no IMU) + SLAM + Nav2 + vision + `object_seeker` | Same as `real_object_seek` but without gyro; isolates IMU-related issues |
+| `real_scripted_drive.launch.py` | Dead-reckoning odom + SLAM + scripted `/cmd_vel` replay | Replays a YAML script of forward/turn commands (no Nav2, no vision) |
 
 Typical usage:
 

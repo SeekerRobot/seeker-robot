@@ -62,8 +62,10 @@ seeker-robot/
 │       ├── seeker_media/       # MP4 player (video → OLED + audio → speaker)
 │       ├── seeker_navigation/  # Nav2 + SLAM + EKF + ball_searcher
 │       ├── seeker_sim/         # fake_mcu_node (tripod gait sim)
+│       ├── seeker_test_cmd_vel/ # Minimal cmd_vel driver for manual/auto drive
 │       ├── seeker_tts/         # Fish Audio TTS bridge
 │       ├── seeker_vision/      # YOLO object detection + emotion detection + camera proxy
+│       ├── seeker_voice/       # "Brain" — Gemini-backed voice command → SeekObject action client
 │       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST)
 │       └── test_package/       # Minimal CI sanity package
 ├── mcu_ws/            # PlatformIO workspace (ESP32 firmware)

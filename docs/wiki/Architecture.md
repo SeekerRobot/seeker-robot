@@ -46,11 +46,16 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │  Nav2 (BT navigator, controller, planner, behaviors, smoother)              │
 │       ◄── /map, /odom, TF     ──► /cmd_vel                                  │
 │                                                                             │
-│  seeker_vision  ──► /object_found, /detection_detail, /emotion_detail        │
+│  seeker_vision  ──► /vision/detections, /object_found, /emotion_detail       │
 │       ◄── ESP32 cam proxy or Gazebo /camera/image or local webcam           │
 │                                                                             │
-│  ball_searcher (mission planner)                                            │
+│  object_seeker (SeekObject Action Server — WANDER/SEEK/PERFORM_MOVE)        │
+│       ◄── /map, /vision/detections   ──► NavigateToPose goals               │
+│  ball_searcher (legacy mission planner — frontier + red ball)               │
 │       ◄── /map, camera feed   ──► NavigateToPose goals                      │
+│                                                                             │
+│  seeker_voice (Brain) ──► SeekObject goals ──► object_seeker                │
+│       ◄── /audio_transcription (from Whisper)  ──► /audio_tts_input (TTS)   │
 │                                                                             │
 │  seeker_tts     ──► HTTP :8383 /audio_out ──► ESP32 SpeakerSubsystem         │
 │  seeker_display ──► HTTP :8390 /lcd_out   ──► ESP32 OledSubsystem           │
@@ -98,8 +103,10 @@ seeker-robot/
 │       ├── seeker_sim/          # fake_mcu_node
 │       ├── seeker_display/      # OLED display nodes + HTTP LCD server
 │       ├── seeker_media/        # MP4 player (video → OLED + audio → speaker)
+│       ├── seeker_test_cmd_vel/ # Minimal cmd_vel driver for manual/auto drive
 │       ├── seeker_tts/          # Fish Audio TTS node + tts.launch.py
 │       ├── seeker_vision/      # YOLO detection + emotion + camera proxy
+│       ├── seeker_voice/       # "Brain" — voice command → SeekObject action client
 │       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST on :8080)
 │       └── test_package/        # Tiny CI-sanity C++ node
 ├── mcu_ws/
