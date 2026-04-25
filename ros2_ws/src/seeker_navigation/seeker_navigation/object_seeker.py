@@ -141,11 +141,13 @@ class ObjectSeeker(Node):
         # before, with existing retry + costmap-clear on failure).
         #
         # tracking_angular_gain is applied to the NORMALISED offset ([-0.5,
-        # 0.5] where 0 = centred, +0.5 = right edge). Positive gain → turn
-        # left on right-side objects. Flip the sign if your camera flip
-        # convention is the other way.
+        # 0.5] where 0 = centred, +0.5 = right edge). With the current ESP32
+        # camera mount + cam_proxy flip, image-right corresponds to robot-
+        # right, so a NEGATIVE gain turns the robot toward right-side targets
+        # (clockwise / -angular.z). Flip the sign if you change the camera
+        # mount or remove the proxy flip.
         self.declare_parameter("use_simple_tracking", True)
-        self.declare_parameter("tracking_angular_gain", 1.2)
+        self.declare_parameter("tracking_angular_gain", -1.2)
         self.declare_parameter("tracking_linear_speed", 0.10)
         self.declare_parameter("tracking_centered_offset", 0.15)
         self.declare_parameter("tracking_detection_timeout_s", 1.5)
@@ -509,7 +511,8 @@ class ObjectSeeker(Node):
             )
         else:
             # Off-axis — turn in place toward target. Positive offset
-            # (bowl on image-right) → positive angular.z (turn LEFT/CCW).
+            # (target on image-right) × negative gain → negative angular.z
+            # (turn RIGHT/CW), which faces the target.
             angular = self._tracking_gain * offset
             self._publish_cmd(0.0, angular)
             self.get_logger().info(

@@ -75,7 +75,7 @@
 #endif
 #if BRIDGE_ENABLE_LIDAR
 #include <LidarSubsystem.h>
-#include <sensor_msgs/msg/laser_scan.h>
+#include <mcu_msgs/msg/compact_scan.h>
 #endif
 #if BRIDGE_ENABLE_DEBUG
 #include <MicroRosDebug.h>
@@ -161,10 +161,17 @@ using ServoPublisherState = EmptyState;
 #endif
 
 #if BRIDGE_ENABLE_LIDAR
+// Full 720-pt scan is split into kChunkCount CompactScan messages so each
+// serialises to ~820 B — well below the 2048 B XRCE MTU and single-frame on
+// the wire (no IP fragmentation → no lwIP TX-queue pile-ups on slow WiFi).
+static constexpr uint8_t kLidarChunkCount = 2;
+static constexpr uint16_t kLidarMaxChunkSize =
+    (kLidarMaxPoints + kLidarChunkCount - 1) / kLidarChunkCount;
+
 struct LidarPublisherState {
   rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
-  sensor_msgs__msg__LaserScan msg{};
-  float ranges_buf[kLidarMaxPoints];
+  mcu_msgs__msg__CompactScan msg{};
+  uint16_t ranges_buf[kLidarMaxChunkSize];
   char frame_id_buf[12] = "lidar_link";
   elapsedMillis elapsed{};
   uint32_t last_scan_count = 0;
@@ -207,9 +214,11 @@ struct MicroRosBridgeSetup {
   // const char*     servo_topic       = "mcu/joint_states";
   // uint32_t        servo_interval_ms = 20;
 
-  // Lidar — used only when BridgeConfig::kEnableLidar is true.
+  // Lidar — used only when BridgeConfig::kEnableLidar is true. Publishes
+  // CompactScan chunks on scan_topic; a host-side scan_inflate_node
+  // reassembles them into sensor_msgs/LaserScan on /mcu/scan.
   LidarSubsystem* lidar = nullptr;
-  const char* scan_topic = "mcu/scan";
+  const char* scan_topic = "mcu/scan_compact";
   uint32_t scan_interval_ms = 50;  ///< Min ms between publishes (~20 Hz cap).
 
   // Debug log — used only when BridgeConfig::kEnableDebug is true.

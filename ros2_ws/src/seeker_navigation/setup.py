@@ -26,6 +26,7 @@ setup(
             "ball_searcher = seeker_navigation.ball_searcher:main",
             "object_seeker = seeker_navigation.object_seeker:main",
             "scan_tilt_filter = seeker_navigation.scan_tilt_filter:main",
+            "scan_inflate_node = seeker_navigation.scan_inflate_node:main",
             "dead_reckoning_odom = seeker_navigation.dead_reckoning_odom:main",
             "cmd_vel_restrict = seeker_navigation.cmd_vel_restrict:main",
             "scripted_cmd_vel = seeker_navigation.scripted_cmd_vel:main",

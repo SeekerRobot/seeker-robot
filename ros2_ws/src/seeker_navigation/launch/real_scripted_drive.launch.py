@@ -76,6 +76,14 @@ def generate_launch_description():
         ],
     )
 
+    scan_inflate_node = Node(
+        package='seeker_navigation',
+        executable='scan_inflate_node',
+        name='scan_inflate',
+        parameters=[{'use_sim_time': False}],
+        output='screen',
+    )
+
     scan_tilt_filter_node = TimerAction(
         period=2.0,
         actions=[
@@ -170,6 +178,7 @@ def generate_launch_description():
         rviz_arg,
         robot_state_pub,
         dead_reckoning_node,
+        scan_inflate_node,
         scan_tilt_filter_node,
         slam_toolbox,
         slam_activate,

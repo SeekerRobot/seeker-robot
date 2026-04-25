@@ -55,6 +55,15 @@ def generate_launch_description():
         arguments=['0', '0', '0', '0', '0', '0', 'odom', 'base_footprint'],
     )
 
+    # scan_inflate reassembles MCU CompactScan chunks into /mcu/scan.
+    scan_inflate_node = Node(
+        package='seeker_navigation',
+        executable='scan_inflate_node',
+        name='scan_inflate',
+        parameters=[{'use_sim_time': False}],
+        output='screen',
+    )
+
     # scan_tilt_filter republishes /mcu/scan → /mcu/scan_filtered (SLAM config
     # points at the filtered topic). With no EKF the tilt filter's roll/pitch
     # lookup returns zero (identity TF), so no rays get dropped — it's a pass-
@@ -128,6 +137,7 @@ def generate_launch_description():
     return LaunchDescription([
         robot_state_pub,
         static_odom_tf,
+        scan_inflate_node,
         scan_tilt_filter_node,
         slam_toolbox,
         slam_activate,

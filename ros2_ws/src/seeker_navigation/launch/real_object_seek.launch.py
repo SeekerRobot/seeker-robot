@@ -94,6 +94,14 @@ def generate_launch_description():
     # rock during the gait. SLAM + Nav2 costmaps consume the filtered output
     # on /mcu/scan_filtered. Started alongside EKF since it needs odom→base
     # TF to compute body tilt.
+    scan_inflate_node = Node(
+        package='seeker_navigation',
+        executable='scan_inflate_node',
+        name='scan_inflate',
+        parameters=[{'use_sim_time': False}],
+        output='screen',
+    )
+
     scan_tilt_filter_node = TimerAction(
         period=2.0,
         actions=[
@@ -280,6 +288,7 @@ def generate_launch_description():
         robot_state_pub,
         cam_proxy,
         ekf_node,
+        scan_inflate_node,
         scan_tilt_filter_node,
         vision_node,
         slam_toolbox,

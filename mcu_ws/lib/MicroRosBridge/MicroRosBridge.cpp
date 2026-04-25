@@ -109,36 +109,31 @@ bool MicroRosBridge::onCreate(MicroRosContext& ctx) {
   } else {
     // Without __init(), header.frame_id.data is nullptr → micro-CDR crash on
     // publish.
-    sensor_msgs__msg__LaserScan__init(&lidar_.msg);
+    mcu_msgs__msg__CompactScan__init(&lidar_.msg);
     // Wire frame_id to our pre-allocated buffer (__init allocates 1 byte; we
     // override before any publish so __fini never sees our pointer).
     lidar_.msg.header.frame_id.data = lidar_.frame_id_buf;
     lidar_.msg.header.frame_id.size = 10;  // strlen("lidar_link")
     lidar_.msg.header.frame_id.capacity = sizeof(lidar_.frame_id_buf);
-    // Wire pre-allocated buffers so __fini() never frees them.
-    lidar_.msg.ranges.data = lidar_.ranges_buf;
-    lidar_.msg.ranges.size = 0;
-    lidar_.msg.ranges.capacity = kLidarMaxPoints;
-    // Intensities (LD14P return-strength) intentionally empty: nav2/AMCL don't
-    // consume them, and keeping them doubled the LaserScan payload enough to
-    // overrun the BestEffort MTU.
-    lidar_.msg.intensities.data = nullptr;
-    lidar_.msg.intensities.size = 0;
-    lidar_.msg.intensities.capacity = 0;
+    // Wire pre-allocated buffer so __fini() never frees it.
+    lidar_.msg.ranges_mm.data = lidar_.ranges_buf;
+    lidar_.msg.ranges_mm.size = 0;
+    lidar_.msg.ranges_mm.capacity = kLidarMaxChunkSize;
 
     // Physical limits for the LD14P (metres).
     lidar_.msg.range_min = 0.02f;
     lidar_.msg.range_max = 12.0f;
+    lidar_.msg.chunk_count = kLidarChunkCount;
 
     rcl_ret_t rc = ctx.createPublisherBestEffort(
-        &lidar_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, LaserScan),
+        &lidar_.pub, ROSIDL_GET_MSG_TYPE_SUPPORT(mcu_msgs, msg, CompactScan),
         setup_.scan_topic);
     if (rc != RCL_RET_OK) {
       Debug::printf(Debug::Level::ERROR,
-                    "[Bridge] LaserScan publisher failed (%d)", (int)rc);
+                    "[Bridge] CompactScan publisher failed (%d)", (int)rc);
       ok = false;
     } else {
-      Debug::printf(Debug::Level::INFO, "[Bridge] LaserScan publisher -> %s",
+      Debug::printf(Debug::Level::INFO, "[Bridge] CompactScan publisher -> %s",
                     setup_.scan_topic);
     }
   }
@@ -199,13 +194,10 @@ void MicroRosBridge::onDestroy() {
   lidar_.msg.header.frame_id.data = nullptr;
   lidar_.msg.header.frame_id.size = 0;
   lidar_.msg.header.frame_id.capacity = 0;
-  lidar_.msg.ranges.data = nullptr;
-  lidar_.msg.ranges.size = 0;
-  lidar_.msg.ranges.capacity = 0;
-  lidar_.msg.intensities.data = nullptr;
-  lidar_.msg.intensities.size = 0;
-  lidar_.msg.intensities.capacity = 0;
-  sensor_msgs__msg__LaserScan__fini(&lidar_.msg);
+  lidar_.msg.ranges_mm.data = nullptr;
+  lidar_.msg.ranges_mm.size = 0;
+  lidar_.msg.ranges_mm.capacity = 0;
+  mcu_msgs__msg__CompactScan__fini(&lidar_.msg);
   lidar_.pub = rcl_get_zero_initialized_publisher();
 #endif
 #if BRIDGE_ENABLE_DEBUG
@@ -293,42 +285,68 @@ void MicroRosBridge::publishAll() {
       lidar_.last_scan_count = scan.scan_count;
       lidar_.elapsed = 0;
 
-      // LD14P applies geometric correction so angles are not perfectly uniform;
-      // compute actual bounds in a single pass while converting scan data.
-      // Stride-3 downsample: 720 pts → 240 pts (~1000 B ranges-only), fits
-      // comfortably within the 2048-byte BestEffort transport MTU.
+      // Split the full rotation into kLidarChunkCount CompactScan messages so
+      // each serialises to ~820 B (single IP frame) and the host reassembles
+      // by scan_id. Ranges go out as uint16 mm (0 == no return), halving the
+      // payload vs float32 metres.
       static constexpr float kDeg2Rad = 3.14159265358979f / 180.0f;
-      static constexpr uint16_t kStride = 3;
-      uint16_t n =
+      static constexpr float kTwoPi = 6.28318530717958647f;
+      const uint16_t n =
           (scan.count < kLidarMaxPoints) ? scan.count : kLidarMaxPoints;
-      uint16_t n_out = 0;
-      float a_min = scan.angles_deg[0], a_max = scan.angles_deg[0];
-      for (uint16_t i = 0; i < n; i += kStride, n_out++) {
-        if (scan.angles_deg[i] < a_min) a_min = scan.angles_deg[i];
-        if (scan.angles_deg[i] > a_max) a_max = scan.angles_deg[i];
-        lidar_.ranges_buf[n_out] = scan.distances_mm[i] * 0.001f;  // mm → m
-      }
-      lidar_.msg.angle_min = a_min * kDeg2Rad;
-      lidar_.msg.angle_max = a_max * kDeg2Rad;
-      lidar_.msg.angle_increment =
-          (n_out > 1) ? ((a_max - a_min) * kDeg2Rad / (n_out - 1)) : 0.0f;
 
-      float freq = setup_.lidar->getCurrentScanFreqHz();
-      if (freq > 0.0f) {
-        lidar_.msg.scan_time = 1.0f / freq;
-        lidar_.msg.time_increment = lidar_.msg.scan_time / n_out;
-      }
+      const float freq = setup_.lidar->getCurrentScanFreqHz();
+      const float scan_time = (freq > 0.0f) ? (1.0f / freq) : 0.0f;
+      // LD14P covers a full 2π rotation per scan. Deriving angle_increment
+      // from (angles[n-1] - angles[0])/(n-1) breaks when the driver's angle
+      // stream wraps across 0°/360° mid-scan — computed increment collapses
+      // toward zero and every ray projects to the same bearing (looks like a
+      // straight line in RViz). Uniform 2π/n is wrap-safe.
+      const float full_inc_rad = (n > 1) ? (kTwoPi / (float)n) : 0.0f;
+      // Absolute start bearing of ranges[0] in the lidar frame. Per-chunk
+      // angle_min is derived from this + start * inc so mid-scan wraps don't
+      // leak into chunk metadata.
+      const float scan_angle_min_rad =
+          (n > 0) ? (scan.angles_deg[0] * kDeg2Rad) : 0.0f;
 
-      lidar_.msg.ranges.size = n_out;
-
-      int64_t now_ns = rmw_uros_epoch_nanos();
+      // Shared across chunks so the host can correlate.
+      const int64_t now_ns = rmw_uros_epoch_nanos();
       lidar_.msg.header.stamp.sec = (int32_t)(now_ns / 1000000000LL);
       lidar_.msg.header.stamp.nanosec = (uint32_t)(now_ns % 1000000000LL);
+      lidar_.msg.scan_id = (uint16_t)scan.scan_count;
+      lidar_.msg.chunk_count = kLidarChunkCount;
+      lidar_.msg.scan_time = scan_time;
+      lidar_.msg.time_increment = (n > 0) ? (scan_time / n) : 0.0f;
+      lidar_.msg.angle_increment = full_inc_rad;
 
-      rcl_ret_t rc = rcl_publish(&lidar_.pub, &lidar_.msg, nullptr);
-      if (rc != RCL_RET_OK) {
-        Debug::printf(Debug::Level::WARN,
-                      "[Bridge] LaserScan publish failed (%d)", (int)rc);
+      for (uint8_t chunk = 0; chunk < kLidarChunkCount; ++chunk) {
+        const uint16_t start =
+            (uint16_t)((uint32_t)chunk * n / kLidarChunkCount);
+        const uint16_t end =
+            (uint16_t)((uint32_t)(chunk + 1) * n / kLidarChunkCount);
+        const uint16_t chunk_n = (end > start) ? (end - start) : 0;
+        if (chunk_n == 0) continue;
+
+        for (uint16_t i = start, j = 0; i < end; ++i, ++j) {
+          // LD14P reports 0 mm for no-return; pass through as the sentinel.
+          float d = scan.distances_mm[i];
+          lidar_.ranges_buf[j] = (d > 65535.0f || d < 0.0f)
+                                     ? (uint16_t)0
+                                     : (uint16_t)(d + 0.5f);
+        }
+
+        lidar_.msg.chunk_index = chunk;
+        lidar_.msg.angle_min =
+            scan_angle_min_rad + (float)start * full_inc_rad;
+        lidar_.msg.angle_max =
+            scan_angle_min_rad + (float)(end - 1) * full_inc_rad;
+        lidar_.msg.ranges_mm.size = chunk_n;
+
+        rcl_ret_t rc = rcl_publish(&lidar_.pub, &lidar_.msg, nullptr);
+        if (rc != RCL_RET_OK) {
+          Debug::printf(Debug::Level::WARN,
+                        "[Bridge] CompactScan publish failed chunk=%u (%d)",
+                        (unsigned)chunk, (int)rc);
+        }
       }
     }
   }

@@ -18,10 +18,15 @@ class ObjectDetectionNode(Node):
         self.found_publisher = self.create_publisher(Bool, '/object_found', 10)
 
         self.declare_parameter('video_source', 'http://localhost:8080/stream')
-        source = self.get_parameter('video_source').get_parameter_value().string_value
-        self.cap = cv2.VideoCapture(source)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self._video_source = (
+            self.get_parameter('video_source').get_parameter_value().string_value
+        )
+        self._open_capture()
+        # Last reopen attempt (ros nanos) so reads that fail in tight succession
+        # only trigger one VideoCapture rebuild per 5 s — opening MJPEG streams
+        # blocks for hundreds of ms and would starve the timer otherwise.
+        self._last_reopen_ns = 0
+        self._reopen_interval_ns = 5 * 1_000_000_000
 
         model_path = os.path.join(
             get_package_share_directory('seeker_vision'), 'model', 'yolo26n.pt'
@@ -31,10 +36,30 @@ class ObjectDetectionNode(Node):
 
         self.timer = self.create_timer(0.033, self.timer_callback)  # ~30 fps
 
+    def _open_capture(self):
+        self.cap = cv2.VideoCapture(self._video_source)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    def _maybe_reopen_capture(self):
+        now_ns = self.get_clock().now().nanoseconds
+        if now_ns - self._last_reopen_ns < self._reopen_interval_ns:
+            return
+        self._last_reopen_ns = now_ns
+        self.get_logger().warning(
+            f"Reopening camera stream: {self._video_source}"
+        )
+        try:
+            self.cap.release()
+        except Exception as exc:
+            self.get_logger().warning(f"cap.release() raised: {exc}")
+        self._open_capture()
+
     def timer_callback(self):
         success, img = self.cap.read()
         if not success:
             self.get_logger().warning("Failed to grab frame from stream.")
+            self._maybe_reopen_capture()
             return
 
         header = Header()

@@ -21,6 +21,9 @@ This guide provides the exact commands used to launch, monitor, and control the 
 > ```
 > then run `ros2 launch …`, `ros2 topic echo …`, etc. directly.
 
+## Safe mode escape
+```echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <esp32-ip> 4210```
+
 ## 1. Startup
 Launch the full autonomy stack (Gazebo + Nav2 + SLAM + YOLO + Object Seeker).
 ```bash

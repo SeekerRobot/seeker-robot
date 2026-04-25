@@ -43,6 +43,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/OledFrame.msg"
   "msg/DetectedObject.msg"
   "msg/DetectedObjectArray.msg"
+  "msg/CompactScan.msg"
   "srv/ExampleSrv.srv"
   "srv/PerformMove.srv"
   "action/SeekObject.action"
