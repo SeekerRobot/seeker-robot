@@ -1,0 +1,8 @@
+# Trigger a pre-scripted move (e.g. "dance"). The seeker interrupts whatever
+# it is doing, runs the move for duration_sec, then returns to its prior mode.
+
+string  move_name         # currently only "dance"
+float32 duration_sec 3.0  # 0 = server default
+---
+bool   success
+string message

@@ -106,27 +106,55 @@ ros2 run tf2_ros tf2_echo odom base_footprint
 
 ---
 
-## `sim_ball_search` — full autonomy demo
+## `sim_object_seek` — YOLO-driven full autonomy demo
 
-Full stack: Gazebo + fake MCU + EKF + SLAM Toolbox + Nav2 (controller, planner, behavior, BT navigator, velocity smoother, lifecycle manager) + `ball_searcher`. The robot spins 360° to seed the map, then explores frontiers via `NavigateToPose` until it spots the red ball in the camera feed and drives toward it.
+Full stack: Gazebo + fake MCU + EKF + SLAM Toolbox + Nav2 + `gazebo_vision_node` (YOLOv8 on all 80 COCO classes) + `object_seeker`. The robot starts in **WANDER** mode and autonomously frontier-explores the world. Send it a `SeekObject` action goal at any time and it will reset its map, re-explore, and approach the target.
+
+The world (`slam_test.sdf`) contains three COCO-class props from Gazebo Fuel: a **sports ball** (NW corner), a **teddy bear** (NE corner), and a **chair** (SW corner).
 
 ```bash
-ros2 launch seeker_gazebo sim_ball_search.launch.py
+ros2 launch seeker_gazebo sim_object_seek.launch.py
 ```
 
-The launch is gated behind timers to avoid lifecycle race conditions — it takes ~25–30 s before `ball_searcher` actually starts issuing goals. Watch the launch log for the timeline:
+The launch is gated behind timers to avoid lifecycle race conditions:
 
 ```
 t=0s   Gazebo + fake_mcu + robot_state_publisher + gz_bridge
-t=2s   EKF
-t=5s   SLAM Toolbox
+t=2s   EKF + scan_tilt_filter
+t=5s   SLAM Toolbox + gazebo_vision_node (YOLOv8)
 t=10s  slam_toolbox configure → activate
 t=13s  Nav2 nodes
 t=15s  Nav2 lifecycle manager
-t=25s  ball_searcher
+t=25s  object_seeker (starts in WANDER / frontier exploration)
 ```
 
-(Real hardware uses the same structure but fires SLAM at **t=4s** — see **[ROS2 Packages → seeker_navigation](ROS2-Packages.md#seeker_navigation)**.)
+**Send a seek goal (friendly CLI):**
+
+```bash
+# Underscores are converted to spaces automatically
+ros2 run seeker_navigation find teddy_bear --feedback
+ros2 run seeker_navigation find sports_ball --timeout 120 -f
+ros2 run seeker_navigation find chair
+
+# Raw action equivalent:
+ros2 action send_goal /seek_object mcu_msgs/action/SeekObject \
+  "{class_name: 'sports ball', timeout_sec: 60.0}" --feedback
+```
+
+Exit codes: `0` = found, `1` = rejected/server unavailable, `2` = timeout/failed, `130` = cancelled (Ctrl-C).
+
+Each new seek goal **resets the SLAM map and Nav2 costmaps** so the robot re-explores from scratch rather than replaying a stale map.
+
+**Other controls:**
+
+```bash
+# Return to idle exploration at any time:
+ros2 service call /wander std_srvs/srv/Trigger
+
+# Trigger a dance:
+ros2 service call /perform_move mcu_msgs/srv/PerformMove \
+  "{move_name: 'dance', duration_sec: 3.0}"
+```
 
 **Verify the stack is healthy:**
 
@@ -134,28 +162,29 @@ t=25s  ball_searcher
 ros2 lifecycle get /slam_toolbox          # active [3]
 ros2 lifecycle get /controller_server     # active [3]
 ros2 lifecycle get /planner_server        # active [3]
+ros2 topic echo /vision/detections --once # YOLO hits when object is in view
 ros2 topic echo /navigate_to_pose/_action/status
 ros2 topic echo /cmd_vel
 ```
 
 **RViz fixed frame:** `map`
-Recommended displays: `Map` (`/map`, Transient Local), `LaserScan` (`/lidar/scan`), `RobotModel`, `TF`, `Path` (`/plan`), `Costmap (local)` (`/local_costmap/costmap`), `Costmap (global)` (`/global_costmap/costmap`).
+Recommended displays: `Map` (`/map`, Transient Local), `LaserScan` (`/mcu/scan`), `RobotModel`, `TF`, `Path` (`/plan`), `Costmap (local)` (`/local_costmap/costmap`), `Costmap (global)` (`/global_costmap/costmap`).
 
 ---
 
-## Adding YOLO vision to a simulation run
+## Adding standalone YOLO vision to any simulation run
 
-The `seeker_vision` package provides a Gazebo-compatible vision node that subscribes to `/camera/image` (bridged from the Gazebo camera plugin). Run it alongside any simulation launch that publishes a camera feed:
+`gazebo_vision_node` can also be run alongside any launch that publishes `/camera/image`:
 
 ```bash
-# Terminal 1 — any sim launch that publishes /camera/image
+# Terminal 1
 ros2 launch seeker_gazebo sim_teleop.launch.py
 
-# Terminal 2 — YOLO detection on the Gazebo camera
-ros2 launch seeker_vision gazebo_cam.launch.py
+# Terminal 2 — publishes all YOLO detections on /vision/detections
+ros2 run seeker_vision gazebo_vision_node
 ```
 
-When the target object (default: `"teddy bear"`) appears in the camera view, the node publishes `true` on `/object_found` and a `MODE_DANCE` command to `/mcu/hexapod_cmd`. See **[ROS2 Packages → seeker_vision](ROS2-Packages.md#seeker_vision)** for all launch modes.
+`/vision/detections` (`mcu_msgs/DetectedObjectArray`) carries every COCO class seen in the frame — class name, confidence, bounding box centre/size, and image dimensions for bearing computation.
 
 ---
 
@@ -204,7 +233,8 @@ source install/setup.bash
 | `ros2 topic hz` reports *No new messages* but Gazebo is clearly simulating | Known DDS multicast isolation quirk — run the command in the *same* shell that launched the sim, not a fresh `docker exec`. |
 | Legs glitch / robot explodes on spawn | The `gz_spawn` node sets a `z=0.10` clearance. If you changed `NEUTRAL_KNEE` in `fake_mcu_node.py`, you may need to raise the spawn height so the body doesn't clip the ground. |
 | SLAM never activates in `sim_slam_ekf` | Check `ros2 lifecycle get /slam_toolbox`. If it's stuck in `unconfigured`, the `slam_activate` `ExecuteProcess` likely errored — look for `configure` failures in the launch output, often due to a missing TF (EKF not yet publishing). Wait longer or restart the launch. |
-| `ball_searcher` sits idle after t=25 s | Check Nav2 goal acceptance: `ros2 topic echo /navigate_to_pose/_action/status`. If you see `STATUS_REJECTED`, SLAM or the costmaps aren't fully alive yet. |
+| `object_seeker` sits idle after t=25 s | Check Nav2 goal acceptance: `ros2 topic echo /navigate_to_pose/_action/status`. If you see `STATUS_REJECTED`, SLAM or the costmaps aren't fully alive yet. |
+| YOLO never fires on the target | Run `ros2 topic echo /vision/detections --once` while the target is in camera view. If empty, check `gazebo_vision_node` is running (`ros2 node list`). Models are downloaded from Gazebo Fuel on first launch — ensure internet access or pre-cache them in `~/.gz/fuel`. |
 | Gazebo window shows the robot but no sensors publish | Check `ros2 node list` — if `ros_gz_bridge` is missing, `bridge.yaml` failed to load. The launch log will say which topic it choked on. |
 | You only see `base_link` in RViz, no map or laser | Your RViz fixed frame is wrong for this launch mode. Match the table above. |
 

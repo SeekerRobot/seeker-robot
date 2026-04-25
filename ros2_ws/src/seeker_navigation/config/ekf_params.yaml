@@ -14,6 +14,20 @@ ekf_filter_node:
     base_link_frame: base_footprint  # EKF publishes odom->base_footprint with roll/pitch
     world_frame: odom
 
+    # --- Odometry: /odom (nav_msgs/Odometry, ground truth in sim / wheel odom on real robot) ---
+    odom0: /odom
+    odom0_config:
+      # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+      - [true,  true,  false,
+         false, false, true,
+         false, false, false,
+         false, false, false,
+         false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+    odom0_nodelay: false
+
     # --- IMU: /mcu/imu (sensor_msgs/Imu from BNO085 via MicroRosBridge) ---
     # The BNO085 game rotation vector fills orientation.{x,y,z,w} with absolute
     # roll/pitch derived from gravity (drift-free). Angular velocity and linear

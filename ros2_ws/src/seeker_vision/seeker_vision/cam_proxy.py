@@ -3,15 +3,18 @@
 Proxies the ESP32 MJPEG camera stream to localhost so vision_core.py can
 consume it without a direct route to the device IP.
 
-Default:  http://192.168.8.50/cam  →  http://localhost:8080/stream
+Default:  http://192.168.8.51/cam  →  http://localhost:8080/stream
+(camera lives on the satellite ESP32 at .51; main hexapod is .50)
 
 The proxy parses individual JPEG frames out of the upstream multipart stream
 and re-serves them in a clean, well-formed MJPEG response that OpenCV/FFmpeg
-can reliably decode.
+can reliably decode. With --flip the proxy decodes each frame, rotates 180°,
+and re-encodes as JPEG — used when the camera is mounted upside down (YOLO's
+COCO weights are trained on upright images and regress badly otherwise).
 
 Usage:
     python3 cam_proxy.py
-    python3 cam_proxy.py --source http://192.168.8.50/cam --port 8080
+    python3 cam_proxy.py --source http://192.168.8.51/cam --port 8080 --flip
 """
 
 import argparse
@@ -20,7 +23,7 @@ import sys
 import urllib.error
 import urllib.request
 
-_SOURCE_DEFAULT = "http://192.168.8.50/cam"
+_SOURCE_DEFAULT = "http://192.168.8.51/cam"
 _HOST_DEFAULT = "localhost"
 _PORT_DEFAULT = 8080
 _BOUNDARY = b"frame"
@@ -88,8 +91,24 @@ def _iter_frames(resp):
             del buf[:data_start + content_length]
 
 
+def _flip_jpeg(jpeg_bytes):
+    """Decode a JPEG, rotate 180°, re-encode. Returns None on failure."""
+    import cv2
+    import numpy as np
+    arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    rotated = cv2.rotate(img, cv2.ROTATE_180)
+    ok, enc = cv2.imencode(".jpg", rotated, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    if not ok:
+        return None
+    return enc.tobytes()
+
+
 class _ProxyHandler(http.server.BaseHTTPRequestHandler):
     source_url: str  # injected on the class before serving
+    flip: bool = False
 
     def log_message(self, fmt, *args):
         pass  # suppress per-request noise; errors are printed explicitly
@@ -114,6 +133,10 @@ class _ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             for frame in _iter_frames(upstream):
+                if self.flip:
+                    flipped = _flip_jpeg(frame)
+                    if flipped is not None:
+                        frame = flipped
                 part = (
                     b"--" + _BOUNDARY + b"\r\n"
                     b"Content-Type: image/jpeg\r\n"
@@ -136,12 +159,16 @@ def main():
                         help=f"Bind address (default: {_HOST_DEFAULT})")
     parser.add_argument("--port", type=int, default=_PORT_DEFAULT,
                         help=f"Listen port (default: {_PORT_DEFAULT})")
+    parser.add_argument("--flip", action="store_true",
+                        help="Rotate each frame 180° before re-serving (camera upside down)")
     args = parser.parse_args()
 
     _ProxyHandler.source_url = args.source
+    _ProxyHandler.flip = args.flip
 
     server = http.server.ThreadingHTTPServer((args.host, args.port), _ProxyHandler)
-    print(f"Proxying {args.source} -> http://{args.host}:{args.port}/stream",
+    print(f"Proxying {args.source} -> http://{args.host}:{args.port}/stream"
+          f"{' (flipped 180°)' if args.flip else ''}",
           flush=True)
     try:
         server.serve_forever()

@@ -50,7 +50,7 @@ from tf2_ros import Buffer, TransformListener
 # ---------------------------------------------------------------------------
 
 # Rotation phase
-ROTATION_SPEED = 0.4          # rad/s during initial 360-degree scan
+ROTATION_SPEED = 0.20         # rad/s (~11.5 deg/s) during initial 360-degree scan
 
 # Ball detection — HSV thresholds for a red sphere
 HSV_RED_LO1 = np.array([0,   120,  70])
@@ -95,9 +95,20 @@ class BallSearcher(Node):
     def __init__(self):
         super().__init__("ball_searcher")
 
+        # -- Velocity clamps (MCU also clamps; this is a defence-in-depth cap) --
+        self.declare_parameter("max_linear_x", 0.1)
+        self.declare_parameter("max_linear_y", 0.05)
+        self.declare_parameter("max_angular_z_rad", 0.20)  # ~11.5 deg/s
+        self._max_lin_x = float(self.get_parameter("max_linear_x").value)
+        self._max_lin_y = float(self.get_parameter("max_linear_y").value)
+        self._max_ang_z = float(self.get_parameter("max_angular_z_rad").value)
+
         # -- Publishers / subscribers --
+        # Feeds velocity_smoother on /cmd_vel_nav so the smoother is the only
+        # publisher on /cmd_vel (→ MCU). Avoids interleaved twists from Nav2's
+        # controller_server while we're spinning/approaching directly.
         self._bridge = CvBridge()
-        self._cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        self._cmd_pub = self.create_publisher(Twist, "/cmd_vel_nav", 10)
         self.create_subscription(Image, "/camera/image", self._on_image, 10)
 
         # slam_toolbox publishes /map with TRANSIENT_LOCAL durability —
@@ -739,8 +750,8 @@ class BallSearcher(Node):
 
     def _publish_cmd(self, linear: float, angular: float):
         msg = Twist()
-        msg.linear.x = linear
-        msg.angular.z = angular
+        msg.linear.x = max(-self._max_lin_x, min(self._max_lin_x, linear))
+        msg.angular.z = max(-self._max_ang_z, min(self._max_ang_z, angular))
         self._cmd_pub.publish(msg)
 
 

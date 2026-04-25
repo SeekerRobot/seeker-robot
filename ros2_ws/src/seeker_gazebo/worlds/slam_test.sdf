@@ -215,27 +215,34 @@
     </model>
 
     <!-- ============================================================ -->
-    <!-- Target ball for ball-search task                              -->
-    <!-- Bright red sphere at (1.8, -1.8) — corner of the room.       -->
-    <!-- Detectable via camera HSV thresholding (red hue).            -->
+    <!-- COCO-class props for YOLO object_seeker (Fuel models)         -->
+    <!-- First launch downloads meshes to ~/.gz/fuel (needs internet). -->
     <!-- ============================================================ -->
-    <model name="target_ball">
+
+    <!-- "sports ball" — RoboCup 3D sim ball, open NW area -->
+    <include>
+      <name>sports_ball</name>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/RoboCup 3D Simulation Ball</uri>
+      <pose>-1.8 1.7 0.1 0 0 0</pose>
       <static>true</static>
-      <pose>1.8 -1.8 0.1 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><sphere><radius>0.1</radius></sphere></geometry>
-        </collision>
-        <visual name="visual">
-          <geometry><sphere><radius>0.1</radius></sphere></geometry>
-          <material>
-            <ambient>1.0 0.05 0.05 1</ambient>
-            <diffuse>1.0 0.05 0.05 1</diffuse>
-            <specular>0.8 0.0 0.0 1</specular>
-          </material>
-        </visual>
-      </link>
-    </model>
+    </include>
+
+    <!-- "teddy bear" — Google photorealistic scan, open NE area -->
+    <!-- pitch=1.5707 rotates spine from lying (Y-axis) to vertical so bear stands upright -->
+    <include>
+      <name>teddy_bear</name>
+      <uri>https://fuel.gazebosim.org/1.0/GoogleResearch/models/Lovable_Huggable_Cuddly_Boutique_Teddy_Bear_Beige</uri>
+      <pose>1.70 1.60 0.20 1.51 0.25 -1.22</pose>
+      <static>true</static>
+    </include>
+
+    <!-- "chair" — open SW area, clear of l_wall_a/b -->
+    <include>
+      <name>chair</name>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Chair</uri>
+      <pose>-0.6 -1.6 0.0 0 0 0.8</pose>
+      <static>true</static>
+    </include>
 
   </world>
 </sdf>

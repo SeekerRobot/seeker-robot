@@ -52,10 +52,10 @@ This project was developed with assistance of AI-powered code generation tools. 
 │  Nav2 (/map + /odom) ──→ /cmd_vel                                           │
 │                                                                             │
 │  Web Client ──→ Speech-to-text ──→ LLM ──→ JSON commands                   │
-│               Camera feed  ──→ Object detection ──→ mission planner        │
-│                                   ▲                                         │
-│                            ball_searcher                                    │
-│                            (frontier exploration)                           │
+│               Camera feed  ──→ YOLO (all COCO classes) ──→ object_seeker  │
+│                                   /vision/detections         │              │
+│                                                              ▼              │
+│                                                  WANDER / SEEK / DANCE     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -126,15 +126,17 @@ seeker-robot/
 
 | Package | Purpose |
 |---------|---------|
-| `mcu_msgs` | Custom message definitions shared between ROS 2 and ESP32 firmware (`HexapodCmd.msg` with STAND/WALK/SIT/DANCE modes, `OledFrame.msg`) |
+| `mcu_msgs` | Custom message/action/service definitions shared between ROS 2 and ESP32 firmware. Includes `HexapodCmd.msg` (STAND/WALK/SIT/DANCE modes), `OledFrame.msg`, `DetectedObject.msg`, `DetectedObjectArray.msg`, `SeekObject.action`, and `PerformMove.srv`. |
 | `seeker_description` | URDF/Xacro hexapod model, `display.launch.py` for RViz |
 | `seeker_display` | OLED display nodes: `oled_sine_node` (animated demo) + `lcd_http_server` (HTTP framebuffer server on port 8390 for the ESP32 OLED) |
 | `seeker_gazebo` | Gazebo Harmonic simulation, sensor bridges, simulation launch files |
 | `seeker_media` | MP4 player: decodes video → OLED framebuffers (HTTP :8390) + audio → PCM stream (HTTP :8383), with A/V sync |
-| `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` mission planner, real robot launch |
-| `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait for testing without hardware |
+| `seeker_navigation` | Nav2 + SLAM Toolbox + EKF configs, `ball_searcher` + `object_seeker` YOLO-driven mission planner (WANDER/SEEK/PERFORM_MOVE state machine), `find` CLI, real robot launch |
+| `seeker_sim` | `fake_mcu_node`: simulates ESP32 gait + dance for testing without hardware |
+| `seeker_test_cmd_vel` | `velocity_node`: minimal cmd_vel driver with manual/auto drive launch files |
 | `seeker_tts` | Fish Audio TTS + local WAV file playback, re-served as a chunked HTTP PCM stream for the ESP32 speaker |
 | `seeker_vision` | YOLO object detection, DeepFace emotion detection, MJPEG camera proxy for the ESP32 camera stream |
+| `seeker_voice` | "Brain" — `command_node` (Gemini-backed `SeekObject` action client) + `transcription_node`; launches include `local_mic`, `esp32_mic` |
 | `seeker_web` | Browser-based robot controller: virtual joystick, IMU/LiDAR visualization, camera feed, TTS input, live logs. Served on port 8080 via WebSocket + REST |
 | `test_package` | Minimal ROS 2 node for build/workflow verification |
 
@@ -190,6 +192,7 @@ seeker-robot/
 | `/mcu/hexapod_cmd` | `mcu_msgs/HexapodCmd` | on demand | BEST_EFFORT | ROS → ESP32 | Gait mode (STAND/WALK/SIT), body height/pitch/roll |
 | `/media/play` | `std_msgs/String` | on demand | — | ROS internal | Trigger MP4 playback (absolute file path) |
 | `/media/stop` | `std_msgs/Empty` | on demand | — | ROS internal | Stop current MP4 playback |
+| `/vision/detections` | `mcu_msgs/DetectedObjectArray` | ~10 Hz | BEST_EFFORT | vision → seeker | All YOLO hits with class, confidence, bbox, and image size |
 | `/odom` | `nav_msgs/Odometry` | 50 Hz | — | EKF output | EKF-estimated odometry; orientation / roll-pitch TF from IMU |
 | `/map` | `nav_msgs/OccupancyGrid` | ~0.2 Hz | TRANSIENT_LOCAL | SLAM output | 5 cm/cell occupancy grid |
 
@@ -359,13 +362,23 @@ ros2 launch seeker_gazebo sim_slam_raw.launch.py
 # SLAM with IMU-fused EKF odometry (tests real hardware pipeline):
 ros2 launch seeker_gazebo sim_slam_ekf.launch.py
 
-# Full autonomy demo (EKF + SLAM + Nav2 + ball searcher):
-ros2 launch seeker_gazebo sim_ball_search.launch.py
+# YOLO object seeker (EKF + SLAM + Nav2 + object_seeker + gazebo_vision_node):
+ros2 launch seeker_gazebo sim_object_seek.launch.py
+```
+
+Once `sim_object_seek` is running, tell the robot to find any COCO-class object:
+
+```bash
+ros2 run seeker_navigation find teddy_bear --feedback
+ros2 run seeker_navigation find sports_ball --timeout 120 -f
+ros2 run seeker_navigation find chair
+# Return to idle exploration:
+ros2 service call /wander std_srvs/srv/Trigger
 ```
 
 **RViz Fixed Frame:**
 - `sim_teleop`, `sim_slam_raw`, `sim_slam_ekf` → `odom`
-- `sim_ball_search` → `map`
+- `sim_object_seek` → `map`
 
 ---
 
