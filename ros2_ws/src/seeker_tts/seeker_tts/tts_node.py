@@ -79,6 +79,10 @@ class TtsNode(Node):
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("eq_bass_hz", 300.0)
         self.declare_parameter("eq_bass_db", 0.0)
+        # Hold /audio_speaker_active=True for this many seconds after the last
+        # clip drains, so downstream mic gates don't reopen during the ESP32
+        # speaker's tail/I2S flush window.
+        self.declare_parameter("idle_release_delay_s", 4.0)
 
         self._api_key = (
             self.get_parameter("fish_api_key").get_parameter_value().string_value
@@ -109,6 +113,11 @@ class TtsNode(Node):
         self._eq_bass_db = (
             self.get_parameter("eq_bass_db").get_parameter_value().double_value
         )
+        self._idle_release_delay_s = (
+            self.get_parameter("idle_release_delay_s")
+            .get_parameter_value()
+            .double_value
+        )
 
         if not self._api_key:
             self.get_logger().warn(
@@ -130,6 +139,7 @@ class TtsNode(Node):
         # for the next edge.
         self._speaker_active_lock = threading.Lock()
         self._speaker_active = False
+        self._idle_release_timer: threading.Timer | None = None
         speaker_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -157,11 +167,46 @@ class TtsNode(Node):
 
     def _publish_speaker_active(self, active: bool):
         with self._speaker_active_lock:
-            if self._speaker_active == active:
+            # Cancel any pending delayed-release whenever state is touched,
+            # since either path supersedes it (True = re-engage, False = will
+            # re-arm fresh below).
+            if self._idle_release_timer is not None:
+                self._idle_release_timer.cancel()
+                self._idle_release_timer = None
+
+            if active:
+                if self._speaker_active:
+                    return
+                self._speaker_active = True
+                publish_now = True
+            else:
+                if not self._speaker_active:
+                    return
+                # Defer the False edge so the ESP32 I2S tail can flush before
+                # the mic gate reopens.
+                if self._idle_release_delay_s > 0.0:
+                    self._idle_release_timer = threading.Timer(
+                        self._idle_release_delay_s, self._release_speaker_now
+                    )
+                    self._idle_release_timer.daemon = True
+                    self._idle_release_timer.start()
+                    return
+                self._speaker_active = False
+                publish_now = True
+
+        if publish_now:
+            msg = Bool()
+            msg.data = active
+            self._speaker_active_pub.publish(msg)
+
+    def _release_speaker_now(self):
+        with self._speaker_active_lock:
+            self._idle_release_timer = None
+            if not self._speaker_active:
                 return
-            self._speaker_active = active
+            self._speaker_active = False
         msg = Bool()
-        msg.data = active
+        msg.data = False
         self._speaker_active_pub.publish(msg)
 
     # ---- TTS callback --------------------------------------------------------

@@ -28,7 +28,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool, String
 
 try:
     import requests
@@ -177,12 +178,15 @@ class TranscriptionNode(Node):
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("window_seconds", 2.0)
         self.declare_parameter("passthrough_port", 8386)
-        self.declare_parameter("min_audio_rms", 0.01)
+        self.declare_parameter("min_audio_rms", 0.025)
         # How long to stay disconnected from the ESP32 mic after TTS fires.
         # Must be long enough to cover: Fish Audio API latency + full audio
         # duration + speaker reconnect cycle (kRetryIntervalMs = 3 s).
         # The mic is also paused by SpeakerSubsystem during playback, so the
         # ESP32 server is unavailable until playback finishes regardless.
+        # Safety-net only: when /audio_speaker_active is being published by
+        # tts_node, this timer is preempted by the False edge. The timer covers
+        # the case where tts_node crashes or isn't running.
         self.declare_parameter("tts_pause_seconds", 12.0)
 
         self._audio_source = (
@@ -229,6 +233,17 @@ class TranscriptionNode(Node):
             String, "/audio_tts_input", self._on_tts_input, 10
         )
 
+        # Match the publisher QoS in seeker_tts/tts_node.py so we get the
+        # latched current state on subscribe, not just future edges.
+        speaker_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._speaker_active_sub = self.create_subscription(
+            Bool, "/audio_speaker_active", self._on_speaker_active, speaker_qos
+        )
+
         # Start passthrough server before Whisper load so it's available immediately
         self._broadcaster = _AudioBroadcaster()
         if self._passthrough_port != 0:
@@ -267,6 +282,23 @@ class TranscriptionNode(Node):
     def _resume_after_tts(self):
         self._tts_active.clear()
         self.get_logger().info("TTS pause expired — reconnecting to ESP32 mic stream")
+
+    def _on_speaker_active(self, msg: Bool):
+        """Authoritative speaker state from tts_node. Rising edge ensures the
+        gate is set (redundant with /audio_tts_input but harmless). Falling
+        edge clears the gate immediately and cancels the safety-net timer."""
+        with self._tts_lock:
+            if msg.data:
+                self._tts_active.set()
+            else:
+                if self._tts_timer is not None:
+                    self._tts_timer.cancel()
+                    self._tts_timer = None
+                if self._tts_active.is_set():
+                    self._tts_active.clear()
+                    self.get_logger().info(
+                        "Speaker idle — reconnecting to ESP32 mic stream"
+                    )
 
     # ---- Passthrough server ------------------------------------------------------
 
@@ -397,9 +429,13 @@ class TranscriptionNode(Node):
 
         try:
             segments, _ = self._model.transcribe(
-                audio, 
+                audio,
                 beam_size=5,
-                # initial_prompt="Hey Hatsune. Hatsune Miku."
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+                no_speech_threshold=0.8,
+                condition_on_previous_text=False,
+                initial_prompt="Hey Hatsune Miku.",
             )
             
             for segment in segments:

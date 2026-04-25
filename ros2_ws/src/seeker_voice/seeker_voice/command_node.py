@@ -89,7 +89,7 @@ class CommandNode(Node):
 
         self.declare_parameter("gemini_api_key", "")
         self.declare_parameter("gemini_model", "gemini-2.5-flash")
-        self.declare_parameter("wake_word", "hey billy")
+        self.declare_parameter("wake_word", "hey hatsune")
         self.declare_parameter("end_word", "over")
         self.declare_parameter("idle_timeout_seconds", 30.0)
 
@@ -163,7 +163,22 @@ class CommandNode(Node):
 
             # --- STATE MACHINE ---
             if self._state == _IDLE:
-                valid_wakes = [self._wake_word, "hey hat soon", "hey hot soup"]
+                valid_wakes = [
+                    self._wake_word,
+                    "hey hatsune",
+                    "hey hat soon",
+                    "hey hot soup",
+                    "hey hot sun",
+                    "hey hatsoon",
+                    "hey hatsun",
+                    "hey hatsuna",
+                    "hey hatsume",
+                    "hey hatsuni",
+                    "hey hot sune",
+                    "hey hat sune",
+                    "hey hatsuney",
+                    "hatsune",
+                ]
                 if any(wake in text_lower for wake in valid_wakes):
                     self.get_logger().info("Wake word detected! Switching to COLLECTING.")
                     self._state = _COLLECTING
