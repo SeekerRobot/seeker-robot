@@ -47,7 +47,10 @@ Every subfolder is a PlatformIO library shared across all sketches via `lib_extr
 | `CamMicSubsystem` | Thin wrapper that runs `CameraSubsystem` and `MicSubsystem` side-by-side. |
 | `SpeakerSubsystem` | I²S speaker output; long-polls the ROS host for audio. |
 | `LedSubsystem` | SK6812 RGB LED chain with patterns (solid, pulse, chase, rainbow…). |
+| `StatusLedController` | Robot-state FSM that drives the LED chain based on subsystem health: BOOT → LOW_BATTERY → WIFI_WAIT → MICROROS_WAIT → WALKING → STOPPING → AUDIO_PLAYING → IDLE. Polls battery/WiFi/micro-ROS/gait/speaker state at ~10 Hz with hysteresis on battery thresholds. |
 | `OledSubsystem` | SSD1306 128×64 I²C display. Frame + text-overlay model (up to 4 text slots, PROGMEM bitmap frames in `OledFrames.h`), renders CPU-side into a NanoCanvas; only the final `blt()` touches I²C under the shared bus mutex. Also runs an HTTP client task (`lcdFetchTask`) that fetches framebuffers from the ROS 2 host at `GET /lcd_out` (port 8390) — no micro-ROS required for display updates. |
+| `RobotPersistence` | Shared NVS persistence for servo calibration, gait tuning, body height, and velocity caps. NVS namespace `"srvtest"` (shared across `main`, `test_sub_servo`, `test_sub_movement`). Provides `loadAll()`, `saveAll()`, `saveGait()`, `saveHeight()`, `clearAll()`. |
+| `GaitRosParticipant` | `IMicroRosParticipant` that subscribes to `/cmd_vel` and feeds `GaitController`. Supports per-axis velocity caps (`max_vx`, `max_vy`, `max_wz`) and a combined horizontal cap (`max_hvel`). |
 | `ESP32WifiSubsystem` | WiFi connect/reconnect state machine with static IP. |
 | `BleDebugSubsystem` | BLE Nordic UART transport for debug output. |
 | `HeartbeatParticipant` | Minimal `IMicroRosParticipant` that just publishes a 1 Hz counter on `/mcu/heartbeat`. |

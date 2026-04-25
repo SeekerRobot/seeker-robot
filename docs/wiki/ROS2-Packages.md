@@ -12,7 +12,7 @@ colcon build --symlink-install --packages-select <pkg> # symlink so Python edits
 source install/setup.bash
 ```
 
-`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_tts`, `seeker_vision`) because you don't need to rebuild for every edit.
+`--symlink-install` is especially handy for the Python packages (`seeker_display`, `seeker_media`, `seeker_navigation`, `seeker_sim`, `seeker_test_cmd_vel`, `seeker_tts`, `seeker_vision`, `seeker_voice`, `seeker_web`) because you don't need to rebuild for every edit.
 
 ---
 
@@ -120,7 +120,9 @@ All Gazebo Harmonic simulation launches, plus the small helpers that bridge Gaze
 | `sim_teleop.launch.py` | Gazebo + robot_state_publisher + fake_mcu_node + odom bridge | `odom` |
 | `sim_slam_raw.launch.py` | `sim_teleop` + SLAM Toolbox (ground-truth odom, no EKF) | `odom` |
 | `sim_slam_ekf.launch.py` | `sim_teleop` + EKF (IMU tilt) + SLAM Toolbox | `odom` |
-| `sim_ball_search.launch.py` | `sim_slam_ekf` + Nav2 + `ball_searcher` | `map` |
+| `sim_ball_search.launch.py` | `sim_slam_ekf` + Nav2 + `ball_searcher` (frontier exploration + red ball approach) | `map` |
+| `sim_object_seek.launch.py` | `sim_slam_ekf` + Nav2 + `gazebo_vision_node` (YOLO) + `object_seeker` (WANDER/SEEK/PERFORM_MOVE state machine). Responds to `SeekObject` action goals. | `map` |
+| `sim_integrated_medium.launch.py` | `sim_slam_ekf` + Nav2 + YOLO vision — integrated "medium" launch with brain-body pipeline (CLI-driven, no command_node to save resources) | `map` |
 
 ```bash
 colcon build --packages-select mcu_msgs seeker_description seeker_sim seeker_gazebo
@@ -179,7 +181,13 @@ All autonomy configs and launches plus the `ball_searcher` mission planner. Depe
   1. Rotate 360° in place to seed the SLAM map.
   2. Frontier-explore: read `/map`, pick a free/unknown boundary, send `NavigateToPose`.
   3. Fall back to a coverage grid if no frontiers remain.
-  4. Cancel exploration and approach as soon as an HSV-thresholded red ball appears in the camera feed.
+  4. Cancel exploration and approach as soon as a red ball appears in the camera feed.
+- `object_seeker` (`seeker_navigation/object_seeker.py`) — `SeekObject` Action Server implementing a WANDER → SEEK → PERFORM_MOVE state machine. Starts in WANDER (frontier exploration). When a `SeekObject` goal arrives, switches to SEEK mode and uses `/vision/detections` (YOLO) to locate the target COCO class. On success, optionally calls `PerformMove` (e.g. dance). Brain–Body pipeline: `seeker_voice/command_node` sends goals to this server.
+- `find` (`seeker_navigation/find.py`) — CLI `SeekObject` Action Client. Usage: `ros2 run seeker_navigation find <class_name> [--feedback] [--timeout N]`. Underscores in class names are converted to spaces.
+- `dead_reckoning_odom` (`seeker_navigation/dead_reckoning_odom.py`) — open-loop `/cmd_vel` integrator that publishes `odom → base_footprint` TF and `/odom`. Used by the `*_no_gyro` launches when no IMU is available.
+- `scan_tilt_filter` (`seeker_navigation/scan_tilt_filter.py`) — filters `/mcu/scan` rays that would project incorrectly due to body tilt (used in some launch configurations).
+- `cmd_vel_restrict` (`seeker_navigation/cmd_vel_restrict.py`) — velocity limiter node.
+- `scripted_cmd_vel` (`seeker_navigation/scripted_cmd_vel.py`) — replays a YAML script of forward/turn commands on `/cmd_vel`. Turns use `/odom` yaw for closed-loop heading. Used by `real_scripted_drive.launch.py`.
 
 **Config:**
 
@@ -187,6 +195,7 @@ All autonomy configs and launches plus the `ball_searcher` mission planner. Depe
 - `config/nav2_params.yaml` — Nav2 tuning for simulation.
 - `config/nav2_params_real.yaml` — Nav2 tuning for real hardware.
 - `config/slam_toolbox_params_real.yaml` — SLAM Toolbox tuning for real hardware.
+- `config/scripted_cmd_vel_example.yaml` — example YAML script for `scripted_cmd_vel`.
 
 **RViz configs:**
 
@@ -200,6 +209,9 @@ All autonomy configs and launches plus the `ball_searcher` mission planner. Depe
 | `real_slam_raw.launch.py` | SLAM on real hardware **without** IMU fusion (static `odom → base_footprint`) — simplest bring-up |
 | `real_slam_ekf.launch.py` | SLAM on real hardware **with** EKF IMU tilt compensation |
 | `real_ball_search.launch.py` | Full autonomy: EKF + SLAM + Nav2 + `ball_searcher` |
+| `real_object_seek.launch.py` | Full autonomy: EKF + SLAM + Nav2 + YOLO vision + `object_seeker`. Brain–Body pipeline via `SeekObject` action. |
+| `real_object_seek_no_gyro.launch.py` | Same as `real_object_seek` but with `dead_reckoning_odom` instead of EKF — no IMU consumed. For isolating gyro-related issues. |
+| `real_scripted_drive.launch.py` | Dead-reckoning + SLAM + scripted `/cmd_vel` replay from a YAML file. No Nav2 or vision. Args: `script_path`, `scale`, `linear_speed`, `angular_speed`. |
 
 Launch timing for `real_ball_search.launch.py`:
 
@@ -257,7 +269,7 @@ You should not normally run this node standalone — use a `seeker_gazebo` launc
 
 **Build type:** `ament_python`
 
-Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS and local WAV file playback — and re-serves both as a persistent chunked HTTP PCM stream that the ESP32 `SpeakerSubsystem` long-polls.
+Audio bridge for the ESP32 speaker. Supports two input modes — Fish Audio TTS and local WAV file playback — and re-serves both as a persistent chunked HTTP PCM stream that the ESP32 `SpeakerSubsystem` long-polls. Publishes `/audio_speaker_active` (`std_msgs/Bool`, TRANSIENT_LOCAL QoS) with edge-triggered transitions so downstream consumers (e.g. `seeker_web`) can mute the mic during playback.
 
 **Nodes:**
 
@@ -299,6 +311,79 @@ The ESP32-side consumer is the `test_sub_speaker` sketch — see **[MCU Sketches
 
 ---
 
+## `seeker_voice`
+
+**Build type:** `ament_python`
+
+The "Brain" of the robot. Receives voice commands (via speech-to-text), classifies intent using Google Gemini (with a heuristic fallback when offline), and sends `SeekObject` action goals to the "Body" (`object_seeker` in `seeker_navigation`). Part of the Brain–Body action pattern described in [Architecture](Architecture.md).
+
+**Nodes:**
+
+- `command_node` (`seeker_voice/command_node.py`) — `SeekObject` Action Client. Subscribes to `/audio_transcription` (`std_msgs/String`) for transcribed speech. Uses Gemini to classify commands into robot actions (forward, backward, spin, dance, find). For "find" commands, identifies the target COCO class and sends a `SeekObject` goal to the `object_seeker` Action Server. Publishes results via TTS on `/audio_tts_input`. Also publishes `/voice_command`, `/target_object`, and `/search_trigger` for downstream consumers.
+- `transcription_node` (`seeker_voice/transcription_node.py`) — Ingests audio from the host microphone (`audio_source:=local`) or the ESP32 HTTP mic stream (`audio_source:=esp32`), runs Whisper speech-to-text, and publishes transcriptions on `/audio_transcription` (`std_msgs/String`). Includes an optional passthrough HTTP server (`passthrough_port`, default 8386) for debugging the raw audio. Automatically drops the ESP32 mic connection during TTS playback to prevent httpd deadlock.
+
+**Parameters** (on `command_node`):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `gemini_api_key` | `""` | Falls back to `GEMINI_API_KEY` env var |
+| `gemini_model` | `"gemini-2.0-flash"` | Gemini model for intent classification |
+
+**Parameters** (on `transcription_node`):
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `audio_source` | `"esp32"` | `"esp32"` (HTTP stream) or `"local"` (host mic) |
+| `esp32_ip` | `"192.168.8.50"` | ESP32 IP for mic stream |
+| `esp32_port` | `81` | ESP32 mic HTTP port |
+| `whisper_model` | `"base"` | Whisper model size |
+| `sample_rate` | `16000` | Audio sample rate |
+| `passthrough_port` | `8386` | Optional HTTP passthrough server (0 to disable) |
+| `tts_pause_seconds` | `12.0` | Time to pause mic input during TTS playback |
+
+**Launch files:**
+
+| Launch | Audio source |
+|---|---|
+| `local_mic.launch.py` | Host microphone (via PyAudio) |
+| `esp32_mic.launch.py` | ESP32 HTTP mic stream (`:81/audio`). Args: `esp32_ip`, `esp32_port`. |
+
+**Environment variables** (set in `docker/.env`):
+
+- `GEMINI_API_KEY` — Google Gemini API key for intent classification.
+
+```bash
+colcon build --packages-select mcu_msgs seeker_voice
+ros2 launch seeker_voice local_mic.launch.py     # host mic
+ros2 launch seeker_voice esp32_mic.launch.py      # ESP32 mic
+```
+
+---
+
+## `seeker_test_cmd_vel`
+
+**Build type:** `ament_python`
+
+Minimal `/cmd_vel` driver for manual or automated drive testing without the full navigation stack.
+
+**Nodes:**
+
+- `velocity_node` (`seeker_test_cmd.velocity_node`) — translates simple drive commands into `/cmd_vel` (`geometry_msgs/Twist`).
+
+**Launch files:**
+
+| Launch | Purpose |
+|---|---|
+| `manual_drive.launch.py` | Manual drive mode |
+| `auto_drive.launch.py` | Automated drive pattern |
+
+```bash
+colcon build --packages-select seeker_test_cmd_vel
+ros2 launch seeker_test_cmd_vel manual_drive.launch.py
+```
+
+---
+
 ## `seeker_vision`
 
 **Build type:** `ament_python`
@@ -308,10 +393,9 @@ Camera-based perception: YOLO object detection, DeepFace emotion recognition, an
 **Nodes:**
 
 - `vision_node` (`seeker_vision/vision_core.py`) — opens an MJPEG or V4L2 video source, runs YOLOv8-nano (`yolo26n.pt`, bundled) at ~30 fps, and publishes:
-  - `/object_found` (`std_msgs/Bool`) — `true` when the target object (default: `"teddy bear"`) is in frame.
-  - `/detection_detail` (`std_msgs/Float32MultiArray`) — `[area, center_x, frame_width]` for the target bounding box (zeros when not found).
-  - `/mcu/hexapod_cmd` (`mcu_msgs/HexapodCmd`) — sends `MODE_DANCE` when the target is detected.
-- `gazebo_vision_node` (`seeker_vision/gazebo_vision_core.py`) — same detection pipeline, but subscribes to `/camera/image` (`sensor_msgs/Image`) instead of opening an HTTP stream. Use this in Gazebo simulation.
+  - `/vision/detections` (`mcu_msgs/DetectedObjectArray`) — all COCO-class detections with class name, confidence, bounding box centre/size, and image dimensions.
+  - `/object_found` (`std_msgs/Bool`) — `true` when the target object is in frame.
+- `gazebo_vision_node` (`seeker_vision/gazebo_vision_core.py`) — same detection pipeline, but subscribes to `/camera/image` (`sensor_msgs/Image`) instead of opening an HTTP stream. Publishes the same `/vision/detections` and `/object_found` topics. Use this in Gazebo simulation.
 - `cam_proxy` (`seeker_vision/cam_proxy.py`) — standalone MJPEG proxy. Fetches the ESP32 camera stream (default `http://192.168.8.50/cam`) and re-serves it at `http://localhost:8080/stream`. Needed because the container may not have a direct route to the ESP32's IP.
 - `emotion_node` (`seeker_vision/emotion_node.py`) — Haar-cascade face localisation + DeepFace emotion analysis at ~10 fps. Publishes the dominant emotion to `/emotion_detail` (`std_msgs/String`).
 
@@ -342,6 +426,89 @@ ros2 launch seeker_vision local_cam.launch.py      # host webcam
 
 ---
 
+## `seeker_web`
+
+**Build type:** `ament_python`
+
+All-in-one browser controller for the robot. Serves an HTML dashboard over HTTP with WebSocket and REST bridges to ROS 2 topics and ESP32 camera/microphone HTTP streams.
+
+**Nodes:**
+
+- `web_node` (`seeker_web/web_node.py`) — runs an `aiohttp` web server (default port 8080). The ROS 2 executor spins on a background thread; the main thread runs the asyncio event loop. Subscribes to MCU telemetry topics and caches the latest values, then pushes them to connected browsers via WebSocket at configurable rates. Also provides REST endpoints for one-shot commands.
+
+**REST endpoints:**
+
+| Method | Path | Action |
+|---|---|---|
+| `GET` | `/` | Serves `index.html` |
+| `GET` | `/static/<file>` | CSS, JS assets |
+| `GET` | `/api/config` | Returns `{mcu_ip, cam_url, mic_url, topic_lists}` |
+| `POST` | `/api/cmd_vel` | Publishes `geometry_msgs/Twist` on `/cmd_vel` |
+| `POST` | `/api/stop` | Publishes zero Twist |
+| `POST` | `/api/tts` | Publishes `std_msgs/String` on `/audio_tts_input` |
+| `POST` | `/api/play_wav` | Publishes `std_msgs/String` on `/audio_play_file` |
+
+**WebSocket** (`/ws`, bidirectional):
+
+- Server → client: `{type: "status"|"imu"|"lidar"|"log"|"speaker_active"}` at configurable rates.
+- Client → server: command messages (same shapes as REST).
+
+**Subscribed topics:**
+
+| Topic | Type |
+|---|---|
+| `/mcu/battery_voltage` | `std_msgs/Float32` |
+| `/mcu/heartbeat` | `std_msgs/Int32` |
+| `/mcu/imu` | `sensor_msgs/Imu` |
+| `/mcu/scan` | `sensor_msgs/LaserScan` |
+| `/mcu/log` | `std_msgs/String` |
+| `/audio_speaker_active` | `std_msgs/Bool` (TRANSIENT_LOCAL) |
+
+**Published topics:**
+
+| Topic | Type |
+|---|---|
+| `/cmd_vel` | `geometry_msgs/Twist` |
+| `/audio_tts_input` | `std_msgs/String` |
+| `/audio_play_file` | `std_msgs/String` |
+
+**Parameters:**
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `mcu_ip` | `"192.168.1.50"` | ESP32 IP for camera/mic URLs |
+| `http_port` | `8080` | Web server port |
+| `cam_port` | `80` | ESP32 camera HTTP port |
+| `mic_port` | `81` | ESP32 mic HTTP port |
+| `lidar_max_points` | `180` | Downsample LiDAR for WebSocket |
+| `status_rate_s` | `0.1` | Status push interval |
+| `imu_rate_s` | `0.05` | IMU push interval |
+| `lidar_rate_s` | `0.2` | LiDAR push interval |
+| `log_rate_s` | `0.1` | Log push interval |
+| `play_wav_allow_roots` | install dirs + `/tmp` | Path allowlist for WAV playback |
+
+**Frontend features** (in `static/`):
+
+- Virtual joystick (WASD/mouse/touch) with 20 Hz command tick.
+- Real-time IMU quaternion display and LiDAR polar plot (3 m range).
+- MJPEG camera feed from ESP32 `:80/cam`.
+- Mic audio stream from ESP32 `:81/audio` with automatic muting during TTS/WAV playback.
+- TTS text input and WAV file playback forms.
+- Live log tail (200-line ring buffer) from `/mcu/log`.
+- E-stop button and status pills (WebSocket, Heartbeat, Battery, MCU IP).
+
+**Launch:**
+
+- `launch/web.launch.py` — starts `web_node`. Args: `mcu_ip`, `http_port`.
+
+```bash
+colcon build --packages-select seeker_web
+ros2 launch seeker_web web.launch.py mcu_ip:=192.168.1.50 http_port:=8080
+# Open http://localhost:8080 in a browser
+```
+
+---
+
 ## `test_package`
 
 **Build type:** `ament_cmake`
@@ -358,11 +525,13 @@ ros2 launch test_package test_node.launch.py
 ## Inter-package dependency graph
 
 ```
-seeker_gazebo ──► seeker_description
-seeker_gazebo ──► seeker_sim
-seeker_media  ──► seeker_display
+seeker_gazebo     ──► seeker_description
+seeker_gazebo     ──► seeker_sim
+seeker_media      ──► seeker_display
 seeker_navigation ──► seeker_description
-seeker_vision ──► mcu_msgs
+seeker_vision     ──► mcu_msgs
+seeker_voice      ──► mcu_msgs, seeker_vision (imports constants)
+seeker_web        ──► (standalone — uses only std_msgs, geometry_msgs, sensor_msgs)
 every ROS node importing HexapodCmd ──► mcu_msgs
 ```
 

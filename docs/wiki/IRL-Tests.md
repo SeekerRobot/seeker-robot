@@ -132,11 +132,17 @@ Drive the hexapod with `i/j/l/,` keys. If nothing moves, verify `/cmd_vel` actua
 Once every step above passes:
 
 ```bash
-# Firmware: flash test_bridge_all for sensors + test_bridge_gait separately
-# on a second MCU if you have one. If you only have one board, flash
-# test_all which does both.
+# Option A — test_all (diagnostics + everything on one board):
 cd ~/mcu_workspaces/seeker_mcu/src/test_all
-pio run -e esp32s3sense -t upload
+pio run -t upload
+
+# Option B — main (production firmware, offloads camera to satellite):
+cd ~/mcu_workspaces/seeker_mcu/src/main
+pio run -t upload     # defaults to esp32s3sense_offload
+
+# If using a satellite board for camera (Option B):
+cd ~/mcu_workspaces/seeker_mcu/src/main_satellite
+pio run -t upload     # defaults to esp32cam_satellite
 
 # ROS launch (with agent already running in another terminal):
 ros2 launch seeker_navigation real_ball_search.launch.py
@@ -154,7 +160,10 @@ All launches live in `seeker_navigation/launch/`.
 |---|---|---|
 | `real_slam_raw.launch.py` | robot_state_publisher + **static** `odom → base_footprint` + SLAM Toolbox | First SLAM bring-up without EKF complications |
 | `real_slam_ekf.launch.py` | robot_state_publisher + EKF (fuses `/mcu/imu`) + SLAM Toolbox | Best default; matches the real-hardware pipeline |
-| `real_ball_search.launch.py` | `real_slam_ekf` + Nav2 + `ball_searcher` | Full autonomy demo |
+| `real_ball_search.launch.py` | `real_slam_ekf` + Nav2 + `ball_searcher` | Full autonomy demo (frontier exploration + red ball approach) |
+| `real_object_seek.launch.py` | `real_slam_ekf` + Nav2 + YOLO vision + `object_seeker` | Full autonomy with YOLO object seeking (Brain–Body `SeekObject` action pipeline) |
+| `real_object_seek_no_gyro.launch.py` | Dead-reckoning odom (no IMU) + SLAM + Nav2 + vision + `object_seeker` | Same as `real_object_seek` but without gyro; isolates IMU-related issues |
+| `real_scripted_drive.launch.py` | Dead-reckoning odom + SLAM + scripted `/cmd_vel` replay | Replays a YAML script of forward/turn commands (no Nav2, no vision) |
 
 Typical usage:
 
@@ -223,7 +232,7 @@ When something misbehaves on the full stack, bisect with the `test_sub_*` sketch
 | LiDAR returning 0 points / wrong frequency | `test_sub_lidar` |
 | Battery voltage looks flat | `test_sub_battery` |
 | Specific servo leg twitches | `test_sub_servo` |
-| Whole gait is wrong | `test_sub_gait` |
+| Whole gait is wrong | `test_sub_gait`, or `test_sub_movement` for combined servo+gait+IK tuning with NVS persistence |
 | Camera feed dead | `test_sub_cam`, then `test_raw_cam` |
 | YOLO detection not working | Verify cam proxy: `curl -s http://localhost:8080/stream > /dev/null`; then `ros2 launch seeker_vision mcu_cam.launch.py` |
 | Mic silent or crackling | `test_sub_mic`, then `test_raw_mic` |

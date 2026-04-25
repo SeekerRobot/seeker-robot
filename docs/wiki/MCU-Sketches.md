@@ -2,7 +2,9 @@
 
 Every directory under `mcu_ws/src/` is a standalone PlatformIO project. They follow a naming convention:
 
-- `main` — placeholder for full system integration (empty `setup()`/`loop()`)
+- `main` — full integration firmware (default env offloads camera to `main_satellite`)
+- `main_add` — incremental modular rebuild of `main` (phases 1–6)
+- `main_satellite` — camera/sensor offload board for dual-board architecture
 - `build_microros` — placeholder sketch used only to pre-build the micro-ROS library
 - `test_all` — **full** integration: micro-ROS bridge + camera + mic + speaker + OLED, all concurrently
 - `test_bridge_*` — exercises the full micro-ROS stack via WiFi (sensor publishers, gait subscription, or OLED HTTP display)
@@ -28,20 +30,20 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 
 ### `test_all`
 
-- **Board env:** `esp32s3sense`
+- **Board env:** `esp32s3sense_psram` (pioarduino 54.03.21)
 - **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81, speaker from :8383, OLED from :8390)
 - **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
-- **Purpose:** The "everything on" integration test. Runs the full `MicroRosBridge` plus a concurrent MJPEG camera server, PDM audio HTTP server, I2S speaker (fetches PCM from host :8383), and OLED display (fetches framebuffers from host :8390) on a single ESP32-S3 Sense. This is the firmware you flash when you want the real robot to look like the Gazebo simulation — all sensor topics live plus camera/mic streams pullable from ROS.
+- **Purpose:** The "everything on" integration test. Runs the full `MicroRosBridge` plus a concurrent MJPEG camera server, PDM audio HTTP server, I2S speaker (fetches PCM from host :8383), and OLED display (fetches framebuffers from host :8390) on a single ESP32-S3 Sense. Also includes a PBUF watchdog (warns at <8 KB DMA or <20 KB internal free), stack high-water mark tracking (logged every 10 s), and per-loop heap telemetry. Gait subscribes to `/cmd_vel` via `GaitRosParticipant` with velocity caps loaded from NVS.
 - **Prereq:** micro-ROS agent running (`ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`).
-- **Build/flash:** `pio run -e esp32s3sense -t upload`
-- **Serial output:** WiFi connection status, agent state transitions, IP + RSSI, periodic participant heartbeat.
+- **Build/flash:** `pio run -t upload` (default env is `esp32s3sense_psram`)
+- **Serial output:** WiFi connection status, agent state transitions, IP + RSSI, heap snapshots every 1 s, task stack high-water marks every 10 s.
 - **Verify on ROS side:**
   ```bash
   ros2 topic hz /mcu/heartbeat        # 1 Hz
   ros2 topic hz /mcu/imu              # ~50 Hz
   ros2 topic hz /mcu/scan             # ~6 Hz
   ros2 topic hz /mcu/battery_voltage  # 1 Hz
-  curl http://<esp_ip>/stream         # MJPEG
+  curl http://<esp_ip>/cam            # MJPEG
   curl http://<esp_ip>:81/audio       # raw PCM
   ```
 - **OLED (no micro_ros_agent needed):**
@@ -197,6 +199,37 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 - **Prereq:** `ros2 launch seeker_tts tts.launch.py` running on the host. For Fish Audio TTS set `FISH_API_KEY` and publish text to `/audio_tts_input` (`ros2 topic pub /audio_tts_input std_msgs/String "data: 'hello'" --once`). For local WAV playback, publish a file path on `/audio_play_file` (`ros2 topic pub /audio_play_file std_msgs/String "data: '/path/to/sound.wav'" --once`). Both share the same `/audio_out` HTTP stream.
 - **Debug tips:** (1) If playback stutters, the network RTT is too high — move closer to the AP. (2) If it's silent, check I²S pins in `RobotConfig.h`. (3) Use `curl -v http://<host>:8383/audio_out` from another machine to test the endpoint independently — it should stay open and deliver a chunked stream whenever new text is published. (4) 404 from the endpoint means the path is wrong — the `tts_node` only serves `/audio_out`. (5) Mute first! Speaker volume defaults to max.
 
+### `test_sub_movement`
+
+- **Board env:** `esp32s3sense` / `esp32dev` / **Transport:** Serial + BLE (no micro-ROS agent required)
+- **Purpose:** Comprehensive hexapod movement console that combines servo control, inverse kinematics, and tripod gait into a single dual-transport REPL (USB Serial + BLE Nordic UART). A command from either transport produces a response on **both**. Superset of `test_sub_servo` and `test_sub_gait` — carries over the full servo command set (`attach`, `detach`, `angle`, `vel`, `accel`, `invert`, `minpwm`/`maxpwm`, `arm`/`disarm`, `budget`, `freq`, `neutral`, `hips`, `knees`, `flat`, `standing`) and adds movement commands (`walk`, `stop`, `idle`, `forward`, `back`, `strafe`, `turn`, `move`), body height control (`height`), velocity caps (`max_velocities`, `max_hvel`), and gait tuning (`gait_step`, `gait_cycle`, `gait_scale`, `gait_status`). All tunings — servo calibration, gait parameters, body height, velocity caps — can be saved to NVS via `save` and auto-load on boot. Shares the NVS namespace `srvtest` with `test_sub_servo`, so servo calibration carries over between the two sketches. Also includes battery voltage readout and a heartbeat blink task.
+- **Prereq:** Servos wired via PCA9685, battery connected (optional — status will omit voltage if init fails).
+- **Build/flash:** `pio run -e esp32s3sense -t upload`
+- **Serial output:** Banner showing transport status (Serial + BLE), config source (NVS or defaults), gait tuning, and body height. Then an interactive command prompt.
+- **Typical workflow:**
+  ```
+  > attachall           (attach M1–M12)
+  > arm                 (enable OE)
+  > standing            (kinematics neutral pose)
+  > height 50           (body 50 mm above ground)
+  > walk                (start tripod gait)
+  > forward 0.05        (walk forward at 50 mm/s)
+  > turn 30             (yaw 30 deg/s)
+  > stop                (snap to neutral)
+  > save                (persist all tunings to NVS)
+  ```
+- **Commands:** Type `help` for the full list. Key additions over `test_sub_servo`:
+  - `walk` / `stop` / `idle` — start, snap-stop, or graceful-stop the gait
+  - `forward <m/s>` / `back <m/s>` / `strafe <m/s>` / `turn <deg/s>` — single-axis velocity
+  - `move <vx> <vy> <wz>` — full velocity command (m/s, m/s, rad/s)
+  - `height <mm>` — set body height (IDLE only)
+  - `max_velocities <vx> <vy> <wz>` — per-axis velocity caps
+  - `max_hvel <m/s>` — combined horizontal velocity cap
+  - `gait_step <mm>` / `gait_cycle <s>` / `gait_scale <x>` — tune gait parameters
+  - `gait_status` — print current gait state and tuning
+  - `save` / `clearprefs` — NVS persistence
+- **Debug tips:** (1) If servos don't respond, check `arm` and `attachall` first. (2) `height` only works in IDLE — issue `stop` before changing it. (3) Velocity caps are applied silently; `status` shows the current caps. (4) `clearprefs` resets to HexapodConfig defaults on next boot. (5) BLE transport advertises as `"SeekerMovement"` — use nRF Connect or Bluefruit Connect to send commands wirelessly. (6) The debug level is reduced to 2 (INFO) to avoid flooding from battery samples.
+
 ### `test_sub_ble_debug`
 
 - **Board env:** no micro-ROS; BLE only
@@ -252,9 +285,47 @@ Monitor baud is always `921600` (set globally in the base `platformio.ini`).
 
 ### `main`
 
-- **Board envs:** `esp32s3sense_main` (camera + mic + speaker on this board) or `esp32s3sense_offload` (default — cam/mic on the `main_satellite` board, speaker still here)
-- **Purpose:** Full integration firmware. All subsystems threaded and pinned; micro-ROS bridge publishes heartbeat, IMU, battery, lidar, and debug log; `GaitRosParticipant` subscribes to `/cmd_vel`.
+- **Board envs:** `esp32s3sense_main` (camera + mic + speaker on this board), `esp32s3sense_offload` (default — cam/mic offloaded to `main_satellite`), `esp32dev` (no camera/mic/speaker). OTA variants: `esp32s3sense_main_ota`, `esp32s3sense_offload_ota`, `esp32dev_ota`.
+- **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81, speaker from :8383, OLED from :8390)
+- **Bridge flags (offload):** `HEARTBEAT, GYRO, BATTERY, LIDAR` (DEBUG disabled to reduce PBUF pressure)
+- **Purpose:** Full production firmware. All subsystems threaded and pinned; micro-ROS bridge publishes heartbeat (as `mcu/heartbeat1`), IMU, battery, lidar; `GaitRosParticipant` subscribes to `/cmd_vel`. Includes `StatusLedController` (battery/WiFi/micro-ROS/gait/audio state LED animations), `RobotPersistence` (NVS servo/gait/body-height calibration), and a safe-mode watchdog (5 boot threshold, clears after 10 s stable run, UDP port 4210).
 - **Build/flash:** `pio run -t upload` (defaults to `esp32s3sense_offload`) or `pio run -e esp32s3sense_main -t upload` for the all-in-one variant.
+- **Serial output:** WiFi + micro-ROS state, IP + RSSI every 2 s.
+- **LED boot sequence:** Rainbow pulse → red chase (WiFi wait) → yellow pulse (micro-ROS wait) → cyan slow pulse (idle). Red fast pulse = low battery.
+- **Safe mode override:** `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <MCU_IP> 4210`
+- **Debug tips:** (1) Camera header (`sensor.h`) must be included before BNO driver to avoid `sensor_t` typedef collision. (2) I2C mutex is shared by gyro + servo + OLED. (3) In offload mode, camera and mic are disabled entirely — use `main_satellite` for those streams.
+
+### `main_add`
+
+- **Board envs:** `esp32s3sense`, `esp32dev`. OTA variants: `esp32s3sense_ota`, `esp32dev_ota`.
+- **Transport:** WiFi (micro-ROS) + HTTP (camera :80, mic :81, speaker from :8383, OLED from :8390)
+- **Bridge flags:** `HEARTBEAT, GYRO, BATTERY, LIDAR, DEBUG`
+- **Purpose:** Incremental modular rebuild of `main` — phases 1–6 bring-up. All subsystems enabled; no `StatusLedController` (uses a simpler loop-side LED FSM instead). Useful for staged hardware bring-up where you want verbose debug output and all features on by default.
+- **Build/flash:** `pio run -t upload` (default: `esp32s3sense`)
+- **Serial output:** WiFi + micro-ROS state, IP + RSSI every 2 s.
+- **Camera/mic/speaker:** Enabled on ESP32-S3 only (guarded by `#ifdef`). Camera init happens before WiFi to claim contiguous DMA buffer while heap is intact. Mic has acoustic feedback guard (`setMuteSource` tied to `SpeakerSubsystem::playing`).
+- **Safe mode:** 5 boot threshold, 10 s stable run, UDP port 8889, any packet clears counter.
+- **NVS namespace:** `"srvtest"` (shared with `test_sub_servo`, `test_sub_movement`).
+
+### `main_satellite`
+
+- **Board envs:** `esp32cam_satellite` (default, AI-Thinker ESP32-CAM), `esp32s3sense_satellite` (Seeed XIAO ESP32-S3 Sense). OTA variants available.
+- **Transport:** WiFi (HTTP). micro-ROS optional (enabled on S3, disabled on ESP32-CAM).
+- **Bridge flags (S3 only):** `HEARTBEAT` (publishes as `mcu/heartbeat2`)
+- **Purpose:** Camera/sensor offload board for the dual-board architecture. The main board (`main` with `esp32s3sense_offload`) handles gait, sensors, and micro-ROS; this board runs the MJPEG camera server, freeing PBUF/SRAM pressure on the main board.
+- **Build/flash:** `pio run -t upload` (default: `esp32cam_satellite`) or `pio run -e esp32s3sense_satellite -t upload`
+- **HTTP endpoints:** Camera MJPEG at `:80/cam`. Mic PCM at `:81/audio` (S3 only, not yet on ESP32-CAM).
+- **Safe mode:** 5 boot threshold, 30 s stable run (longer than main), UDP port 4211. Override: `echo -n "SEEKER_CLEAR_SM" | nc -u -w1 <SAT_IP> 4211`
+- **Network config:** Requires `satellite_ip` in `network_config.ini`. Shares WiFi creds with main.
+- **Why ESP32-CAM micro-ROS is disabled:** The XRCE-DDS executor on Core 1 contends with the MJPEG send path on the 4 MB non-S3 ESP32, throttling camera to ~3 fps.
+- **Debug tips:** (1) Camera init must happen before WiFi (contiguous DMA buffer). (2) On ESP32-CAM, default I2C pins (21/22) collide with camera Y5/PCLK — gyro setup carries explicit SDA/SCL. (3) Loop logs WiFi state + micro-ROS state ("DISABLED" when `ENABLE_MICROROS=0`).
+
+### `test_raw_bno`
+
+- **Board env:** `esp32s3sense_bare` (no WiFi, no micro-ROS)
+- **Purpose:** BNO085 IMU raw hardware isolation test. Bare-metal I2C test without any subsystem abstraction — verifies the BNO085 sensor responds and produces data.
+- **Build/flash:** `pio run -t upload`
+- **Debug tips:** Same as `test_sub_gyro_nondma` but bypasses the `GyroSubsystem` abstraction entirely.
 
 ---
 

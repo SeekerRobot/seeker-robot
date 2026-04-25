@@ -46,15 +46,23 @@ This page explains how those pieces interlock at runtime, how the code is laid o
 │  Nav2 (BT navigator, controller, planner, behaviors, smoother)              │
 │       ◄── /map, /odom, TF     ──► /cmd_vel                                  │
 │                                                                             │
-│  seeker_vision  ──► /object_found, /detection_detail, /emotion_detail        │
+│  seeker_vision  ──► /vision/detections, /object_found, /emotion_detail       │
 │       ◄── ESP32 cam proxy or Gazebo /camera/image or local webcam           │
 │                                                                             │
-│  ball_searcher (mission planner)                                            │
+│  object_seeker (SeekObject Action Server — WANDER/SEEK/PERFORM_MOVE)        │
+│       ◄── /map, /vision/detections   ──► NavigateToPose goals               │
+│  ball_searcher (legacy mission planner — frontier + red ball)               │
 │       ◄── /map, camera feed   ──► NavigateToPose goals                      │
+│                                                                             │
+│  seeker_voice (Brain) ──► SeekObject goals ──► object_seeker                │
+│       ◄── /audio_transcription (from Whisper)  ──► /audio_tts_input (TTS)   │
 │                                                                             │
 │  seeker_tts     ──► HTTP :8383 /audio_out ──► ESP32 SpeakerSubsystem         │
 │  seeker_display ──► HTTP :8390 /lcd_out   ──► ESP32 OledSubsystem           │
 │  seeker_media   ──► HTTP :8383 + :8390    ──► ESP32 speaker + OLED          │
+│                                                                             │
+│  seeker_web     ──► HTTP :8080  (browser dashboard)                         │
+│       WebSocket + REST bridge to all /mcu/* topics + /cmd_vel + TTS/WAV     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -95,23 +103,26 @@ seeker-robot/
 │       ├── seeker_sim/          # fake_mcu_node
 │       ├── seeker_display/      # OLED display nodes + HTTP LCD server
 │       ├── seeker_media/        # MP4 player (video → OLED + audio → speaker)
+│       ├── seeker_test_cmd_vel/ # Minimal cmd_vel driver for manual/auto drive
 │       ├── seeker_tts/          # Fish Audio TTS node + tts.launch.py
 │       ├── seeker_vision/      # YOLO detection + emotion + camera proxy
+│       ├── seeker_voice/       # "Brain" — voice command → SeekObject action client
+│       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST on :8080)
 │       └── test_package/        # Tiny CI-sanity C++ node
 ├── mcu_ws/
 │   ├── platformio/
 │   │   ├── platformio.ini               # Shared base config (board envs, lib_base)
 │   │   ├── network_config.ini           # WiFi creds + agent IP (gitignored)
 │   │   └── network_config.example.ini   # Template
-│   ├── src/                             # 26 per-sketch PlatformIO projects
+│   ├── src/                             # 31 per-sketch PlatformIO projects
 │   ├── lib/                             # Shared subsystems (see below)
 │   ├── libs_external/esp32/             # Pre-vendored micro-ROS PlatformIO lib
 │   └── platformio/extra_packages/mcu_msgs/ # Bind-mounted from ros2_ws/src/mcu_msgs
 └── docker/
     ├── Dockerfile                       # Multi-stage base → dev/prod
     ├── Dockerfile.init-bootstrap        # Volume chown + libs_external seed
-    ├── docker-compose.yml               # ros2 + ros2-nvidia + ros2-amd + init-bootstrap
-    └── .env.example                     # Template for COMPOSE_PROJECT_NAME, BUILD_TARGET, display/network
+    ├── docker-compose.yml               # ros2 (cpu profile) + ros2-nvidia + ros2-amd + init-bootstrap
+    └── .env.example                     # Template for COMPOSE_PROJECT_NAME, BUILD_TARGET, COMPOSE_PROFILES, display/network
 ```
 
 ---
@@ -123,7 +134,7 @@ seeker-robot/
 | `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | bind (delegated) | Edit ROS 2 code from the host |
 | `ros2_ws/.vscode/` | `~/ros2_workspaces/.vscode/` | bind (delegated) | Shared VS Code settings |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | bind (delegated) | Edit firmware from the host |
-| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | bind (ro) | Secret-ish WiFi creds |
+| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | bind (via parent) | Secret-ish WiFi creds (part of the `mcu_ws/` mount) |
 | `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | bind (delegated) | Makes `mcu_msgs` visible to micro-ROS codegen |
 | `scripts/` | `~/scripts/` | bind | Utility scripts |
 | `/dev`, `/sys`, `/tmp/.X11-unix` | same | bind | USB, GPIO, X server |

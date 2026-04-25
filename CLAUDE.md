@@ -19,8 +19,8 @@ Seeker Robot — a ROS 2 Jazzy robotics project with ESP32 microcontrollers comm
   - `seeker_display` — OLED display nodes: `oled_sine_node` (animated sine wave demo) and `lcd_http_server` (shared helper that serves SSD1306 framebuffers over HTTP on port 8390 for the ESP32 `OledSubsystem`).
   - `seeker_media` — MP4 media player node (`mp4_player_node`): decodes video to 128×64 SSD1306 framebuffers streamed over HTTP and audio to 16 kHz PCM streamed to the ESP32 speaker, with A/V sync.
   - `seeker_tts` — Fish Audio TTS node plus a local-WAV playback topic, both re-served as an HTTP PCM stream for the ESP32 `SpeakerSubsystem`.
-  - `seeker_vision` — YOLO object detection (`vision_node`, `gazebo_vision_node`) with an HSV fallback (`use_yolo:=false` for light-weight color detection), DeepFace emotion detection (`emotion_node`), and an MJPEG camera proxy (`cam_proxy`) that bridges the ESP32 camera stream to localhost. Three launch files: `mcu_cam.launch.py` (ESP32 camera via proxy), `gazebo_cam.launch.py` (Gazebo `/camera/image`), `local_cam.launch.py` (host webcam).
-  - `seeker_web` — Browser dashboard with topic allowlist and rate params.
+  - `seeker_vision` — YOLO object detection (`vision_node`, `gazebo_vision_node`), DeepFace emotion detection (`emotion_node`), and an MJPEG camera proxy (`cam_proxy`) that bridges the ESP32 camera stream to localhost. Three launch files: `mcu_cam.launch.py` (ESP32 camera via proxy), `gazebo_cam.launch.py` (Gazebo `/camera/image`), `local_cam.launch.py` (host webcam).
+  - `seeker_web` — Browser-based robot controller (`web_node`). Serves an HTML dashboard on port 8080 with WebSocket and REST bridges to ROS 2 topics. Provides a virtual joystick, real-time IMU/LiDAR visualization, MJPEG camera feed, mic audio playback, TTS input, WAV playback, and live log tailing. Launch: `web.launch.py`.
   - `test_package` — Minimal C++ ROS 2 node for workflow verification.
 
 ### Brain-Body action pattern
@@ -43,8 +43,8 @@ Autonomous search is implemented as a **ROS 2 Action** rather than a one-shot to
 - **`docker/`** — Containerized dev environment:
   - `Dockerfile` — Multi-stage build (`base` → `dev`/`prod`). Base installs micro-ROS agent, PlatformIO, ROS 2 Jazzy, and vision dependencies (ultralytics, deepface, tensorflow+CUDA). `dev` adds Gazebo Harmonic, RViz, rqt.
   - `Dockerfile.init-bootstrap` — One-shot init container that chowns named volumes and seeds `libs_external` into the `mcu_lib_external` volume.
-  - `docker-compose.yml` — Defines `ros2` (main dev container), `init-bootstrap` (one-shot volume init), and GPU-enabled profile services `ros2-nvidia` (NVIDIA) and `ros2-amd` (AMD). `COMPOSE_PROJECT_NAME` in `.env` isolates containers/volumes per worktree.
-  - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|prod`, and display/network config for your OS.
+  - `docker-compose.yml` — Defines `ros2` (main dev container, `cpu` profile), `init-bootstrap` (one-shot volume init), and GPU-enabled profile services `ros2-nvidia` (`nvidia` profile) and `ros2-amd` (`amd` profile). Set `COMPOSE_PROFILES=cpu` (or `nvidia`/`amd`) in `.env` so all `docker compose` commands pick up the correct service. `COMPOSE_PROJECT_NAME` in `.env` isolates containers/volumes per worktree.
+  - `.env.example` — Copy to `.env`. Set `COMPOSE_PROJECT_NAME`, `BUILD_TARGET=dev|prod`, `COMPOSE_PROFILES=cpu|nvidia|amd`, and display/network config for your OS.
 
 ## Docker / Build Commands
 
@@ -109,7 +109,7 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
 | `ros2_ws/src/` | `~/ros2_workspaces/src/seeker_ros/` | Source code (bind mount) |
 | `mcu_ws/` | `~/mcu_workspaces/seeker_mcu/` | MCU firmware (bind mount) |
 | `ros2_ws/src/mcu_msgs/` | `~/mcu_workspaces/seeker_mcu/platformio/extra_packages/mcu_msgs/` | Bind mount for micro-ROS build |
-| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | Network config (read-only) |
+| `mcu_ws/platformio/network_config.ini` | `~/mcu_workspaces/seeker_mcu/platformio/network_config.ini` | Network config (via parent mcu_ws mount) |
 | `scripts/` | `~/scripts/` | Utility scripts (bind mount) |
 | Named volumes | `~/ros2_workspaces/{build,install,log}` | colcon artifacts |
 | Named volume | `~/.platformio` | PlatformIO cache |
@@ -154,12 +154,14 @@ Each publisher is gated by a preprocessor flag (default 0): `BRIDGE_ENABLE_HEART
 - `test_all` — integration test for all subsystems together
 - `test_threaded_blink` — ThreadedSubsystem / FreeRTOS task smoke test
 - `build_microros` — placeholder sketch used only to pre-build the micro-ROS library
-- `main` — placeholder for full system integration (currently empty)
+- `main` — full integration firmware. Default env `esp32s3sense_offload` runs all subsystems except camera/mic (offloaded to `main_satellite`). Also has `esp32s3sense_main` (all-in-one) and `esp32dev` variants.
+- `main_add` — incremental modular rebuild of `main` (phases 1–6). All subsystems enabled, used for staged bring-up.
+- `main_satellite` — camera/sensor offload board for dual-board architecture. Default env `esp32cam_satellite` (AI-Thinker ESP32-CAM); also supports `esp32s3sense_satellite`.
 
 ## Conventions
 
 - **Commit messages**: Conventional Commits enforced via commitlint (`@commitlint/config-conventional`). Use prefixes like `feat:`, `fix:`, `docs:`, `chore:`, etc.
 - **ROS 2 distro**: Jazzy (matches micro-ROS distro setting in `platformio.ini`).
 - **`mcu_msgs` is shared**: Any changes to message definitions in `ros2_ws/src/mcu_msgs/` must be rebuilt on both the ROS 2 side (`colcon build --packages-select mcu_msgs`) and the MCU side (`pio run` — the bind-mount at `platformio/extra_packages/mcu_msgs` picks up changes automatically).
-- **Board environments**: `esp32s3sense` (Seeed XIAO ESP32-S3, default) and `esp32dev` (generic ESP32-WROOM-32). Pin definitions are in `mcu_ws/lib/RobotConfig/RobotConfig.h`, gated by `ENV_ESP32S3SENSE` / `ENV_ESP32DEV` macros set by the board's build flags.
+- **Board environments**: `esp32s3sense` (Seeed XIAO ESP32-S3, default), `esp32dev` (generic ESP32-WROOM-32), and `esp32cam` (AI-Thinker ESP32-CAM). Pin definitions are in `mcu_ws/lib/RobotConfig/RobotConfig.h`, gated by `ENV_ESP32S3SENSE` / `ENV_ESP32DEV` / `ENV_ESP32CAM` macros set by the board's build flags.
 - **`test_sub_*` sketches** exclude `libs_external/esp32` from `lib_extra_dirs` to avoid pulling in micro-ROS; they set their own minimal `platformio.ini` env blocks with only `${common.lib_base}` and `../../lib/`.
