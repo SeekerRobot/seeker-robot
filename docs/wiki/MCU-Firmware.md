@@ -19,6 +19,8 @@ All envs are defined in `mcu_ws/platformio/platformio.ini`.
 | `esp32cam` | AI-Thinker ESP32-CAM | WiFi UDP | `huge_app.csv` | PSRAM cache fix enabled. Used by `test_raw_cam`. |
 | `esp32dev_ota` | Generic ESP32-WROOM-32 | WiFi (espota) | `min_spiffs.csv` | OTA over-the-air upload; requires existing firmware built with `ENABLE_ARDUINO_OTA=1`. |
 | `esp32s3sense_ota` | Seeed XIAO ESP32-S3 Sense | WiFi (espota) | `min_spiffs.csv` | Same for the S3 sense board. |
+| `esp32dev_bare` | Generic ESP32-WROOM-32 | None | default | No micro-ROS, no WiFi. Used by isolation tests like `test_raw_bno`. |
+| `esp32s3sense_bare` | Seeed XIAO ESP32-S3 Sense | None | default | Same for the S3 sense board. Uses native Espressif platform (arduino-esp32 2.0.17). |
 
 All WiFi envs inherit the `esp32_microros_wifi` base, which sets `MICRO_ROS_TRANSPORT_ARDUINO_WIFI` and injects network configuration from `network_config.ini` as preprocessor defines: `AGENT_IP`, `AGENT_PORT`, `WIFI_SSID`, `WIFI_PASSWORD`, `STATIC_IP`, `GATEWAY`, `SUBNET`.
 
