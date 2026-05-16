@@ -91,6 +91,7 @@ cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config
 | `COMPOSE_PROFILES` | Which Docker Compose service to use: `cpu` (the default `ros2` service), `nvidia` (GPU via `nvidia-container-toolkit`), or `amd` (GPU via DRI passthrough). **Must be set** — without it, `docker compose up -d ros2` won't find the service. |
 | `DISPLAY_CONFIG` / `NETWORK_MODE_CONFIG` | Uncomment and fill in the block for your OS (see §1). |
 | `FISH_API_KEY`, `FISH_REFERENCE_ID` | Optional — only needed if you plan to run the `seeker_tts` node. |
+| `GEMINI_API_KEY` | Optional — only needed for `seeker_voice`'s Gemini-backed intent classification. Without it, `command_node` falls back to keyword heuristics. |
 
 ### `mcu_ws/platformio/network_config.ini`
 

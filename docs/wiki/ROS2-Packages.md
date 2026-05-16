@@ -26,11 +26,18 @@ Shared ROS 2 ↔ micro-ROS interface package. Defines the `.msg`/`.srv` files th
 
 - `HexapodCmd.msg` — gait mode (`STAND` / `WALK` / `SIT` / `DANCE`) plus body pose (height, pitch, roll). Published to `/mcu/hexapod_cmd` by the mission planner or the vision node (DANCE on target detection).
 - `OledFrame.msg` — raw 1024-byte SSD1306 (128×64, page-major, 8 pages) framebuffer for the onboard OLED. Used by `seeker_display` and `seeker_media` to generate frames; the ESP32 receives them via plain HTTP (`GET /lcd_out` on port 8390), not via micro-ROS.
+- `DetectedObject.msg` — single YOLO detection: class name, confidence, bounding box centre/size, image dimensions.
+- `DetectedObjectArray.msg` — array of `DetectedObject` messages, used on `/vision/detections`.
 - `ExampleMsg.msg` — scaffolding example.
 
 **Services** (`srv/`):
 
+- `PerformMove.srv` — request a named move (e.g. `dance`) with a duration; used by `object_seeker`.
 - `ExampleSrv.srv` — scaffolding example.
+
+**Actions** (`action/`):
+
+- `SeekObject.action` — goal: `class_name` (COCO class) + `timeout_sec`; feedback: current state, target bearing; result: success/fail. Used by the Brain → Body action pipeline.
 
 Any change here **must** be rebuilt in both workspaces — see [Architecture → mcu_msgs flow](Architecture.md#how-mcu_msgs-flows-between-workspaces).
 

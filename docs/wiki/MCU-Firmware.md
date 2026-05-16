@@ -21,6 +21,10 @@ All envs are defined in `mcu_ws/platformio/platformio.ini`.
 | `esp32s3sense_ota` | Seeed XIAO ESP32-S3 Sense | WiFi (espota) | `min_spiffs.csv` | Same for the S3 sense board. |
 | `esp32dev_bare` | Generic ESP32-WROOM-32 | None | default | No micro-ROS, no WiFi. Used by isolation tests like `test_raw_bno`. |
 | `esp32s3sense_bare` | Seeed XIAO ESP32-S3 Sense | None | default | Same for the S3 sense board. Uses native Espressif platform (arduino-esp32 2.0.17). |
+| `esp32cam_satellite` | AI-Thinker ESP32-CAM | WiFi UDP | `huge_app.csv` | Camera offload board for `main_satellite`. MJPEG at `:80/cam`. micro-ROS off by default (PBUF pressure on 4 MB non-S3). |
+| `esp32s3sense_satellite` | Seeed XIAO ESP32-S3 Sense | WiFi UDP | `min_spiffs.csv` | Alternate satellite target for `main_satellite`. Pioarduino platform with octal PSRAM. |
+| `esp32cam_satellite_ota` | AI-Thinker ESP32-CAM | WiFi (espota) | `huge_app.csv` | OTA variant of `esp32cam_satellite`. Requires `satellite_ota_upload_port` in `network_config.ini`. |
+| `esp32s3sense_satellite_ota` | Seeed XIAO ESP32-S3 Sense | WiFi (espota) | `min_spiffs.csv` | OTA variant of `esp32s3sense_satellite`. |
 
 All WiFi envs inherit the `esp32_microros_wifi` base, which sets `MICRO_ROS_TRANSPORT_ARDUINO_WIFI` and injects network configuration from `network_config.ini` as preprocessor defines: `AGENT_IP`, `AGENT_PORT`, `WIFI_SSID`, `WIFI_PASSWORD`, `STATIC_IP`, `GATEWAY`, `SUBNET`.
 
