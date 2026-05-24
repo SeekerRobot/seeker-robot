@@ -209,7 +209,7 @@ void GaitController::enable() {
   last_cmd_ms_ = millis();
   if (state_ == GaitState::IDLE) {
     state_ = GaitState::WALKING;
-    initPhases(); // reset phase to sync gait and unfreeze all legs
+    initPhases();  // reset phase to sync gait and unfreeze all legs
     Debug::printf(Debug::Level::INFO, "[Gait] enabled — WALKING");
   }
 }

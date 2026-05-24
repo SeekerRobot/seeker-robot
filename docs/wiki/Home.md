@@ -30,6 +30,7 @@ git clone --recurse-submodules https://github.com/SeekerRobot/seeker-robot.git &
 # 2. Configure (edit the copies afterwards — WiFi credentials, agent IP, OS display/network block)
 cp docker/.env.example docker/.env
 cp mcu_ws/platformio/network_config.example.ini mcu_ws/platformio/network_config.ini
+# In docker/.env set COMPOSE_PROFILES=cpu (or nvidia/amd for GPU hosts)
 
 # 3. Build + start the dev container
 cd docker && docker compose build && docker compose up init-bootstrap && docker compose up -d ros2
@@ -61,12 +62,15 @@ seeker-robot/
 │       ├── seeker_media/       # MP4 player (video → OLED + audio → speaker)
 │       ├── seeker_navigation/  # Nav2 + SLAM + EKF + ball_searcher
 │       ├── seeker_sim/         # fake_mcu_node (tripod gait sim)
+│       ├── seeker_test_cmd_vel/ # Minimal cmd_vel driver for manual/auto drive
 │       ├── seeker_tts/         # Fish Audio TTS bridge
-│       ├── seeker_vision/     # YOLO object detection + emotion detection + camera proxy
+│       ├── seeker_vision/      # YOLO object detection + emotion detection + camera proxy
+│       ├── seeker_voice/       # "Brain" — Gemini-backed voice command → SeekObject action client
+│       ├── seeker_web/         # Browser-based robot controller (WebSocket + REST)
 │       └── test_package/       # Minimal CI sanity package
 ├── mcu_ws/            # PlatformIO workspace (ESP32 firmware)
 │   ├── platformio/             # Shared base platformio.ini + network_config.ini
-│   ├── src/                    # Per-sketch PlatformIO projects
+│   ├── src/                    # Per-sketch PlatformIO projects (31 sketches)
 │   ├── lib/                    # Shared C++ libraries (subsystems, bridge, kinematics...)
 │   ├── libs_external/          # Pre-vendored micro-ROS PlatformIO library
 │   └── platformio/extra_packages/ # mcu_msgs bind-mounted from ros2_ws for micro-ROS builds

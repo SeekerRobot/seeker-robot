@@ -14,7 +14,7 @@ source ~/ros2_workspaces/install/setup.bash
 You must have built at least:
 
 ```bash
-colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_vision
+colcon build --packages-select mcu_msgs seeker_description seeker_display seeker_sim seeker_gazebo seeker_media seeker_navigation seeker_test_cmd_vel seeker_vision seeker_voice seeker_web
 ```
 
 ---
@@ -172,6 +172,44 @@ Recommended displays: `Map` (`/map`, Transient Local), `LaserScan` (`/mcu/scan`)
 
 ---
 
+## `sim_ball_search` — autonomous red ball hunt
+
+Same as `sim_object_seek` but uses `ball_searcher` instead of `object_seeker`. The ball searcher does frontier exploration and approaches a red ball when detected. No YOLO — detection is simpler and lighter.
+
+```bash
+ros2 launch seeker_gazebo sim_ball_search.launch.py
+```
+
+**Timeline:**
+
+```
+t=0s   Gazebo + fake_mcu + robot_state_publisher + gz_bridge
+t=2s   EKF
+t=5s   SLAM Toolbox
+t=10s  SLAM configured + activated
+t=13s  Nav2 stack
+t=15s  Nav2 lifecycle manager
+t=25s  ball_searcher (frontier exploration → red ball approach)
+```
+
+**RViz fixed frame:** `map`
+
+---
+
+## `sim_integrated_medium` — integrated YOLO simulation (no command_node)
+
+Same stack as `sim_object_seek` but structured as a standalone "medium" integration launch. The brain (`command_node`) is not included to save resources — use the `find` CLI to send seek goals manually.
+
+```bash
+ros2 launch seeker_gazebo sim_integrated_medium.launch.py
+# in another terminal:
+ros2 run seeker_navigation find sports_ball --feedback
+```
+
+**RViz fixed frame:** `map`
+
+---
+
 ## Adding standalone YOLO vision to any simulation run
 
 `gazebo_vision_node` can also be run alongside any launch that publishes `/camera/image`:
@@ -244,8 +282,9 @@ source install/setup.bash
 
 When you're ready to replace `fake_mcu_node` with a real ESP32:
 
-1. Flash `test_bridge_all` (all publishers) or `test_bridge_gait` (just gait + `/cmd_vel`).
+1. Flash `test_bridge_all` (all publishers), `test_all` (everything + diagnostics), or `main` (production firmware).
 2. Start the micro-ROS agent in a new terminal: `ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888`.
 3. Launch one of the `real_*` launches in `seeker_navigation` (see **[ROS2 Packages → seeker_navigation](ROS2-Packages.md#seeker_navigation)** and **[IRL Tests](IRL-Tests.md)**).
+4. Optionally, launch the browser controller for teleop and telemetry: `ros2 launch seeker_web web.launch.py mcu_ip:=<ESP32_IP>` and open `http://localhost:8080`.
 
 `robot_state_publisher` in every simulation launch already remaps `joint_states → /mcu/joint_states`, so it picks up servo angles from the real MCU micro-ROS bridge automatically.

@@ -19,6 +19,12 @@ All envs are defined in `mcu_ws/platformio/platformio.ini`.
 | `esp32cam` | AI-Thinker ESP32-CAM | WiFi UDP | `huge_app.csv` | PSRAM cache fix enabled. Used by `test_raw_cam`. |
 | `esp32dev_ota` | Generic ESP32-WROOM-32 | WiFi (espota) | `min_spiffs.csv` | OTA over-the-air upload; requires existing firmware built with `ENABLE_ARDUINO_OTA=1`. |
 | `esp32s3sense_ota` | Seeed XIAO ESP32-S3 Sense | WiFi (espota) | `min_spiffs.csv` | Same for the S3 sense board. |
+| `esp32dev_bare` | Generic ESP32-WROOM-32 | None | default | No micro-ROS, no WiFi. Used by isolation tests like `test_raw_bno`. |
+| `esp32s3sense_bare` | Seeed XIAO ESP32-S3 Sense | None | default | Same for the S3 sense board. Uses native Espressif platform (arduino-esp32 2.0.17). |
+| `esp32cam_satellite` | AI-Thinker ESP32-CAM | WiFi UDP | `huge_app.csv` | Camera offload board for `main_satellite`. MJPEG at `:80/cam`. micro-ROS off by default (PBUF pressure on 4 MB non-S3). |
+| `esp32s3sense_satellite` | Seeed XIAO ESP32-S3 Sense | WiFi UDP | `min_spiffs.csv` | Alternate satellite target for `main_satellite`. Pioarduino platform with octal PSRAM. |
+| `esp32cam_satellite_ota` | AI-Thinker ESP32-CAM | WiFi (espota) | `huge_app.csv` | OTA variant of `esp32cam_satellite`. Requires `satellite_ota_upload_port` in `network_config.ini`. |
+| `esp32s3sense_satellite_ota` | Seeed XIAO ESP32-S3 Sense | WiFi (espota) | `min_spiffs.csv` | OTA variant of `esp32s3sense_satellite`. |
 
 All WiFi envs inherit the `esp32_microros_wifi` base, which sets `MICRO_ROS_TRANSPORT_ARDUINO_WIFI` and injects network configuration from `network_config.ini` as preprocessor defines: `AGENT_IP`, `AGENT_PORT`, `WIFI_SSID`, `WIFI_PASSWORD`, `STATIC_IP`, `GATEWAY`, `SUBNET`.
 
@@ -47,7 +53,10 @@ Every subfolder is a PlatformIO library shared across all sketches via `lib_extr
 | `CamMicSubsystem` | Thin wrapper that runs `CameraSubsystem` and `MicSubsystem` side-by-side. |
 | `SpeakerSubsystem` | I²S speaker output; long-polls the ROS host for audio. |
 | `LedSubsystem` | SK6812 RGB LED chain with patterns (solid, pulse, chase, rainbow…). |
+| `StatusLedController` | Robot-state FSM that drives the LED chain based on subsystem health: BOOT → LOW_BATTERY → WIFI_WAIT → MICROROS_WAIT → WALKING → STOPPING → AUDIO_PLAYING → IDLE. Polls battery/WiFi/micro-ROS/gait/speaker state at ~10 Hz with hysteresis on battery thresholds. |
 | `OledSubsystem` | SSD1306 128×64 I²C display. Frame + text-overlay model (up to 4 text slots, PROGMEM bitmap frames in `OledFrames.h`), renders CPU-side into a NanoCanvas; only the final `blt()` touches I²C under the shared bus mutex. Also runs an HTTP client task (`lcdFetchTask`) that fetches framebuffers from the ROS 2 host at `GET /lcd_out` (port 8390) — no micro-ROS required for display updates. |
+| `RobotPersistence` | Shared NVS persistence for servo calibration, gait tuning, body height, and velocity caps. NVS namespace `"srvtest"` (shared across `main`, `test_sub_servo`, `test_sub_movement`). Provides `loadAll()`, `saveAll()`, `saveGait()`, `saveHeight()`, `clearAll()`. |
+| `GaitRosParticipant` | `IMicroRosParticipant` that subscribes to `/cmd_vel` and feeds `GaitController`. Supports per-axis velocity caps (`max_vx`, `max_vy`, `max_wz`) and a combined horizontal cap (`max_hvel`). |
 | `ESP32WifiSubsystem` | WiFi connect/reconnect state machine with static IP. |
 | `BleDebugSubsystem` | BLE Nordic UART transport for debug output. |
 | `HeartbeatParticipant` | Minimal `IMicroRosParticipant` that just publishes a 1 Hz counter on `/mcu/heartbeat`. |

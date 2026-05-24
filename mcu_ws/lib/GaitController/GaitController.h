@@ -201,8 +201,8 @@ class GaitController : public Subsystem::ThreadedSubsystem {
   uint32_t last_us_ = 0;
 
   VelocityCommand cmd_ = {};
-  uint32_t last_cmd_ms_ = 0;       // millis() of last setVelocity/enable
-  uint32_t cmd_timeout_ms_ = 0;    // 0 disables the watchdog
+  uint32_t last_cmd_ms_ = 0;     // millis() of last setVelocity/enable
+  uint32_t cmd_timeout_ms_ = 0;  // 0 disables the watchdog
   mutable Threads::Mutex state_mutex_;
 
   // Tripod groups — legs 0,3,4 start at phase 0 (stance first);
