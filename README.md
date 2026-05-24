@@ -299,6 +299,15 @@ ros2 launch seeker_navigation real_slam_ekf.launch.py
 
 # Full autonomy (EKF + SLAM + Nav2 + ball searcher):
 ros2 launch seeker_navigation real_ball_search.launch.py
+
+# Full YOLO-driven autonomy (EKF + SLAM + Nav2 + YOLO + object_seeker):
+ros2 launch seeker_navigation real_object_seek.launch.py
+
+# Same but without IMU (dead-reckoning odometry):
+ros2 launch seeker_navigation real_object_seek_no_gyro.launch.py
+
+# Scripted cmd_vel replay + SLAM (no Nav2 / no vision):
+ros2 launch seeker_navigation real_scripted_drive.launch.py
 ```
 
 **Launch sequence (real_slam_ekf / real_ball_search):**
@@ -366,6 +375,9 @@ ros2 launch seeker_gazebo sim_slam_ekf.launch.py
 
 # YOLO object seeker (EKF + SLAM + Nav2 + object_seeker + gazebo_vision_node):
 ros2 launch seeker_gazebo sim_object_seek.launch.py
+
+# Integrated medium (EKF + SLAM + Nav2 + YOLO + object_seeker + velocity_node, no Brain):
+ros2 launch seeker_gazebo sim_integrated_medium.launch.py
 ```
 
 Once `sim_object_seek` is running, tell the robot to find any COCO-class object:
